@@ -9,6 +9,10 @@
       "destination": "https://dimsum-backend-production.up.railway.app/uploads/:path*"
     },
     {
+      "source": "/static/:path*",
+      "destination": "https://dimsum-backend-production.up.railway.app/static/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
