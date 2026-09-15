@@ -103,7 +103,7 @@ export default function Checkout() {
   }, [items]);
 
   const subtotal = items.reduce((sum, item) => sum + (Number(item.price) * item.quantity), 0);
-  const otherFees = 5000;
+  const otherFees = 0;
   const total = subtotal + otherFees;
   const currentTotalItems = items.reduce((sum, item) => sum + item.quantity, 0);
 
