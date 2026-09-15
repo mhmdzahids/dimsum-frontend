@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 
 export default function AdminProducts() {
   const [token, setToken] = useState(localStorage.getItem('adminToken') || '');
-  const [email, setEmail] = useState('admin@dimsum.id');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   
   const [products, setProducts] = useState([]);
   
@@ -11,6 +11,22 @@ export default function AdminProducts() {
   const [price, setPrice] = useState('');
   const [sku, setSku] = useState('');
   const [stock, setStock] = useState(100);
+
+  const handleLogout = async () => {
+    try {
+      if (token) {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      }
+    } catch (e) {
+      console.error("Logout error", e);
+    } finally {
+      setToken('');
+      localStorage.removeItem('adminToken');
+    }
+  };
 
   const login = async (e) => {
     e.preventDefault();
@@ -117,7 +133,7 @@ export default function AdminProducts() {
           <h1 className="text-2xl font-bold">Admin Products</h1>
           <a href="/admin/banners" className="text-blue-500 hover:underline">Go to Banners</a>
         </div>
-        <button onClick={() => { setToken(''); localStorage.removeItem('adminToken'); }} className="text-red-500">Logout</button>
+        <button onClick={handleLogout} className="text-red-500">Logout</button>
       </div>
 
       <div className="bg-gray-100 p-4 rounded mb-8">

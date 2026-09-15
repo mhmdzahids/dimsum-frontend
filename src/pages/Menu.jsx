@@ -36,12 +36,12 @@ function MenuPage() {
   }, [cart]);
 
   const generateDates = () => {
-    const dates = ['Pick up Hari ini'];
+    const dates = ['Hari ini'];
     for (let i = 1; i <= 6; i++) {
       const d = new Date();
       d.setDate(d.getDate() + i);
       const options = { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' };
-      dates.push(d.toLocaleDateString('en-GB', options).replace(/,/g, ''));
+      dates.push(d.toLocaleDateString('id-ID', options).replace(/,/g, ''));
     }
     return dates;
   };
@@ -49,7 +49,7 @@ function MenuPage() {
 
   const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(availableDates[0]);
-  
+
   const [isProductModalClosing, setIsProductModalClosing] = useState(false);
   const [isTimeModalClosing, setIsTimeModalClosing] = useState(false);
 
@@ -69,36 +69,32 @@ function MenuPage() {
     }, 280);
   };
 
-  const availableTimes = React.useMemo(() => {
+  const getAvailableTimes = React.useCallback((dateToCheck) => {
     const times = [];
-    const isToday = selectedDate === availableDates[0];
+    const isToday = dateToCheck === availableDates[0];
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
 
-    for (let h = 8; h <= 22; h++) {
+    for (let h = 9; h <= 21; h++) {
       const hourStr = h.toString().padStart(2, '0');
 
       if (!isToday || (h > currentHour) || (h === currentHour && currentMinute <= 0)) {
         times.push(`${hourStr} : 00`);
       }
 
-      if (h !== 22) {
+      if (h !== 21) {
         if (!isToday || (h > currentHour) || (h === currentHour && currentMinute <= 30)) {
           times.push(`${hourStr} : 30`);
         }
       }
     }
     return times;
-  }, [selectedDate, availableDates]);
+  }, [availableDates]);
+
+  const availableTimes = React.useMemo(() => getAvailableTimes(selectedDate), [getAvailableTimes, selectedDate]);
 
   const [selectedTime, setSelectedTime] = useState(availableTimes[0]);
-
-  useEffect(() => {
-    if (availableTimes.length > 0 && !availableTimes.includes(selectedTime)) {
-      setSelectedTime(availableTimes[0]);
-    }
-  }, [availableTimes, selectedTime]);
 
   const [confirmedTime, setConfirmedTime] = useState(() => {
     return localStorage.getItem('dimsum_time') || null;
@@ -128,23 +124,25 @@ function MenuPage() {
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
 
   useEffect(() => {
-    fetch('/api/products')
-      .then(res => res.json())
-      .then(data => {
+    const loadDataAndAssets = async () => {
+      try {
+        const res = await fetch('/api/products');
+        const data = await res.json();
+
+        let formattedProducts = [];
         if (data.success) {
-          // Map DB price (number/string) to formatted price, and assign a default image
-          const formattedProducts = data.data.map(p => ({
+          formattedProducts = data.data.map(p => ({
             ...p,
             weight: p.weight || '18-20 Gram/Pcs',
             description: p.description || '',
             priceFormatted: `Rp${Number(p.price).toLocaleString('id-ID')}`,
-            image: p.image_url || imgWortel // Use actual image or placeholder
+            image: p.image_url || imgWortel
           }));
           setProducts(formattedProducts);
 
-          // Clean up ghost items from cart that no longer exist in DB
           setCart(prevCart => {
             const newCart = { ...prevCart };
             let changed = false;
@@ -157,12 +155,39 @@ function MenuPage() {
             return changed ? newCart : prevCart;
           });
         }
+
+        // --- Preload Assets ---
+        // Preload banner and all product images so UI appears instantly
+        const imageUrlsToLoad = [bannerMenu];
+        formattedProducts.forEach(p => {
+          if (p.image) imageUrlsToLoad.push(p.image);
+        });
+
+        // Create promises for each image to load
+        const imagePromises = imageUrlsToLoad.map(src => {
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.src = src;
+            img.onload = resolve;
+            img.onerror = resolve; // Resolve even on error to prevent infinite loading
+          });
+        });
+
+        // Minimum 2 second loading delay
+        const minLoadingTime = new Promise(resolve => setTimeout(resolve, 700));
+
+        await Promise.all([...imagePromises, minLoadingTime]);
+
+        setAssetsLoaded(true);
         setLoading(false);
-      })
-      .catch(err => {
-        console.error('Error fetching products:', err);
+      } catch (err) {
+        console.error('Error fetching products and assets:', err);
+        setAssetsLoaded(true); // Fallback to allow rendering
         setLoading(false);
-      });
+      }
+    };
+
+    loadDataAndAssets();
   }, []);
 
   const validCartEntries = Object.entries(cart).filter(([id]) => products.some(p => p.id === id));
@@ -174,6 +199,16 @@ function MenuPage() {
     }
     return total;
   }, 0);
+
+  // Loading Screen
+  if (loading || !assetsLoaded) {
+    return (
+      <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl bg-bg-cream flex flex-col items-center justify-center z-50">
+        <div className="w-12 h-12 border-4 border-brand-gold border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-4 font-body font-bold text-[14px] text-brand-blue animate-pulse">Menyiapkan Menu...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-bg-cream pb-24">
@@ -497,8 +532,14 @@ function MenuPage() {
                 {availableDates.map(date => (
                   <div
                     key={date}
-                    onClick={() => setSelectedDate(date)}
-                    className={`px-5 py-3.5 cursor-pointer font-body font-bold text-[14px] transition-colors ${selectedDate === date ? 'text-text-primary' : 'text-[#D1D5DB]'}`}
+                    onClick={() => {
+                      setSelectedDate(date);
+                      const newTimes = getAvailableTimes(date);
+                      if (newTimes.length > 0) {
+                        setSelectedTime(newTimes[0]);
+                      }
+                    }}
+                    className={`px-5 py-3.5 cursor-pointer font-body font-bold text-[14px] transition-colors border-y ${selectedDate === date ? 'text-text-primary bg-gray-50/50 border-gray-100' : 'text-[#D1D5DB] border-transparent'}`}
                   >
                     {date}
                   </div>
@@ -510,18 +551,15 @@ function MenuPage() {
                 <div className="flex flex-col">
                   {availableTimes.map(time => (
                     <div
-                      key={time}
+                      key={`${selectedDate}-${time}`}
                       onClick={() => setSelectedTime(time)}
-                      className={`px-5 py-3.5 text-center cursor-pointer font-body font-bold text-[14px] transition-colors ${selectedTime === time ? 'text-text-primary' : 'text-[#D1D5DB]'}`}
+                      className={`px-5 py-3.5 text-center cursor-pointer font-body font-bold text-[14px] transition-colors border-y ${selectedTime === time ? 'text-text-primary bg-gray-50/50 border-gray-100' : 'text-[#D1D5DB] border-transparent'}`}
                     >
                       {time}
                     </div>
                   ))}
                 </div>
               </div>
-
-              {/* Selection Highlight Overlay (Optional for aesthetics) */}
-              <div className="absolute top-[52px] left-0 right-0 h-[48px] border-y border-gray-100 pointer-events-none z-[-1] bg-gray-50/30"></div>
             </div>
 
             {/* Bottom Save Button */}
