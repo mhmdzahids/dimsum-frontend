@@ -11,7 +11,8 @@ import {
   Video,
   MessageCircle,
   Headset,
-  Menu as MenuIcon
+  Menu as MenuIcon,
+  ChevronRight
 } from 'lucide-react';
 import imgWortel from '../assets/icon/wortel.webp';
 import imgSosis from '../assets/icon/sosis.webp';
@@ -26,6 +27,64 @@ function Home() {
   const [orderType, setOrderType] = useState('Pick Up');
   const [activeBanner, setActiveBanner] = useState(0);
   const [banners, setBanners] = useState([1, 2, 3]);
+  const [activeTopping, setActiveTopping] = useState(null);
+
+  const handleToppingClick = (name) => {
+    setActiveTopping(name);
+    setTimeout(() => {
+      setActiveTopping((prev) => (prev === name ? null : prev));
+    }, 450);
+  };
+
+  const [pendingOrder, setPendingOrder] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dimsum_pending_order');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.expiresAt && new Date(parsed.expiresAt).getTime() <= Date.now()) {
+          localStorage.removeItem('dimsum_pending_order');
+          return null;
+        }
+        if (parsed.createdAt && (Date.now() - new Date(parsed.createdAt).getTime() > 60 * 60 * 1000)) {
+          localStorage.removeItem('dimsum_pending_order');
+          return null;
+        }
+        return parsed;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (!pendingOrder?.orderId) return;
+
+    const checkExpiry = () => {
+      if (pendingOrder.expiresAt && new Date(pendingOrder.expiresAt).getTime() <= Date.now()) {
+        localStorage.removeItem('dimsum_pending_order');
+        setPendingOrder(null);
+      }
+    };
+
+    fetch(`/api/orders/${pendingOrder.orderId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.data) {
+          if (data.data.status !== 'pending_payment') {
+            localStorage.removeItem('dimsum_pending_order');
+            setPendingOrder(null);
+          }
+        } else {
+          localStorage.removeItem('dimsum_pending_order');
+          setPendingOrder(null);
+        }
+      })
+      .catch(() => {});
+
+    const timer = setInterval(checkExpiry, 3000);
+    return () => clearInterval(timer);
+  }, [pendingOrder]);
 
   useEffect(() => {
     const fetchBanners = async () => {
@@ -182,14 +241,33 @@ function Home() {
         <div className="px-6 mb-8">
           <h2 className="font-heading font-black text-[20px] tracking-[0.5px] leading-[1.25] text-brand-blue">Pilihan Topping</h2>
           <div className="flex justify-between gap-0.5 overflow-visible pb-4 mt-6 hide-scrollbar">
-            {categories.map((cat, index) => (
-              <div key={index} className="flex flex-col items-center gap-1.5 min-w-[48px] max-w-[54px] group cursor-pointer">
-                <div className="w-[56px] h-[56px] rounded-full bg-brand-blue flex items-center justify-center shadow-card shrink-0 overflow-hidden">
-                  <img src={cat.icon} alt={cat.name} className="w-[70%] h-[70%] object-contain transition-transform group-hover:animate-giggle" />
+            {categories.map((cat, index) => {
+              const isActive = activeTopping === cat.name;
+              return (
+                <div
+                  key={index}
+                  onClick={() => handleToppingClick(cat.name)}
+                  className="flex flex-col items-center gap-1.5 min-w-[48px] max-w-[54px] group cursor-pointer select-none active:scale-95 transition-transform"
+                >
+                  <div className={`w-[56px] h-[56px] rounded-full bg-brand-blue flex items-center justify-center shadow-card shrink-0 overflow-hidden transition-all duration-200 ${
+                    isActive ? 'scale-110 shadow-elevated ring-2 ring-brand-gold' : 'group-hover:scale-105'
+                  }`}>
+                    <img
+                      src={cat.icon}
+                      alt={cat.name}
+                      className={`w-[70%] h-[70%] object-contain transition-transform ${
+                        isActive ? 'animate-giggle' : 'group-hover:animate-giggle'
+                      }`}
+                    />
+                  </div>
+                  <span className={`font-body font-bold text-[9px] leading-[1.2] text-center break-words w-full transition-colors ${
+                    isActive ? 'text-brand-gold scale-105 font-black' : 'text-brand-blue group-hover:text-brand-gold'
+                  }`}>
+                    {cat.name}
+                  </span>
                 </div>
-                <span className="font-body font-bold text-[9px] leading-[1.2] text-brand-blue text-center break-words w-full group-hover:text-brand-gold transition-colors">{cat.name}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -240,11 +318,44 @@ function Home() {
         </div>
       </footer>
 
-      {/* Floating Action Button */}
-      <button className="fixed bottom-6 right-6 md:right-[calc(50%-240px+24px)] bg-brand-gold text-white border-none rounded-full py-4 px-6 flex items-center gap-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)] font-bold cursor-pointer z-10">
-        <Headset size={20} />
-        Ada Keluhan?
-      </button>
+      {/* Floating Action Button (if no pending order) */}
+      {!pendingOrder && (
+        <button className="fixed bottom-6 right-6 md:right-[calc(50%-240px+24px)] bg-brand-gold text-white border-none rounded-full py-4 px-6 flex items-center gap-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)] font-bold cursor-pointer z-10">
+          <Headset size={20} />
+          Ada Keluhan?
+        </button>
+      )}
+
+      {/* Floating Continue Payment Bar if pending order exists */}
+      {pendingOrder && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[448px] h-[64px] z-[100]">
+          <div
+            onClick={() => navigate('/payment', { state: { resumePending: true } })}
+            className="w-full h-full bg-brand-gold rounded-[20px] shadow-elevated flex items-center justify-between overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+          >
+            {/* Clock Icon with Ticking Urgency Animation */}
+            <div className="bg-white/20 h-full self-stretch px-4 flex items-center justify-center relative shrink-0">
+              <Clock size={28} className="text-white animate-ticking origin-center" />
+            </div>
+
+            {/* Info */}
+            <div className="flex-grow px-3.5 flex flex-col justify-center min-w-0">
+              <span className="text-white font-body font-medium text-[12px] opacity-90 truncate">
+                Bayar Sekarang
+              </span>
+              <span className="text-white font-body font-bold text-[16px] tracking-tight truncate">
+                Rp{Math.round(Number(pendingOrder.totalAmount)).toLocaleString('id-ID')}
+              </span>
+            </div>
+
+            {/* Urgent Pay Button */}
+            <div className="px-5 h-full text-white font-body font-black text-[14px] flex items-center gap-1 shrink-0">
+              <span>PAY NOW</span>
+              <ChevronRight size={18} strokeWidth={2.5} />
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

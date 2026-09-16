@@ -12,6 +12,11 @@ export default function AdminProducts() {
   const [sku, setSku] = useState('');
   const [stock, setStock] = useState(100);
 
+  // Order Limit state
+  const [orderLimit, setOrderLimit] = useState(50);
+  const [orderLimitInput, setOrderLimitInput] = useState('');
+  const [limitMsg, setLimitMsg] = useState('');
+
   const handleLogout = async () => {
     try {
       if (token) {
@@ -54,8 +59,53 @@ export default function AdminProducts() {
   };
 
   useEffect(() => {
-    if (token) fetchProducts();
+    if (token) {
+      fetchProducts();
+      fetchOrderLimit();
+    }
   }, [token]);
+
+  const fetchOrderLimit = async () => {
+    try {
+      const res = await fetch('/api/settings/order-limit');
+      const data = await res.json();
+      if (data.success) {
+        setOrderLimit(data.data.order_item_limit);
+        setOrderLimitInput(String(data.data.order_item_limit));
+      }
+    } catch (e) {
+      console.error('Failed to fetch order limit', e);
+    }
+  };
+
+  const updateOrderLimit = async (e) => {
+    e.preventDefault();
+    const val = parseInt(orderLimitInput, 10);
+    if (isNaN(val) || val < 1 || val > 500) {
+      setLimitMsg('Limit harus antara 1 dan 500');
+      return;
+    }
+    try {
+      const res = await fetch('/api/settings/order-limit', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ order_item_limit: val })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOrderLimit(val);
+        setLimitMsg('✅ Berhasil disimpan');
+        setTimeout(() => setLimitMsg(''), 3000);
+      } else {
+        setLimitMsg(data.error || 'Gagal menyimpan');
+      }
+    } catch (e) {
+      setLimitMsg('Network error');
+    }
+  };
 
   const addProduct = async (e) => {
     e.preventDefault();
@@ -134,6 +184,29 @@ export default function AdminProducts() {
           <a href="/admin/banners" className="text-blue-500 hover:underline">Go to Banners</a>
         </div>
         <button onClick={handleLogout} className="text-red-500">Logout</button>
+      </div>
+
+      {/* Order Limit Settings */}
+      <div className="bg-amber-50 border border-amber-200 p-4 rounded mb-6">
+        <h2 className="font-bold mb-2 text-amber-800">⚙️ Pengaturan Order Limit</h2>
+        <p className="text-sm text-amber-700 mb-3">
+          Batas maksimum total item yang dapat dibeli customer dalam satu transaksi. (Saat ini: <strong>{orderLimit}</strong> item)
+        </p>
+        <form onSubmit={updateOrderLimit} className="flex items-center gap-2">
+          <input
+            type="number"
+            min="1"
+            max="500"
+            value={orderLimitInput}
+            onChange={e => setOrderLimitInput(e.target.value)}
+            className="border border-amber-300 p-2 w-24 rounded focus:outline-none focus:ring-2 focus:ring-amber-400"
+            placeholder="Limit"
+          />
+          <button type="submit" className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 transition-colors">
+            Simpan
+          </button>
+          {limitMsg && <span className={`text-sm ml-2 ${limitMsg.startsWith('✅') ? 'text-green-600' : 'text-red-500'}`}>{limitMsg}</span>}
+        </form>
       </div>
 
       <div className="bg-gray-100 p-4 rounded mb-8">

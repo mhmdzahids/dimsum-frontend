@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
@@ -10,7 +10,19 @@ import {
   QrCode, 
   ChevronRight, 
   Ticket,
-  CheckCircle2
+  CheckCircle2,
+  PenLine,
+  Download,
+  Share2,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp,
+  ScanLine,
+  Wallet,
+  Clock,
+  AlertTriangle,
+  AlertCircle,
+  X
 } from 'lucide-react';
 
 export default function Payment() {
@@ -19,6 +31,7 @@ export default function Payment() {
   const confirmedTime = location.state?.confirmedTime || 'Pick Up Now';
   const cartItems = location.state?.cartItems || [];
   const total = location.state?.totalPrice || 0;
+  const orderNotes = location.state?.orderNotes || localStorage.getItem('dimsum_order_notes') || '';
 
   const [customerName, setCustomerName] = useState(() => localStorage.getItem('dimsum_customer_name') || '');
   const [customerPhone, setCustomerPhone] = useState(() => localStorage.getItem('dimsum_customer_phone') || '');
@@ -38,10 +51,309 @@ export default function Payment() {
   const [isLoading, setIsLoading] = useState(false);
   const [qrisData, setQrisData] = useState(null);
   const [orderId, setOrderId] = useState(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(() => {
+    // Only restore if returning from Promo/Vouchers page
+    const fromPromo = sessionStorage.getItem('dimsum_promo_return_method');
+    if (fromPromo) {
+      sessionStorage.removeItem('dimsum_promo_return_method');
+      return fromPromo;
+    }
+    return null;
+  });
+  const [payableAmount, setPayableAmount] = useState(null);
+  const [isGuideOpen, setIsGuideOpen] = useState(true);
+  const [toastMessage, setToastMessage] = useState('');
+  const qrContainerRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.removeItem('dimsum_payment_method');
+  }, []);
+
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 3000);
+  };
+
+  useEffect(() => {
+    if (location.state?.notPaidNotice) {
+      showToast(typeof location.state.notPaidNotice === 'string'
+        ? location.state.notPaidNotice
+        : 'Pembayaran belum terdeteksi. Silakan selesaikan pembayaran QRIS terlebih dahulu.');
+    }
+  }, [location.state?.notPaidNotice]);
+
+  const copyToClipboard = () => {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(window.location.href)
+        .then(() => showToast('Tautan pembayaran berhasil disalin!'))
+        .catch(() => showToast('Gagal menyalin link'));
+    } else {
+      showToast('Tautan pembayaran disalin!');
+    }
+  };
+
+  const handleDownloadQR = () => {
+    try {
+      const svg = qrContainerRef.current?.querySelector('svg');
+      if (!svg) return;
+
+      if (!svg.getAttribute('xmlns')) {
+        svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      }
+
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+
+      img.onload = () => {
+        const scale = 2;
+        const padding = 24 * scale;
+        canvas.width = (img.width * scale) + (padding * 2);
+        canvas.height = (img.height * scale) + (padding * 2);
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, padding, padding, img.width * scale, img.height * scale);
+
+        const pngUrl = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.download = `QRIS-MakanDimsum-${orderId || 'payment'}.png`;
+        a.href = pngUrl;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        showToast('QR Code berhasil diunduh!');
+      };
+
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
+    } catch (err) {
+      console.error('Download QR error:', err);
+      showToast('Gagal mengunduh QR Code');
+    }
+  };
+
+  const handleShareQR = async () => {
+    const displayAmt = payableAmount || finalTotal || total;
+    const shareTitle = 'QRIS Makan Dimsum';
+    const shareText = `Scan QRIS untuk pembayaran pesanan Makan Dimsum #${orderId || ''} (Rp${displayAmt.toLocaleString('id-ID')}).`;
+
+    try {
+      const svg = qrContainerRef.current?.querySelector('svg');
+      if (svg && navigator.canShare) {
+        if (!svg.getAttribute('xmlns')) {
+          svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        }
+        const svgData = new XMLSerializer().serializeToString(svg);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+
+        img.onload = () => {
+          const scale = 2;
+          const padding = 24 * scale;
+          canvas.width = (img.width * scale) + (padding * 2);
+          canvas.height = (img.height * scale) + (padding * 2);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, padding, padding, img.width * scale, img.height * scale);
+
+          canvas.toBlob(async (blob) => {
+            if (blob) {
+              const file = new File([blob], `QRIS-MakanDimsum-${orderId || 'pay'}.png`, { type: 'image/png' });
+              if (navigator.canShare({ files: [file] })) {
+                try {
+                  await navigator.share({
+                    title: shareTitle,
+                    text: shareText,
+                    files: [file]
+                  });
+                  return;
+                } catch (shareErr) {
+                  if (shareErr.name === 'AbortError') return;
+                }
+              }
+            }
+
+            if (navigator.share) {
+              try {
+                await navigator.share({
+                  title: shareTitle,
+                  text: shareText,
+                  url: window.location.href
+                });
+                return;
+              } catch (err) {
+                if (err.name === 'AbortError') return;
+              }
+            }
+            copyToClipboard();
+          }, 'image/png');
+        };
+
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
+        return;
+      }
+
+      if (navigator.share) {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: window.location.href
+        });
+        return;
+      }
+      copyToClipboard();
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        copyToClipboard();
+      }
+    }
+  };
+
+  // Voucher state & calculation
+  const [appliedVoucher, setAppliedVoucher] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dimsum_applied_voucher');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const discountAmount = appliedVoucher ? Math.min(appliedVoucher.discount || 0, total) : 0;
+  const finalTotal = Math.max(0, total - discountAmount);
+
+  // Countdown timer & expiry state
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [isExpired, setIsExpired] = useState(false);
+
+  // Restore pending order on mount if user returns to page
+  useEffect(() => {
+    if (qrisData) return;
+    const savedPending = localStorage.getItem('dimsum_pending_order');
+    if (savedPending) {
+      try {
+        const parsed = JSON.parse(savedPending);
+        // Check expiry against expiresAt or 60 min fallback
+        if (parsed.expiresAt && new Date(parsed.expiresAt).getTime() <= Date.now()) {
+          localStorage.removeItem('dimsum_pending_order');
+          return;
+        }
+        if (parsed.createdAt && (Date.now() - new Date(parsed.createdAt).getTime() > 60 * 60 * 1000)) {
+          localStorage.removeItem('dimsum_pending_order');
+          return;
+        }
+        if (parsed.orderId && parsed.qrisData) {
+          setQrisData(parsed.qrisData);
+          setOrderId(parsed.orderId);
+          setPayableAmount(parsed.totalAmount);
+          if (parsed.customerName) setCustomerName(parsed.customerName);
+          if (parsed.customerPhone) setCustomerPhone(parsed.customerPhone);
+        }
+      } catch (err) {
+        console.error("Failed to restore pending order:", err);
+      }
+    }
+  }, [qrisData]);
+
+  // Real-time countdown timer for QRIS expiry
+  useEffect(() => {
+    if (!qrisData) {
+      setTimeLeft(null);
+      setIsExpired(false);
+      return;
+    }
+
+    let expiryTimestamp = null;
+    if (qrisData.expiresAt) {
+      expiryTimestamp = new Date(qrisData.expiresAt).getTime();
+    } else {
+      const savedPending = localStorage.getItem('dimsum_pending_order');
+      if (savedPending) {
+        try {
+          const parsed = JSON.parse(savedPending);
+          if (parsed.expiresAt) {
+            expiryTimestamp = new Date(parsed.expiresAt).getTime();
+          } else if (parsed.createdAt) {
+            expiryTimestamp = new Date(parsed.createdAt).getTime() + 60 * 60 * 1000;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (!expiryTimestamp) {
+      expiryTimestamp = Date.now() + 60 * 60 * 1000;
+    }
+
+    const updateTimer = () => {
+      const now = Date.now();
+      const diffInSeconds = Math.max(0, Math.floor((expiryTimestamp - now) / 1000));
+      setTimeLeft(diffInSeconds);
+
+      if (diffInSeconds <= 0) {
+        setIsExpired(true);
+        localStorage.removeItem('dimsum_pending_order');
+      } else {
+        setIsExpired(false);
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [qrisData]);
+
+  const formatCountdown = (seconds) => {
+    if (seconds === null || seconds === undefined) return '--:--';
+    if (seconds <= 0) return '00:00';
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Automatically listen for webhook settlement while user is on QRIS screen
+  useEffect(() => {
+    if (!orderId || !qrisData) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/orders/${orderId}`);
+        const data = await res.json();
+        if (data.success && data.data) {
+          const s = data.data.status;
+          if (s === 'paid' || s === 'fulfilling' || s === 'completed') {
+            clearInterval(pollInterval);
+            localStorage.removeItem('dimsum_pending_order');
+            localStorage.removeItem('dimsum_cart');
+            navigate('/order-status', { state: { orderId } });
+          } else if (s === 'cancelled') {
+            setIsExpired(true);
+            localStorage.removeItem('dimsum_pending_order');
+          }
+        }
+      } catch (err) {
+        console.error("Auto-status check failed:", err);
+      }
+    }, 4000);
+
+    return () => clearInterval(pollInterval);
+  }, [orderId, qrisData, navigate]);
 
   const handlePayment = async () => {
     if (!customerName || !customerPhone) {
       alert("Please fill in Name and Phone Number");
+      return;
+    }
+    if (!selectedPaymentMethod) {
+      alert("Please select a payment method (QRIS)");
       return;
     }
     setIsLoading(true);
@@ -56,8 +368,28 @@ export default function Payment() {
       });
       const data = await response.json();
       if (data.success) {
-        setQrisData(data.data.paywuz);
-        setOrderId(data.data.order.id);
+        const orderObj = data.data.order;
+        const paywuzObj = data.data.paywuz;
+        const amt = Math.round(Number(orderObj?.total_amount || paywuzObj?.amount || finalTotal || total || 0));
+        const totalItemsCount = cartItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
+        const expiresAt = paywuzObj?.expiresAt || new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+        const pendingObj = {
+          orderId: orderObj.id,
+          qrisData: paywuzObj,
+          totalAmount: amt,
+          totalItems: totalItemsCount,
+          confirmedTime,
+          customerName,
+          customerPhone,
+          createdAt: new Date().toISOString(),
+          expiresAt: expiresAt
+        };
+        localStorage.setItem('dimsum_pending_order', JSON.stringify(pendingObj));
+
+        setQrisData(paywuzObj);
+        setOrderId(orderObj.id);
+        setPayableAmount(amt);
       } else {
         alert(data.error);
       }
@@ -69,41 +401,270 @@ export default function Payment() {
   };
 
   if (qrisData) {
-    return (
-      <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-[#F8F9FA] flex flex-col items-center pt-20 px-6">
-        <h2 className="font-body font-black text-[22px] mb-2 text-text-primary">Scan to Pay</h2>
-        <p className="font-body font-medium text-[14px] text-text-secondary mb-8">Scan QRIS below using your e-wallet</p>
-        
-        <div className="bg-white p-6 rounded-[24px] shadow-elevated mb-6 flex justify-center w-full max-w-[320px]">
-           <QRCodeSVG value={qrisData.paymentNumber || qrisData.paymentUrl || 'NO_DATA'} size={240} />
-        </div>
-        
-        <p className="font-body font-bold text-[18px] text-brand-gold mb-8">
-           Rp{total.toLocaleString('id-ID')}
-        </p>
+    const displayAmount = Math.round(Number(payableAmount || finalTotal || total || 0));
 
-        <button 
-           onClick={() => navigate('/order-status', { state: { orderId }})}
-           className="w-full max-w-[320px] bg-brand-gold text-white font-body font-black text-[15px] py-4 rounded-[16px] shadow-elevated transition-transform active:scale-95"
-        >
-           I Have Paid
-        </button>
+    const paymentSteps = [
+      {
+        title: '1. Simpan / Screenshot QR',
+        desc: 'Unduh gambar QR dengan tombol di atas atau ambil tangkapan layar (screenshot) ke galeri ponselmu.',
+        icon: <Download size={28} strokeWidth={1.8} />,
+      },
+      {
+        title: '2. Buka Aplikasi Pembayaran',
+        desc: "Buka BCA Mobile, GoPay, OVO, DANA, ShopeePay, Livin' by Mandiri, atau m-banking lainnya.",
+        icon: <Wallet size={28} strokeWidth={1.8} />,
+      },
+      {
+        title: '3. Scan atau Unggah QR',
+        desc: 'Pilih menu Bayar / QRIS, lalu unggah gambar QR dari galeri atau scan langsung dengan kamera.',
+        icon: <ScanLine size={28} strokeWidth={1.8} />,
+      },
+      {
+        title: '4. Konfirmasi & Selesai',
+        desc: `Periksa nominal sudah tepat Rp${displayAmount.toLocaleString('id-ID')} dan masukkan PIN. Sistem otomatis mengonfirmasi pesananmu!`,
+        icon: <CheckCircle2 size={28} strokeWidth={1.8} />,
+      },
+    ];
+
+    return (
+      <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-bg-cream flex flex-col">
+        {/* Floating Toast Notification Banner */}
+        {toastMessage && (
+          <div className="fixed top-4 left-4 right-4 max-w-[440px] mx-auto z-[250] bg-white rounded-[20px] p-3.5 shadow-elevated border border-amber-200/80 flex items-start gap-3 animate-toast-in">
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+              toastMessage.includes('belum') || toastMessage.includes('Gagal')
+                ? 'bg-amber-50 text-amber-600 border border-amber-200/60'
+                : 'bg-green-50 text-green-600 border border-green-200/60'
+            }`}>
+              {toastMessage.includes('belum') || toastMessage.includes('Gagal') ? (
+                <AlertCircle size={20} strokeWidth={2.2} />
+              ) : (
+                <CheckCircle2 size={20} strokeWidth={2.2} />
+              )}
+            </div>
+            <div className="flex-1 min-w-0 flex flex-col justify-center">
+              <span className="font-heading font-black text-[13px] text-text-primary">
+                {toastMessage.includes('belum') ? 'Pembayaran Belum Terdeteksi' : 'Informasi'}
+              </span>
+              <p className="font-body font-medium text-[12px] text-text-secondary leading-snug mt-0.5">
+                {toastMessage}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setToastMessage('')}
+              className="text-gray-400 hover:text-gray-600 p-1 shrink-0 -mr-1"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* 1. Brand Blue Header matching Homepage style */}
+        <header className="bg-brand-blue pt-4 px-6 pb-12 text-left relative shrink-0">
+          <div className="flex items-center justify-between text-white mb-2">
+            <button 
+              onClick={() => navigate('/menu')}
+              className="w-10 h-10 bg-white/20 text-white rounded-full flex items-center justify-center hover:bg-white/30 transition-colors"
+              title="Kembali ke Menu"
+            >
+              <ArrowLeft size={20} strokeWidth={2.5} />
+            </button>
+            <span className="font-heading font-black text-[18px] text-white tracking-wide">
+              Pembayaran QRIS
+            </span>
+            <div className="w-10"></div>
+          </div>
+          <div className="text-center mt-2">
+            <h1 className="font-heading font-black text-[22px] tracking-[0.5px] text-white">Scan to Pay</h1>
+            <p className="font-body font-bold text-[11px] text-white/85">Scan QRIS di bawah ini dengan e-wallet atau m-banking</p>
+          </div>
+        </header>
+
+        {/* 2. Sheet Content (overlapping header with smooth curve, identical to Home.jsx) */}
+        <div className="bg-bg-cream rounded-t-[32px] -mt-6 relative flex-1 overflow-y-auto hide-scrollbar px-6 pt-6 pb-16 flex flex-col items-center shadow-[0_-4px_24px_rgba(0,0,0,0.05)]">
+          
+          {/* QR Card */}
+          <div 
+            ref={qrContainerRef} 
+            className="bg-white rounded-[28px] p-6 shadow-elevated mb-4 flex flex-col items-center w-full max-w-[340px] border border-brand-gold/20 relative overflow-hidden"
+          >
+            {/* Expired Overlay when timer expires */}
+            {isExpired && (
+              <div className="absolute inset-0 bg-white/95 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
+                <div className="w-14 h-14 rounded-full bg-red-50 text-red-500 border border-red-200 flex items-center justify-center mb-3">
+                  <AlertTriangle size={28} />
+                </div>
+                <h3 className="font-heading font-black text-[18px] text-text-primary mb-1">
+                  QRIS Kedaluwarsa
+                </h3>
+                <p className="font-body font-medium text-[12px] text-text-secondary leading-relaxed mb-5 max-w-[240px]">
+                  Batas waktu pembayaran telah berakhir. Silakan buat pesanan baru.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.removeItem('dimsum_pending_order');
+                    setQrisData(null);
+                    navigate('/menu');
+                  }}
+                  className="bg-brand-gold text-white font-body font-bold text-[13px] py-2.5 px-6 rounded-[14px] shadow-card hover:bg-brand-gold-dark active:scale-95 transition-all"
+                >
+                  Pesan Ulang
+                </button>
+              </div>
+            )}
+
+            {/* Header label inside card */}
+            <div className="flex items-center justify-between w-full mb-3 px-1">
+              <div className="flex items-center gap-1.5 bg-brand-gold/10 text-brand-gold px-3 py-1 rounded-full text-[11px] font-body font-bold">
+                <QrCode size={13} strokeWidth={2.5} />
+                <span>QRIS Nasional</span>
+              </div>
+              <span className="font-body font-bold text-[11px] text-text-secondary">Makan Dimsum</span>
+            </div>
+
+            {/* QR Code Graphic */}
+            <div className="bg-white p-2 rounded-[16px] flex justify-center items-center">
+              <QRCodeSVG value={qrisData.paymentNumber || qrisData.paymentUrl || 'NO_DATA'} size={210} />
+            </div>
+
+            {/* Expiry Countdown Pill */}
+            <div className={`mt-3 py-1.5 px-4 rounded-full border flex items-center gap-2 transition-all ${
+              isExpired
+                ? 'bg-red-50 border-red-200 text-red-600'
+                : timeLeft !== null && timeLeft < 300
+                  ? 'bg-red-50 border-red-200 text-red-600 animate-pulse'
+                  : 'bg-brand-gold/10 border-brand-gold/30 text-brand-gold-dark'
+            }`}>
+              <Clock size={14} className={isExpired ? 'text-red-500' : 'text-brand-gold animate-ticking shrink-0'} />
+              <span className="text-[11px] font-body font-semibold">
+                {isExpired ? (
+                  <span>Waktu Pembayaran Telah Habis</span>
+                ) : (
+                  <>
+                    Selesaikan dalam <span className="font-mono font-black text-[12px]">{formatCountdown(timeLeft)}</span>
+                  </>
+                )}
+              </span>
+            </div>
+
+            {/* Total Price display inside card */}
+            <div className="w-full border-t border-gray-100 mt-4 pt-3 flex flex-col items-center">
+              <span className="font-body font-bold text-[10px] text-text-secondary uppercase tracking-widest">Total Tagihan</span>
+              <span className="font-heading font-black text-[24px] text-brand-gold tracking-tight mt-0.5">
+                Rp{displayAmount.toLocaleString('id-ID')}
+              </span>
+            </div>
+          </div>
+
+          {/* Unduh & Bagikan Action Buttons */}
+          <div className={`flex items-center gap-3 w-full max-w-[340px] mb-4 transition-opacity ${isExpired ? 'opacity-40 pointer-events-none' : ''}`}>
+            <button
+              type="button"
+              onClick={handleDownloadQR}
+              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-white border border-brand-blue/30 text-brand-blue hover:bg-brand-blue hover:text-white rounded-[16px] font-body font-bold text-[13px] shadow-card transition-all active:scale-95"
+            >
+              <Download size={17} strokeWidth={2.2} />
+              <span>Unduh QR</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleShareQR}
+              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-white border border-brand-blue/30 text-brand-blue hover:bg-brand-blue hover:text-white rounded-[16px] font-body font-bold text-[13px] shadow-card transition-all active:scale-95"
+            >
+              <Share2 size={17} strokeWidth={2.2} />
+              <span>Bagikan</span>
+            </button>
+          </div>
+
+          {/* Main Action Button */}
+          {isExpired ? (
+            <button 
+              onClick={() => {
+                localStorage.removeItem('dimsum_pending_order');
+                setQrisData(null);
+                navigate('/menu');
+              }}
+              className="w-full max-w-[340px] bg-brand-gold text-white font-body font-bold text-[13px] py-3 px-4 rounded-[16px] shadow-elevated transition-all active:scale-95 mb-7 hover:bg-brand-gold-dark flex items-center justify-center gap-1.5"
+            >
+              <span>Pesan Ulang Menu</span>
+              <ChevronRight size={16} />
+            </button>
+          ) : (
+            <button 
+              onClick={() => navigate('/order-status', { state: { orderId, fromQris: true }})}
+              className="w-full max-w-[340px] bg-brand-gold text-white font-body font-bold text-[13px] py-3 px-4 rounded-[16px] shadow-elevated transition-all active:scale-95 mb-7 hover:bg-brand-gold-dark flex items-center justify-center"
+            >
+              Cek Status Pembayaran
+            </button>
+          )}
+
+          {/* Cara Pembayaran (Styled exactly like 5 Langkah Order in Homepage) */}
+          <div className="w-full max-w-[340px] bg-white rounded-[28px] p-6 shadow-card">
+            <div className="inline-block bg-brand-gold text-white py-1.5 px-5 rounded-full font-heading font-black text-[15px] mb-6 shadow-card">
+              4 Langkah Bayar
+            </div>
+            <div className="flex flex-col gap-6">
+              {paymentSteps.map((step, index) => (
+                <div key={index} className="flex gap-4 items-start">
+                  <div className="text-brand-blue shrink-0 mt-0.5">
+                    {step.icon}
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <h3 className="font-heading font-black text-[15px] text-brand-gold">
+                      {step.title}
+                    </h3>
+                    <p className="font-body font-bold text-[11px] leading-[1.35] text-text-primary">
+                      {step.desc}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Batalkan Pesanan Option */}
+          <div className="mt-6 flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("Batalkan pesanan ini dan mulai pesanan baru?")) {
+                  localStorage.removeItem('dimsum_pending_order');
+                  setQrisData(null);
+                  navigate('/menu');
+                }
+              }}
+              className="text-red-500 hover:text-red-600 font-body font-bold text-[13px] py-2 px-5 rounded-full hover:bg-red-50 transition-colors"
+            >
+              Batalkan Pesanan
+            </button>
+          </div>
+
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#F8F9FA] relative">
+    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-[#F8F9FA] flex flex-col">
       {/* 1. Header */}
       <div className="bg-white flex items-center justify-between p-4 sticky top-0 z-50 border-b border-gray-100">
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
+        <button onClick={() => {
+          sessionStorage.removeItem('dimsum_promo_return_method');
+          navigate(-1);
+        }} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
           <ArrowLeft size={24} className="text-text-primary" />
         </button>
         <h1 className="font-body font-black text-[18px] text-text-primary">
-          Payment
+          Pembayaran
         </h1>
         <div className="w-8"></div> {/* Spacer for centering */}
       </div>
+
+      {/* Progress Bar (Full) */}
+      <div className="w-full bg-brand-gold h-1"></div>
 
       {/* 2. Scrollable Content */}
       <div className="flex-1 overflow-y-auto hide-scrollbar pb-40">
@@ -167,43 +728,131 @@ export default function Payment() {
           </div>
         </div>
 
+        {/* Order Notes (if added) */}
+        {orderNotes && (
+          <div className="bg-white p-4 mb-2">
+            <div className="flex items-center gap-2 text-brand-gold mb-2">
+              <PenLine size={16} />
+              <h2 className="font-body font-bold text-[14px]">Notes Pesanan</h2>
+            </div>
+            <div className="border border-brand-gold/30 bg-brand-gold/5 rounded-[12px] p-3.5">
+              <p className="font-body text-[13px] text-text-primary italic leading-relaxed break-words">
+                "{orderNotes}"
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Complete Payment */}
         <div className="bg-white p-4 pb-8">
           <h2 className="font-body font-medium text-[15px] text-text-primary mb-3">Complete Payment</h2>
-          <label className="border border-brand-gold bg-brand-gold/5 rounded-[12px] p-4 flex justify-between items-center cursor-pointer">
+          <div 
+            onClick={() => setSelectedPaymentMethod(selectedPaymentMethod === 'qris' ? null : 'qris')}
+            className={`border rounded-[14px] p-4 flex justify-between items-center cursor-pointer transition-all ${
+              selectedPaymentMethod === 'qris' 
+                ? 'border-brand-gold bg-brand-gold/5 shadow-sm' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
             <div className="flex items-center gap-3">
-              <QrCode size={20} className="text-text-primary" />
-              <span className="font-body font-bold text-[14px] text-text-primary">QRIS</span>
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                selectedPaymentMethod === 'qris' ? 'bg-brand-gold/10 text-brand-gold' : 'bg-gray-100 text-text-secondary'
+              }`}>
+                <QrCode size={20} />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-body font-bold text-[14px] text-text-primary">QRIS</span>
+                <span className="font-body font-medium text-[11px] text-text-secondary">Scan via BCA, GoPay, OVO, Dana, ShopeePay</span>
+              </div>
             </div>
-            <div className="w-5 h-5 rounded-full border border-brand-gold flex items-center justify-center">
-              <div className="w-3 h-3 rounded-full bg-brand-gold scale-100 transition-transform"></div>
+            <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
+              selectedPaymentMethod === 'qris' ? 'border-brand-gold' : 'border-gray-300'
+            }`}>
+              <div className={`w-2.5 h-2.5 rounded-full bg-brand-gold transition-transform ${
+                selectedPaymentMethod === 'qris' ? 'scale-100' : 'scale-0'
+              }`}></div>
             </div>
-          </label>
+          </div>
         </div>
 
       </div>
 
       {/* 3. Sticky Bottom Bar */}
-      <div className="absolute bottom-0 left-0 w-full bg-white rounded-t-[24px] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-[100]">
-        <div className="p-4 flex justify-between items-center border-b border-gray-50 bg-brand-gold/5 rounded-t-[24px] cursor-pointer">
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white rounded-t-[24px] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-[100]">
+        <div 
+          onClick={() => {
+            if (selectedPaymentMethod) {
+              sessionStorage.setItem('dimsum_promo_return_method', selectedPaymentMethod);
+            }
+            navigate('/vouchers', { 
+              state: { 
+                ...location.state, 
+                confirmedTime, 
+                cartItems, 
+                totalPrice: total, 
+                orderNotes, 
+                selectedPaymentMethod 
+              } 
+            });
+          }}
+          className="p-4 flex justify-between items-center border-b border-gray-50 bg-brand-gold/5 rounded-t-[24px] cursor-pointer hover:bg-brand-gold/10 transition-colors"
+        >
           <div className="flex items-center gap-2">
             <Ticket size={18} className="text-brand-gold" />
-            <span className="font-body font-bold text-[13px] text-brand-gold">Add Promos or Vouchers</span>
+            {appliedVoucher ? (
+              <div className="flex items-center gap-2">
+                <span className="font-body font-bold text-[13px] text-brand-gold">
+                  Voucher: {appliedVoucher.code}
+                </span>
+                <span className="bg-green-100 text-green-700 text-[11px] font-bold px-2 py-0.5 rounded-full">
+                  -Rp{discountAmount.toLocaleString('id-ID')}
+                </span>
+              </div>
+            ) : (
+              <span className="font-body font-bold text-[13px] text-brand-gold">Add Promos or Vouchers</span>
+            )}
           </div>
-          <ChevronRight size={18} className="text-text-primary" />
+          <div className="flex items-center gap-2">
+            {appliedVoucher && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  localStorage.removeItem('dimsum_applied_voucher');
+                  setAppliedVoucher(null);
+                }}
+                className="text-red-500 font-body font-bold text-[11px] hover:underline mr-1"
+              >
+                Remove
+              </button>
+            )}
+            <ChevronRight size={18} className="text-text-primary" />
+          </div>
         </div>
         
         <div className="p-5 flex justify-between items-center h-[88px] pb-6">
           <div className="flex flex-col">
-            <div className="flex items-center gap-1 cursor-pointer">
+            <div className="flex items-center gap-1.5 cursor-pointer">
               <span className="font-body font-medium text-[12px] text-text-secondary">Payment Total</span>
-              <ChevronRight size={14} className="text-text-secondary -rotate-90" />
+              {appliedVoucher && (
+                <span className="text-green-600 font-body font-bold text-[11px]">
+                  (-Rp{discountAmount.toLocaleString('id-ID')})
+                </span>
+              )}
             </div>
             <span className="font-body font-black text-[18px] text-text-primary mt-0.5">
-              Rp{total.toLocaleString('id-ID')}
+              Rp{finalTotal.toLocaleString('id-ID')}
             </span>
           </div>
-          <button onClick={handlePayment} disabled={isLoading} className="h-[48px] bg-brand-gold text-white font-body font-bold text-[14px] px-12 rounded-[12px] shadow-elevated transition-transform active:scale-95 disabled:opacity-50">
+          <button 
+            onClick={handlePayment} 
+            disabled={isLoading || !selectedPaymentMethod} 
+            className={`h-[48px] font-body font-bold text-[14px] px-10 rounded-[12px] shadow-elevated transition-all active:scale-95 ${
+              !selectedPaymentMethod || isLoading
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
+                : 'bg-brand-gold text-white hover:bg-brand-gold/90'
+            }`}
+          >
             {isLoading ? 'Processing...' : 'Pay'}
           </button>
         </div>

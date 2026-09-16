@@ -16,16 +16,18 @@ function OutletInfo() {
   };
 
   const days = [
-    'MONDAY',
-    'TUESDAY',
-    'WEDNESDAY',
-    'THURSDAY',
-    'FRIDAY',
-    'SATURDAY',
-    'SUNDAY'
+    'SENIN',
+    'SELASA',
+    'RABU',
+    'KAMIS',
+    'JUMAT',
+    'SABTU',
+    'MINGGU'
   ];
 
-  const currentDayStr = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+  // Map Sunday (0) to 6, Monday (1) to 0, etc.
+  const dayIndexMap = [6, 0, 1, 2, 3, 4, 5];
+  const todayIndex = dayIndexMap[new Date().getDay()];
 
   return (
     <div className="max-w-[480px] mx-auto min-h-screen bg-white shadow-2xl overflow-x-hidden">
@@ -45,13 +47,13 @@ function OutletInfo() {
           Makan Dimsum Cabang Utama
         </h2>
 
-        {/* Map Embed */}
-        <div className="w-full h-[200px] rounded-[12px] overflow-hidden mb-4 border border-gray-100">
+        {/* Map Embed (Negative top margin crops out the top 'Maps' button inside the iframe) */}
+        <div className="relative w-full h-[200px] rounded-[12px] overflow-hidden mb-4 border border-gray-100 bg-gray-100">
           <iframe
-            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d31728.883391158637!2d106.9768224743164!3d-6.249177599999995!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e698fef21452755%3A0x268f2990efbd61a8!2sMAKAN%20DIMSUM%20INDONESIA%20(PRODUSEN%20DIMSUM)!5e0!3m2!1sen!2sid!4v1789376442109!5m2!1sen!2sid"
+            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d31728.883391158637!2d106.9768224743164!3d-6.249177599999995!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e698fef21452755%3A0x268f2990efbd61a8!2sMAKAN%20DIMSUM%20INDONESIA%20(PRODUSEN%20DIMSUM)!5e0!3m2!1sid!2sid!4v1789376442109!5m2!1sid!2sid"
             width="100%"
-            height="100%"
-            style={{ border: 0 }}
+            height="260"
+            style={{ border: 0, marginTop: '-54px' }}
             allowFullScreen=""
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade">
@@ -102,11 +104,11 @@ function OutletInfo() {
       {/* Operational Hours */}
       <div className="px-4 py-5 bg-white">
         <h3 className="font-heading font-bold text-[18px] text-text-primary mb-2">
-          Operational Hours
+          Jam Operasional
         </h3>
         <div className="flex flex-col">
           {days.map((day, index) => {
-            const isToday = day === currentDayStr;
+            const isToday = index === todayIndex;
             return (
               <div 
                 key={day} 

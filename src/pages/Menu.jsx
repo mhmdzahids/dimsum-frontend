@@ -9,7 +9,10 @@ import {
   ShoppingBasket,
   X,
   Plus,
-  Minus
+  Minus,
+  Clock,
+  Check,
+  AlertCircle
 } from 'lucide-react';
 
 import imgWortel from '../assets/icon/wortel.webp';
@@ -26,14 +29,86 @@ function MenuPage() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [qty, setQty] = useState(1);
   const [selectedTopping, setSelectedTopping] = useState('Wortel');
+  const [activeTopping, setActiveTopping] = useState(null);
+
+  const handleToppingClick = (name) => {
+    setActiveTopping(name);
+    setTimeout(() => {
+      setActiveTopping((prev) => (prev === name ? null : prev));
+    }, 450);
+  };
   const [cart, setCart] = useState(() => {
     const saved = localStorage.getItem('dimsum_cart');
     return saved ? JSON.parse(saved) : {};
   });
 
+  const [pendingOrder, setPendingOrder] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dimsum_pending_order');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.expiresAt && new Date(parsed.expiresAt).getTime() <= Date.now()) {
+          localStorage.removeItem('dimsum_pending_order');
+          return null;
+        }
+        if (parsed.createdAt && (Date.now() - new Date(parsed.createdAt).getTime() > 60 * 60 * 1000)) {
+          localStorage.removeItem('dimsum_pending_order');
+          return null;
+        }
+        return parsed;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+  const [showPendingModal, setShowPendingModal] = useState(false);
+
   useEffect(() => {
     localStorage.setItem('dimsum_cart', JSON.stringify(cart));
   }, [cart]);
+
+  // Order Limit
+  const [orderLimit, setOrderLimit] = useState(null);
+  const [limitToast, setLimitToast] = useState(false);
+  useEffect(() => {
+    fetch('/api/settings/order-limit')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) setOrderLimit(data.data.order_item_limit);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Verify pending order validity with server and check expiry interval
+  useEffect(() => {
+    if (!pendingOrder?.orderId) return;
+
+    const checkExpiry = () => {
+      if (pendingOrder.expiresAt && new Date(pendingOrder.expiresAt).getTime() <= Date.now()) {
+        localStorage.removeItem('dimsum_pending_order');
+        setPendingOrder(null);
+      }
+    };
+
+    fetch(`/api/orders/${pendingOrder.orderId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.data) {
+          if (data.data.status !== 'pending_payment') {
+            localStorage.removeItem('dimsum_pending_order');
+            setPendingOrder(null);
+          }
+        } else {
+          localStorage.removeItem('dimsum_pending_order');
+          setPendingOrder(null);
+        }
+      })
+      .catch(() => { });
+
+    const timer = setInterval(checkExpiry, 3000);
+    return () => clearInterval(timer);
+  }, [pendingOrder]);
 
   const generateDates = () => {
     const dates = ['Hari ini'];
@@ -68,6 +143,21 @@ function MenuPage() {
       setIsTimeModalClosing(false);
     }, 280);
   };
+
+  // Lock background scroll when modal or bottom sheet is open
+  useEffect(() => {
+    if (selectedProduct || isTimeModalOpen || showPendingModal) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [selectedProduct, isTimeModalOpen, showPendingModal]);
 
   const getAvailableTimes = React.useCallback((dateToCheck) => {
     const times = [];
@@ -113,6 +203,15 @@ function MenuPage() {
     setCart((prev) => {
       const current = prev[productId] || 0;
       const next = Math.max(0, current + amount);
+      // Check order limit before increasing
+      if (orderLimit && amount > 0) {
+        const currentTotal = Object.values(prev).reduce((s, q) => s + q, 0);
+        if (currentTotal + amount > orderLimit) {
+          setLimitToast(true);
+          setTimeout(() => setLimitToast(false), 3000);
+          return prev;
+        }
+      }
       if (next === 0) {
         const newCart = { ...prev };
         delete newCart[productId];
@@ -297,6 +396,10 @@ function MenuPage() {
             <div
               key={product.id}
               onClick={() => {
+                if (pendingOrder) {
+                  setShowPendingModal(true);
+                  return;
+                }
                 setSelectedProduct(product);
                 setQty(productQty || 1);
                 setSelectedTopping('Wortel');
@@ -327,6 +430,10 @@ function MenuPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (pendingOrder) {
+                          setShowPendingModal(true);
+                          return;
+                        }
                         setSelectedProduct(product);
                         setQty(1);
                         setSelectedTopping('Wortel');
@@ -338,14 +445,26 @@ function MenuPage() {
                   ) : (
                     <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                       <button
-                        onClick={() => updateCart(product.id, -1)}
+                        onClick={() => {
+                          if (pendingOrder) {
+                            setShowPendingModal(true);
+                            return;
+                          }
+                          updateCart(product.id, -1);
+                        }}
                         className="w-6 h-6 rounded-full border border-text-primary flex items-center justify-center text-text-primary"
                       >
                         <Minus size={14} strokeWidth={2.5} />
                       </button>
                       <span className="font-body font-bold text-[14px] w-3 text-center">{productQty}</span>
                       <button
-                        onClick={() => updateCart(product.id, 1)}
+                        onClick={() => {
+                          if (pendingOrder) {
+                            setShowPendingModal(true);
+                            return;
+                          }
+                          updateCart(product.id, 1);
+                        }}
                         className="w-6 h-6 rounded-full border border-text-primary flex items-center justify-center text-text-primary"
                       >
                         <Plus size={14} strokeWidth={2.5} />
@@ -360,8 +479,36 @@ function MenuPage() {
         })}
       </div>
 
-      {/* 7. Bottom Checkout Bar */}
-      {totalItems > 0 && (
+      {/* 7. Bottom Checkout / Continue Payment Bar */}
+      {pendingOrder ? (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[448px] h-[64px] z-[100]">
+          <div
+            onClick={() => navigate('/payment', { state: { resumePending: true } })}
+            className="w-full h-full bg-brand-gold rounded-[20px] shadow-elevated flex items-center justify-between overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+          >
+            {/* Clock Icon with Ticking Urgency Animation */}
+            <div className="bg-white/20 h-full self-stretch px-4 flex items-center justify-center relative shrink-0">
+              <Clock size={28} className="text-white animate-ticking origin-center" />
+            </div>
+
+            {/* Info */}
+            <div className="flex-grow px-3.5 flex flex-col justify-center min-w-0">
+              <span className="text-white font-body font-medium text-[12px] opacity-90 truncate">
+                Bayar Sekarang
+              </span>
+              <span className="text-white font-body font-bold text-[16px] tracking-tight truncate">
+                Rp{Math.round(Number(pendingOrder.totalAmount)).toLocaleString('id-ID')}
+              </span>
+            </div>
+
+            {/* Urgent Pay Button */}
+            <div className="px-5 h-full text-white font-body font-black text-[14px] flex items-center gap-1 shrink-0">
+              <span>PAY NOW</span>
+              <ChevronRight size={18} strokeWidth={2.5} />
+            </div>
+          </div>
+        </div>
+      ) : totalItems > 0 ? (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[448px] h-[64px] z-[100]">
           <div
             onClick={() => {
@@ -381,9 +528,9 @@ function MenuPage() {
             className="w-full h-full bg-brand-gold rounded-[20px] shadow-elevated flex items-center justify-between overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
           >
             {/* Basket Icon */}
-            <div className="bg-white/20 p-4 relative">
+            <div className="bg-white/20 h-full self-stretch px-4 flex items-center justify-center relative">
               <ShoppingBasket size={28} className="text-white" />
-              <div className="absolute top-2 right-2 bg-brand-blue text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+              <div className="absolute top-2.5 right-2 bg-brand-blue text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                 {totalItems}
               </div>
             </div>
@@ -398,83 +545,90 @@ function MenuPage() {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* 8. Full-screen Product Detail Modal */}
       {selectedProduct && (
-        <div className={`fixed inset-0 bg-white z-[100] overflow-y-auto flex flex-col max-w-[480px] mx-auto ${isProductModalClosing ? 'animate-slide-down' : 'animate-slide-up'}`}>
-          {/* Image Header */}
-          <div className="relative w-full aspect-square bg-gray-50">
-            <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
-            <button
-              onClick={closeProductModal}
-              className="absolute top-4 right-4 bg-white text-text-primary rounded-full p-2 shadow-card"
-            >
-              <X size={20} strokeWidth={2.5} />
-            </button>
-          </div>
-
-          {/* Title & Info */}
-          <div className="p-4 bg-white">
-            <h1 className="font-heading font-black text-[22px] text-text-primary uppercase leading-tight">
-              {selectedProduct.name}
-            </h1>
-            <p className="font-body font-black text-[18px] text-text-primary mt-1">{selectedProduct.priceFormatted}</p>
-            <p className="font-body font-medium text-[12px] text-text-secondary mt-3 leading-relaxed">
-              {selectedProduct.description || `Dimsum premium ${selectedProduct.weight}. Tersedia dalam kemasan higienis, diproduksi segar setiap hari.`}
-            </p>
-          </div>
-
-          {/* Divider */}
-          <div className="h-2 w-full bg-[#F3F4F6]"></div>
-
-          {/* Topping Selection */}
-          <div className="p-4 flex-grow bg-white">
-            <div className="flex justify-between items-center mb-1">
-              <h2 className="font-body font-black text-[14px] text-text-primary uppercase tracking-wide">Pilihan Topping</h2>
-              <div className="bg-green-100 text-green-700 w-5 h-5 rounded-full flex items-center justify-center">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              </div>
+        <div className={`fixed inset-0 bg-white z-[100] flex flex-col max-w-[480px] mx-auto ${isProductModalClosing ? 'animate-slide-down' : 'animate-slide-up'}`}>
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto overscroll-contain">
+            {/* Image Header */}
+            <div className="relative w-full aspect-square bg-gray-50">
+              <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
+              <button
+                onClick={closeProductModal}
+                className="absolute top-4 right-4 bg-white text-text-primary rounded-full p-2 shadow-card"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
             </div>
-            <p className="font-body font-medium text-[12px] text-text-secondary mb-4">Pilih salah satu varian topping.</p>
 
-            <div className="flex flex-col">
-              {/* MIX Option */}
-              <label className="flex justify-between items-center py-4 border-b border-gray-100 cursor-default">
-                <span className="font-body font-bold text-[13px] text-text-primary uppercase">MIX (Semua Varian)</span>
-                <div className="relative flex items-center justify-center">
-                  <input
-                    type="checkbox"
-                    checked={true}
-                    readOnly
-                    className="peer appearance-none w-5 h-5 border-2 border-gray-300 rounded-md checked:border-brand-gold checked:bg-brand-gold transition-all cursor-default"
-                  />
-                  <svg className="absolute w-3 h-3 text-white opacity-0 peer-checked:opacity-100 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            {/* Title & Info */}
+            <div className="p-4 bg-white">
+              <h1 className="font-heading font-black text-[22px] text-text-primary uppercase leading-tight">
+                {selectedProduct.name}
+              </h1>
+              <p className="font-body font-black text-[18px] text-text-primary mt-1">{selectedProduct.priceFormatted}</p>
+              <p className="font-body font-medium text-[12px] text-text-secondary mt-3 leading-relaxed">
+                {selectedProduct.description || `Dimsum premium ${selectedProduct.weight}. Tersedia dalam kemasan higienis, diproduksi segar setiap hari.`}
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="h-2 w-full bg-[#F3F4F6]"></div>
+
+            {/* Topping Dimsum Info */}
+            <div className="p-4 bg-white pb-6">
+              <div className="flex justify-between items-center mb-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="font-body font-black text-[14px] text-text-primary uppercase tracking-wide">Topping Dimsum</h2>
                 </div>
-              </label>
+              </div>
+              <p className="font-body font-medium text-[12px] text-text-secondary mb-3.5">
+                Setiap kemasan sudah berisi kombinasi aneka varian topping lezat berikut:
+              </p>
 
-              {['Wortel', 'Sosis', 'Jamur', 'Beef', 'Crabstick', 'Keju'].map((topping, idx) => (
-                <label key={topping} className={`flex justify-between items-center py-4 opacity-40 cursor-not-allowed ${idx !== 5 ? 'border-b border-gray-100' : ''}`}>
-                  <span className="font-body font-bold text-[13px] text-text-primary uppercase">{topping}</span>
-                  <div className="relative flex items-center justify-center">
-                    <input
-                      type="radio"
-                      name="topping"
-                      value={topping}
-                      checked={false}
-                      readOnly
-                      disabled={true}
-                      className="peer appearance-none w-5 h-5 border-2 border-gray-300 rounded-md checked:border-brand-gold checked:bg-brand-gold transition-all disabled:bg-gray-100"
-                    />
-                    <svg className="absolute w-3 h-3 text-white opacity-0 peer-checked:opacity-100 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                  </div>
-                </label>
-              ))}
+              {/* Toppings Circular Showcase (Matching Homepage Style) */}
+              <div className="bg-[#FAF8F5] border border-[#EFE9DF] rounded-[20px] p-4 shadow-sm">
+                <div className="grid grid-cols-3 gap-y-4 gap-x-2">
+                  {[
+                    { name: 'Wortel', icon: imgWortel },
+                    { name: 'Sosis', icon: imgSosis },
+                    { name: 'Jamur', icon: imgJamur },
+                    { name: 'Beef', icon: imgBeef },
+                    { name: 'Crabstick', icon: imgCrabstick },
+                    { name: 'Keju', icon: imgKeju },
+                  ].map((t, idx) => {
+                    const isActive = activeTopping === t.name;
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => handleToppingClick(t.name)}
+                        className="flex flex-col items-center gap-1.5 group cursor-pointer select-none active:scale-95 transition-transform"
+                      >
+                        <div className={`w-[56px] h-[56px] rounded-full bg-brand-blue flex items-center justify-center shadow-card overflow-hidden transition-all duration-200 ${isActive ? 'scale-110 shadow-elevated ring-2 ring-brand-gold' : 'group-hover:scale-105'
+                          }`}>
+                          <img
+                            src={t.icon}
+                            alt={t.name}
+                            className={`w-[72%] h-[72%] object-contain transition-transform ${isActive ? 'animate-giggle' : 'group-hover:animate-giggle'
+                              }`}
+                          />
+                        </div>
+                        <span className={`font-body font-bold text-[11px] text-center transition-colors ${isActive ? 'text-brand-gold scale-105 font-black' : 'text-brand-blue group-hover:text-brand-gold'
+                          }`}>
+                          {t.name}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Modal Bottom Sticky Bar */}
-          <div className="sticky bottom-0 mt-auto w-full p-4 bg-white border-t border-gray-100 z-[110] rounded-t-[24px] shadow-[0_-10px_40px_rgba(0,0,0,0.08)]">
+          <div className="w-full p-4 bg-white border-t border-gray-100 z-20 rounded-t-[24px] shadow-[0_-10px_40px_rgba(0,0,0,0.08)] shrink-0">
             <div className="flex justify-between items-center mb-4 px-1">
               <span className="font-body font-medium text-[14px] text-text-primary">Total Order</span>
               <div className="flex items-center gap-4">
@@ -486,7 +640,19 @@ function MenuPage() {
                 </button>
                 <span className="font-body font-bold text-[15px] w-4 text-center">{qty}</span>
                 <button
-                  onClick={() => setQty(qty + 1)}
+                  onClick={() => {
+                    if (orderLimit && selectedProduct) {
+                      const currentTotal = Object.values(cart).reduce((s, q) => s + q, 0);
+                      const existingQty = cart[selectedProduct.id] || 0;
+                      const netAdd = (qty + 1) - existingQty;
+                      if (currentTotal + netAdd > orderLimit) {
+                        setLimitToast(true);
+                        setTimeout(() => setLimitToast(false), 3000);
+                        return;
+                      }
+                    }
+                    setQty(qty + 1);
+                  }}
                   className="w-7 h-7 rounded-full border-2 border-text-primary flex items-center justify-center text-text-primary"
                 >
                   <Plus size={16} strokeWidth={2.5} />
@@ -495,10 +661,26 @@ function MenuPage() {
             </div>
             <button
               onClick={() => {
+                if (pendingOrder) {
+                  closeProductModal();
+                  setShowPendingModal(true);
+                  return;
+                }
+                // Check order limit
+                if (orderLimit) {
+                  const currentTotal = Object.values(cart).reduce((s, q) => s + q, 0);
+                  const existingQty = cart[selectedProduct.id] || 0;
+                  const netAdd = qty - existingQty;
+                  if (currentTotal + netAdd > orderLimit) {
+                    setLimitToast(true);
+                    setTimeout(() => setLimitToast(false), 3000);
+                    return;
+                  }
+                }
                 setCart((prev) => ({ ...prev, [selectedProduct.id]: qty }));
                 closeProductModal();
               }}
-              className="w-full bg-brand-gold text-white font-body font-black text-[15px] py-3.5 rounded-[16px] shadow-elevated"
+              className="w-full bg-brand-gold text-white font-body font-black text-[15px] py-3.5 rounded-[16px] shadow-elevated transition-transform active:scale-95"
             >
               Add Orders - Rp{(Number(selectedProduct.price) * qty).toLocaleString('id-ID')}
             </button>
@@ -510,10 +692,10 @@ function MenuPage() {
       {isTimeModalOpen && (
         <div className="fixed inset-0 z-[120] flex flex-col justify-end">
           {/* Backdrop */}
-          <div className={`absolute inset-0 bg-black/40 ${isTimeModalClosing ? 'animate-fade-out' : 'animate-fade-in'}`} onClick={closeTimeModal}></div>
+          <div className={`absolute inset-0 bg-black/40 touch-none overscroll-contain ${isTimeModalClosing ? 'animate-fade-out' : 'animate-fade-in'}`} onClick={closeTimeModal}></div>
 
           {/* Bottom Sheet */}
-          <div className={`relative bg-white w-full max-w-[480px] mx-auto rounded-t-[24px] shadow-2xl flex flex-col ${isTimeModalClosing ? 'animate-slide-down' : 'animate-slide-up'}`}>
+          <div className={`relative bg-white w-full max-w-[480px] mx-auto rounded-t-[24px] shadow-2xl flex flex-col overscroll-contain ${isTimeModalClosing ? 'animate-slide-down' : 'animate-slide-up'}`}>
             {/* Header */}
             <div className="p-5 flex justify-between items-center border-b border-gray-100">
               <h2 className="font-body font-black text-[16px] text-text-primary">Select Pick Up Time</h2>
@@ -574,6 +756,77 @@ function MenuPage() {
                 Save
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 10. Pending Order Notice Modal */}
+      {showPendingModal && pendingOrder && (
+        <div className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-xs touch-none overscroll-contain animate-fade-in"
+            onClick={() => setShowPendingModal(false)}
+          ></div>
+          <div className="relative bg-white w-full max-w-[440px] rounded-t-[28px] sm:rounded-[28px] shadow-2xl p-6 flex flex-col items-center text-center animate-slide-up sm:animate-fade-in z-10">
+            <div className="w-14 h-14 rounded-full bg-brand-gold/15 text-brand-gold flex items-center justify-center mb-4">
+              <Clock size={28} strokeWidth={2.2} />
+            </div>
+
+            <h3 className="font-heading font-black text-[19px] text-text-primary mb-2">
+              Selesaikan Pembayaran Dulu Yuk!
+            </h3>
+
+            <p className="font-body font-medium text-[13px] text-text-secondary leading-relaxed mb-6">
+              Kamu masih memiliki pesanan yang belum dibayar sebesar <b className="text-brand-gold font-black">Rp{pendingOrder.totalAmount?.toLocaleString('id-ID')}</b>. Selesaikan pembayaran QRIS ini sebelum membuat pesanan baru ya.
+            </p>
+
+            <button
+              onClick={() => {
+                setShowPendingModal(false);
+                navigate('/payment', { state: { resumePending: true } });
+              }}
+              className="w-full bg-brand-gold text-white font-heading font-black text-[15px] py-3.5 rounded-[16px] shadow-elevated transition-transform active:scale-95 mb-3"
+            >
+              Lanjutkan Pembayaran
+            </button>
+
+            <button
+              onClick={() => {
+                if (window.confirm("Batalkan pesanan sebelumnya dan mulai pesanan baru?")) {
+                  localStorage.removeItem('dimsum_pending_order');
+                  setPendingOrder(null);
+                  setShowPendingModal(false);
+                }
+              }}
+              className="text-red-500 font-body font-bold text-[13px] py-2 hover:bg-red-50 px-4 rounded-full transition-colors"
+            >
+              Batalkan Pesanan Sebelumnya
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 11. Order Limit Toast Notification */}
+      {limitToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-[400px] animate-toast-in">
+          <div className="bg-red-500/95 backdrop-blur-xs text-white px-4 py-3 rounded-[16px] shadow-elevated flex items-center justify-between gap-3 border border-red-400/40">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <AlertCircle size={18} className="text-white" strokeWidth={2.5} />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="font-heading font-black text-[14px] leading-tight">Batas Pesanan Tercapai</span>
+                <span className="font-body font-medium text-[12px] text-white/90 leading-tight mt-0.5">
+                  Maksimum {orderLimit} item per transaksi.
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => setLimitToast(false)}
+              className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white shrink-0 transition-colors"
+            >
+              <X size={14} strokeWidth={2.5} />
+            </button>
           </div>
         </div>
       )}

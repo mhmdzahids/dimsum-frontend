@@ -8,6 +8,7 @@ import OrderStatus from './pages/OrderStatus';
 import AdminProducts from './pages/AdminProducts';
 import AdminBanners from './pages/AdminBanners';
 import OutletInfo from './pages/OutletInfo';
+import Vouchers from './pages/Vouchers';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -30,6 +31,7 @@ function App() {
         <Route path="/payment" element={<Payment />} />
         <Route path="/order-status" element={<OrderStatus />} />
         <Route path="/outlet" element={<OutletInfo />} />
+        <Route path="/vouchers" element={<Vouchers />} />
         <Route path="/admin/products" element={<AdminProducts />} />
         <Route path="/admin/banners" element={<AdminBanners />} />
       </Routes>
