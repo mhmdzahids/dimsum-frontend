@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import AdminNav from '../components/AdminNav';
 
 export default function AdminBanners() {
   const [token, setToken] = useState(localStorage.getItem('adminToken') || '');
@@ -110,14 +111,9 @@ export default function AdminBanners() {
   }
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold">Admin Banners</h1>
-          <Link to="/admin/products" className="text-blue-500 hover:underline">Go to Products</Link>
-        </div>
-        <button onClick={handleLogout} className="text-red-500">Logout</button>
-      </div>
+    <div className="min-h-screen bg-bg-cream/40 pb-16">
+      <AdminNav activeTab="banners" />
+      <div className="max-w-4xl mx-auto px-4 sm:px-6">
 
       <div className="bg-gray-100 p-4 rounded mb-8">
         <h2 className="font-bold mb-3">Add Banner (webp, png, jpg)</h2>
@@ -148,6 +144,7 @@ export default function AdminBanners() {
         ))}
         {banners.length === 0 && <p className="text-gray-500 italic">No banners uploaded yet.</p>}
       </div>
+    </div>
     </div>
   );
 }

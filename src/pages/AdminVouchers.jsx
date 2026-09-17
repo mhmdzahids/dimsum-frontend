@@ -1,0 +1,657 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Ticket, 
+  Plus, 
+  Trash2, 
+  Copy, 
+  Check, 
+  AlertCircle, 
+  Search, 
+  Percent, 
+  Coins, 
+  Calendar, 
+  ToggleLeft, 
+  ToggleRight,
+  ShieldAlert,
+  Sparkles,
+  RefreshCw,
+  Info
+} from 'lucide-react';
+import AdminNav from '../components/AdminNav';
+
+export default function AdminVouchers() {
+  const [token, setToken] = useState(localStorage.getItem('adminToken') || '');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
+  // Vouchers state
+  const [vouchers, setVouchers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [copiedCode, setCopiedCode] = useState('');
+
+  // Create Form state
+  const [code, setCode] = useState('');
+  const [discountType, setDiscountType] = useState('percent'); // 'percent' | 'fixed'
+  const [discountValue, setDiscountValue] = useState('');
+  const [minSpend, setMinSpend] = useState('0');
+  const [maxDiscount, setMaxDiscount] = useState('');
+  const [usageLimit, setUsageLimit] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [isActive, setIsActive] = useState(true);
+
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
+
+  const login = async (e) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setLoginError('');
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (data.success && data.data?.token) {
+        setToken(data.data.token);
+        localStorage.setItem('adminToken', data.data.token);
+      } else {
+        setLoginError(data.error || 'Login gagal. Periksa kembali email dan password.');
+      }
+    } catch {
+      setLoginError('Koneksi ke server gagal.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const fetchVouchers = async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/vouchers', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setVouchers(data.data || []);
+      } else if (res.status === 401 || res.status === 403) {
+        setToken('');
+        localStorage.removeItem('adminToken');
+      }
+    } catch (e) {
+      console.error("Error fetching vouchers", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      fetchVouchers();
+    }
+  }, [token]);
+
+  const handleCreateVoucher = async (e) => {
+    e.preventDefault();
+    setFormError('');
+    setFormSuccess('');
+
+    if (!code.trim()) {
+      setFormError('Kode promo wajib diisi');
+      return;
+    }
+    if (!discountValue || parseFloat(discountValue) <= 0) {
+      setFormError('Nilai diskon harus lebih besar dari 0');
+      return;
+    }
+    if (discountType === 'percent' && parseFloat(discountValue) > 100) {
+      setFormError('Diskon persentase tidak boleh melebihi 100%');
+      return;
+    }
+
+    setFormSubmitting(true);
+    try {
+      const payload = {
+        code: code.trim().toUpperCase(),
+        discount_type: discountType,
+        discount_value: parseFloat(discountValue),
+        min_spend: parseFloat(minSpend || '0'),
+        max_discount: maxDiscount ? parseFloat(maxDiscount) : null,
+        usage_limit: usageLimit ? parseInt(usageLimit) : null,
+        start_date: startDate ? new Date(startDate).toISOString() : null,
+        end_date: endDate ? new Date(endDate).toISOString() : null,
+        is_active: isActive
+      };
+
+      const res = await fetch('/api/vouchers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setFormSuccess(`Voucher ${data.data.code} berhasil dibuat!`);
+        setCode('');
+        setDiscountValue('');
+        setMinSpend('0');
+        setMaxDiscount('');
+        setUsageLimit('');
+        setStartDate('');
+        setEndDate('');
+        fetchVouchers();
+      } else {
+        setFormError(data.error || 'Gagal membuat voucher');
+      }
+    } catch {
+      setFormError('Terjadi kesalahan jaringan saat membuat voucher');
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
+  const handleToggle = async (id) => {
+    try {
+      const res = await fetch(`/api/vouchers/${id}/toggle`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchVouchers();
+      } else {
+        alert(data.error || 'Gagal mengubah status');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Koneksi ke server gagal');
+    }
+  };
+
+  const handleDelete = async (id, voucherCode) => {
+    if (!window.confirm(`Yakin ingin menghapus voucher ${voucherCode}?`)) return;
+    try {
+      const res = await fetch(`/api/vouchers/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchVouchers();
+      } else {
+        alert(data.error || 'Gagal menghapus voucher');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Koneksi ke server gagal');
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCode(text);
+    setTimeout(() => setCopiedCode(''), 2000);
+  };
+
+  const formatCurrency = (val) => {
+    return 'Rp' + Number(val || 0).toLocaleString('id-ID');
+  };
+
+  const filteredVouchers = vouchers.filter((v) => 
+    v.code.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Login view
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-bg-cream flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-elevated border border-gray-100">
+          <div className="text-center mb-6">
+            <div className="w-14 h-14 bg-brand-blue/10 text-brand-blue rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Ticket size={28} />
+            </div>
+            <h1 className="text-2xl font-bold font-heading text-text-primary">Admin Vouchers</h1>
+            <p className="text-xs text-text-secondary font-body mt-1">
+              Silakan masuk dengan akun admin untuk mengelola voucher promo
+            </p>
+          </div>
+
+          {loginError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
+              <AlertCircle size={16} />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <form onSubmit={login} className="space-y-4 font-body">
+            <div>
+              <label className="block text-xs font-semibold text-text-secondary mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@dimsum.id"
+                required
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-text-secondary mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="w-full py-3 bg-brand-blue text-white rounded-xl font-semibold text-sm hover:bg-brand-blue-dark transition-colors shadow-xs disabled:opacity-50"
+            >
+              {loginLoading ? 'Memproses Masuk...' : 'Masuk Portal Admin'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-bg-cream/40 pb-16 font-body">
+      <AdminNav activeTab="vouchers" />
+
+      <main className="max-w-6xl mx-auto px-4 sm:px-6">
+        {/* Header Title Section */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-bold font-heading text-text-primary flex items-center gap-2">
+              <Ticket className="text-brand-gold" size={24} />
+              Manajemen Kode Voucher & Promo
+            </h1>
+            <p className="text-xs text-text-secondary mt-1">
+              Buat dan atur kuota voucher belanja untuk pelanggan. Diskon dihitung dan divalidasi secara ketat oleh backend.
+            </p>
+          </div>
+          <button
+            onClick={fetchVouchers}
+            disabled={loading}
+            className="self-start sm:self-auto flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-gray-50 shadow-xs transition-colors"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Muat Ulang
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Form Buat Voucher Baru (Left Column: 5/12) */}
+          <div className="lg:col-span-5">
+            <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-xs">
+              <h2 className="text-base font-bold font-heading text-text-primary mb-1 flex items-center gap-2">
+                <Plus size={18} className="text-brand-blue" />
+                Buat Kode Promo Baru
+              </h2>
+              <p className="text-xs text-text-secondary mb-5">
+                Pastikan kode unik dan pengaturan batas pemakaian sesuai kebutuhan promo.
+              </p>
+
+              {formSuccess && (
+                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
+                  <Check size={16} />
+                  <span>{formSuccess}</span>
+                </div>
+              )}
+
+              {formError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
+                  <AlertCircle size={16} />
+                  <span>{formError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleCreateVoucher} className="space-y-4">
+                {/* Kode Promo */}
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1">
+                    Kode Promo <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value.toUpperCase())}
+                      placeholder="CONTOH: HEMAT20"
+                      maxLength={50}
+                      required
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-bold uppercase tracking-wider text-brand-blue focus:outline-none focus:border-brand-blue"
+                    />
+                    <span className="absolute right-3 top-2.5 text-xs text-gray-400 font-normal">
+                      Auto-Uppercase
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tipe Diskon (Tab Segmented) */}
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1">
+                    Tipe Diskon <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setDiscountType('percent')}
+                      className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        discountType === 'percent'
+                          ? 'bg-white text-brand-blue shadow-xs'
+                          : 'text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      <Percent size={14} />
+                      Persentase (%)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDiscountType('fixed')}
+                      className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        discountType === 'fixed'
+                          ? 'bg-white text-brand-blue shadow-xs'
+                          : 'text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      <Coins size={14} />
+                      Nominal Tetap (Rp)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Nilai Diskon */}
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1">
+                    Besar Potongan ({discountType === 'percent' ? '%' : 'Rupiah'}) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      min="1"
+                      max={discountType === 'percent' ? '100' : '10000000'}
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                      placeholder={discountType === 'percent' ? '20' : '10000'}
+                      required
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-text-primary focus:outline-none focus:border-brand-blue"
+                    />
+                    <span className="absolute right-3.5 top-2.5 text-xs font-semibold text-text-secondary">
+                      {discountType === 'percent' ? '%' : 'IDR'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Grid Minimal Belanja & Maksimal Diskon */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary mb-1">
+                      Min. Belanja (Rp)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={minSpend}
+                      onChange={(e) => setMinSpend(e.target.value)}
+                      placeholder="0"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary mb-1">
+                      Maks. Diskon (Rp)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      disabled={discountType !== 'percent'}
+                      value={maxDiscount}
+                      onChange={(e) => setMaxDiscount(e.target.value)}
+                      placeholder={discountType === 'percent' ? 'Contoh: 15000' : 'Hanya tipe %'}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue ${
+                        discountType !== 'percent' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Batas Kuota Pemakaian */}
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1">
+                    Batas Kuota Pemakaian (Kosongkan jika tanpa batas)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={usageLimit}
+                    onChange={(e) => setUsageLimit(e.target.value)}
+                    placeholder="Contoh: 50"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue"
+                  />
+                  <p className="text-[11px] text-text-secondary mt-1 flex items-center gap-1">
+                    <Info size={12} />
+                    Sistem mengunci kuota voucher secara atomik di database (bebas race condition).
+                  </p>
+                </div>
+
+                {/* Periode Berlaku */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary mb-1">
+                      Tanggal Mulai (Opsional)
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-brand-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary mb-1">
+                      Tanggal Berakhir (Opsional)
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-brand-blue"
+                    />
+                  </div>
+                </div>
+
+                {/* Status Aktif */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div>
+                    <span className="text-xs font-bold text-text-primary block">Status Voucher</span>
+                    <span className="text-[11px] text-text-secondary">
+                      {isActive ? 'Aktif dan dapat digunakan checkout' : 'Nonaktif (ditolak server)'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsActive(!isActive)}
+                    className="text-brand-blue hover:text-brand-blue-dark transition-colors"
+                  >
+                    {isActive ? (
+                      <ToggleRight size={32} className="text-brand-blue" />
+                    ) : (
+                      <ToggleLeft size={32} className="text-gray-400" />
+                    )}
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={formSubmitting}
+                  className="w-full py-3 bg-brand-blue text-white rounded-xl font-semibold text-sm hover:bg-brand-blue-dark transition-all shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <Plus size={16} />
+                  {formSubmitting ? 'Menyimpan Voucher...' : 'Simpan & Publikasikan Promo'}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* Daftar Voucher (Right Column: 7/12) */}
+          <div className="lg:col-span-7">
+            <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+                <div>
+                  <h2 className="text-base font-bold font-heading text-text-primary">
+                    Daftar Voucher Aktif ({vouchers.length})
+                  </h2>
+                  <p className="text-xs text-text-secondary">
+                    Klik kode promo untuk menyalin kode langsung ke clipboard.
+                  </p>
+                </div>
+                {/* Search input */}
+                <div className="relative w-full sm:w-48">
+                  <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Cari kode..."
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-brand-blue"
+                  />
+                </div>
+              </div>
+
+              {filteredVouchers.length === 0 ? (
+                <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl">
+                  <Ticket size={36} className="mx-auto text-gray-300 mb-2" />
+                  <p className="text-sm font-semibold text-text-secondary">
+                    {searchTerm ? 'Tidak ada voucher yang cocok dengan pencarian' : 'Belum ada voucher promo'}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Gunakan formulir di sebelah kiri untuk membuat kode voucher pertama Anda.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredVouchers.map((v) => {
+                    const isLimitReached = v.usage_limit && v.used_count >= v.usage_limit;
+                    const percentUsed = v.usage_limit ? Math.min(100, Math.round((v.used_count / v.usage_limit) * 100)) : 0;
+
+                    return (
+                      <div
+                        key={v.id}
+                        className={`p-4 rounded-2xl border transition-all ${
+                          v.is_active && !isLimitReached
+                            ? 'bg-white border-gray-200 hover:border-brand-blue/40 shadow-xs'
+                            : 'bg-gray-50/70 border-gray-200 opacity-80'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          {/* Left: Code badge & discount details */}
+                          <div className="flex items-start gap-3">
+                            <button
+                              onClick={() => copyToClipboard(v.code)}
+                              className="group flex items-center gap-1.5 px-3 py-1.5 bg-brand-blue/10 hover:bg-brand-blue/20 text-brand-blue rounded-xl font-bold font-heading text-sm tracking-wider transition-colors"
+                              title="Klik untuk menyalin kode"
+                            >
+                              <span>{v.code}</span>
+                              {copiedCode === v.code ? (
+                                <Check size={14} className="text-emerald-600" />
+                              ) : (
+                                <Copy size={13} className="text-brand-blue opacity-60 group-hover:opacity-100" />
+                              )}
+                            </button>
+
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-text-primary">
+                                  {v.discount_type === 'percent'
+                                    ? `Diskon ${parseFloat(v.discount_value)}%`
+                                    : `Potongan ${formatCurrency(v.discount_value)}`}
+                                </span>
+                                {v.min_spend > 0 && (
+                                  <span className="text-[11px] text-text-secondary">
+                                    • Min. Belanja {formatCurrency(v.min_spend)}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 mt-1 text-[11px] text-text-secondary">
+                                {v.max_discount && (
+                                  <span>Maks. {formatCurrency(v.max_discount)}</span>
+                                )}
+                                <span>
+                                  Dibuat: {new Date(v.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right: Usage count, status, & actions */}
+                          <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100">
+                            {/* Quota indicator */}
+                            <div className="text-right">
+                              <div className="text-xs font-semibold text-text-primary">
+                                Terpakai: <span className="text-brand-blue font-bold">{v.used_count}</span>
+                                {v.usage_limit ? ` / ${v.usage_limit}` : 'x (Tanpa Batas)'}
+                              </div>
+                              {v.usage_limit && (
+                                <div className="w-24 bg-gray-200 h-1.5 rounded-full mt-1 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      percentUsed >= 100 ? 'bg-red-500' : 'bg-brand-blue'
+                                    }`}
+                                    style={{ width: `${percentUsed}%` }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Toggle active button */}
+                            <button
+                              onClick={() => handleToggle(v.id)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                                v.is_active
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                  : 'bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200'
+                              }`}
+                            >
+                              {v.is_active ? 'Aktif' : 'Nonaktif'}
+                            </button>
+
+                            {/* Delete button */}
+                            <button
+                              onClick={() => handleDelete(v.id, v.code)}
+                              className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                              title="Hapus voucher"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

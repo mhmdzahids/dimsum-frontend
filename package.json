@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "hamburger-react": "^2.5.2",
+    "jsqr": "^1.4.0",
     "lucide-react": "^1.45.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.8",

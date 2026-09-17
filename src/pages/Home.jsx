@@ -11,7 +11,6 @@ import {
   Video,
   MessageCircle,
   Headset,
-  Menu as MenuIcon,
   ChevronRight
 } from 'lucide-react';
 import imgWortel from '../assets/icon/wortel.webp';
@@ -21,9 +20,12 @@ import imgBeef from '../assets/icon/beef.webp';
 import imgCrabstick from '../assets/icon/crabstick.webp';
 import imgKeju from '../assets/icon/keju.webp';
 import logoImg from '../assets/logo.webp';
+import { Squash as Hamburger } from 'hamburger-react';
+import HeaderDropdown from '../components/HeaderDropdown';
 
 function Home() {
   const navigate = useNavigate();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [orderType, setOrderType] = useState('Pick Up');
   const [activeBanner, setActiveBanner] = useState(0);
   const [banners, setBanners] = useState([1, 2, 3]);
@@ -41,12 +43,16 @@ function Home() {
       const saved = localStorage.getItem('dimsum_pending_order');
       if (saved) {
         const parsed = JSON.parse(saved);
+        if (!parsed || typeof parsed !== 'object' || !parsed.orderId) {
+          try { localStorage.removeItem('dimsum_pending_order'); } catch {}
+          return null;
+        }
         if (parsed.expiresAt && new Date(parsed.expiresAt).getTime() <= Date.now()) {
-          localStorage.removeItem('dimsum_pending_order');
+          try { localStorage.removeItem('dimsum_pending_order'); } catch {}
           return null;
         }
         if (parsed.createdAt && (Date.now() - new Date(parsed.createdAt).getTime() > 60 * 60 * 1000)) {
-          localStorage.removeItem('dimsum_pending_order');
+          try { localStorage.removeItem('dimsum_pending_order'); } catch {}
           return null;
         }
         return parsed;
@@ -61,22 +67,26 @@ function Home() {
     if (!pendingOrder?.orderId) return;
 
     const checkExpiry = () => {
-      if (pendingOrder.expiresAt && new Date(pendingOrder.expiresAt).getTime() <= Date.now()) {
-        localStorage.removeItem('dimsum_pending_order');
+      if (pendingOrder?.expiresAt && new Date(pendingOrder.expiresAt).getTime() <= Date.now()) {
+        try { localStorage.removeItem('dimsum_pending_order'); } catch {}
         setPendingOrder(null);
       }
     };
 
-    fetch(`/api/orders/${pendingOrder.orderId}`)
+    const token = pendingOrder.accessToken || localStorage.getItem('dimsum_current_order_token');
+    const headers = {};
+    if (token) headers['X-Order-Token'] = token;
+
+    fetch(`/api/orders/${pendingOrder.orderId}`, { headers })
       .then(res => res.json())
       .then(data => {
         if (data.success && data.data) {
           if (data.data.status !== 'pending_payment') {
-            localStorage.removeItem('dimsum_pending_order');
+            try { localStorage.removeItem('dimsum_pending_order'); } catch {}
             setPendingOrder(null);
           }
-        } else {
-          localStorage.removeItem('dimsum_pending_order');
+        } else if (data.status === 404 || data.error?.includes('tidak ditemukan')) {
+          try { localStorage.removeItem('dimsum_pending_order'); } catch {}
           setPendingOrder(null);
         }
       })
@@ -84,14 +94,14 @@ function Home() {
 
     const timer = setInterval(checkExpiry, 3000);
     return () => clearInterval(timer);
-  }, [pendingOrder]);
+  }, [pendingOrder?.orderId]);
 
   useEffect(() => {
     const fetchBanners = async () => {
       try {
         const res = await fetch('/api/banners?active_only=true');
         const data = await res.json();
-        if (data.success && data.data.length > 0) {
+        if (data.success && Array.isArray(data.data) && data.data.length > 0) {
           setBanners(data.data);
         }
       } catch (err) {
@@ -102,11 +112,12 @@ function Home() {
   }, []);
 
   useEffect(() => {
+    if (!banners || banners.length === 0) return;
     const timer = setInterval(() => {
       setActiveBanner((prev) => (prev + 1) % banners.length);
     }, 3000);
     return () => clearInterval(timer);
-  }, [banners.length]);
+  }, [banners?.length]);
 
   const categories = [
     { name: 'Wortel', icon: imgWortel },
@@ -147,19 +158,32 @@ function Home() {
   return (
     <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-bg-cream">
       {/* Header */}
-      <header className="bg-brand-blue pt-3 px-6 pb-14 text-left relative">
-        {/* Top Navbar Area */}
-        <div className="flex items-center justify-between text-white mb-3">
+      <header className="bg-brand-blue pt-3 px-6 pb-14 text-left relative z-10 transition-all duration-300">
+        <div className="flex items-center justify-between text-white relative">
           <div className="h-14 flex items-center">
             <img src={logoImg} alt="Makan Dimsum Indonesia" className="h-full object-contain drop-shadow-md" />
           </div>
-          <button className="w-11 h-11 bg-white/20 text-white rounded-full flex items-center justify-center hover:bg-white/30 transition-colors">
-            <MenuIcon size={20} strokeWidth={2.5} />
-          </button>
+          <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all cursor-pointer shrink-0">
+            <Hamburger
+              toggled={isMenuOpen}
+              toggle={setIsMenuOpen}
+              size={20}
+              color="#FFFFFF"
+              rounded
+              label="Buka Menu"
+            />
+          </div>
         </div>
 
+        {/* Expand-Down Navbar Collapse (Bootstrap style) */}
+        <HeaderDropdown
+          isOpen={isMenuOpen}
+          onClose={() => setIsMenuOpen(false)}
+          variant="blue"
+        />
+
         {/* Divider */}
-        <div className="h-[1px] w-full bg-white/20 mb-3"></div>
+        <div className="h-[1px] w-full bg-white/20 my-3"></div>
 
         {/* Greeting Area */}
         <div className="text-center">
@@ -168,8 +192,8 @@ function Home() {
         </div>
       </header>
 
-      {/* Sheet Content (overlaps header) */}
-      <div className="bg-bg-cream rounded-t-[32px] -mt-6 relative pt-10 pb-16 shadow-[0_-4px_24px_rgba(0,0,0,0.05)]">
+      {/* Sheet Content (overlaps header with visible rounded corners) */}
+      <div className="bg-bg-cream rounded-t-[32px] -mt-6 relative z-20 pt-10 pb-16 shadow-[0_-4px_24px_rgba(0,0,0,0.05)]">
 
         {/* Segmented Control */}
         <div className="flex justify-center gap-4 px-6 mb-8">
@@ -327,7 +351,7 @@ function Home() {
       )}
 
       {/* Floating Continue Payment Bar if pending order exists */}
-      {pendingOrder && (
+      {pendingOrder && pendingOrder.orderId && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[448px] h-[64px] z-[100]">
           <div
             onClick={() => navigate('/payment', { state: { resumePending: true } })}
@@ -344,7 +368,7 @@ function Home() {
                 Bayar Sekarang
               </span>
               <span className="text-white font-body font-bold text-[16px] tracking-tight truncate">
-                Rp{Math.round(Number(pendingOrder.totalAmount)).toLocaleString('id-ID')}
+                Rp{Math.round(Number(pendingOrder.totalAmount || 0)).toLocaleString('id-ID')}
               </span>
             </div>
 

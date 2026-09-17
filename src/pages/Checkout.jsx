@@ -15,14 +15,29 @@ import {
   User,
   Phone,
   Mail,
-  X
+  X,
+  Flame,
+  Ticket,
+  Sparkles,
+  Coins
 } from 'lucide-react';
 import imgWortel from '../assets/icon/wortel.webp';
+import { getValidPickupTime, savePickupTime } from '../utils/pickupTime';
 
 export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
   const cartItems = location.state?.cartItems || [];
+
+  // Check if user returned from Payment page to animate progress bar in reverse
+  const [isReturningFromPayment] = useState(() => {
+    const flag = sessionStorage.getItem('dimsum_returned_from_payment');
+    if (flag === 'true') {
+      sessionStorage.removeItem('dimsum_returned_from_payment');
+      return true;
+    }
+    return false;
+  });
 
   // If there's an active pending order, redirect to payment
   useEffect(() => {
@@ -152,13 +167,20 @@ export default function Checkout() {
   }, [availableTimes, selectedTime]);
 
   const [confirmedTime, setConfirmedTime] = useState(() => {
-    return localStorage.getItem('dimsum_time') || location.state?.confirmedTime || 'Pilih Waktu Pickup';
+    return getValidPickupTime() || 'Pilih Waktu Pickup';
   });
 
+  // Auto-reset if time expires while on checkout page
   useEffect(() => {
-    if (confirmedTime && confirmedTime !== 'Pilih Waktu Pickup') {
-      localStorage.setItem('dimsum_time', confirmedTime);
-    }
+    const checkExpiry = () => {
+      const valid = getValidPickupTime();
+      if (!valid && confirmedTime !== 'Pilih Waktu Pickup') {
+        setConfirmedTime('Pilih Waktu Pickup');
+      }
+    };
+
+    const timer = setInterval(checkExpiry, 5000);
+    return () => clearInterval(timer);
   }, [confirmedTime]);
 
   const [items, setItems] = useState(() => {
@@ -169,15 +191,133 @@ export default function Checkout() {
     return savedItems ? JSON.parse(savedItems) : [];
   });
 
+  // Security Route Guard: Prevent direct URL access when cart is empty
+  useEffect(() => {
+    const savedPending = localStorage.getItem('dimsum_pending_order');
+    if (!savedPending && (!items || items.length === 0)) {
+      navigate('/menu', { 
+        replace: true, 
+        state: { emptyCartNotice: 'Keranjang belanja Anda masih kosong. Silakan pilih menu terlebih dahulu.' } 
+      });
+    }
+  }, [items, navigate]);
+
+  // Sync latest product prices and discount status from backend on mount
+  useEffect(() => {
+    fetch('/api/products')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          setItems(prevItems => {
+            return prevItems.map(item => {
+              const latest = data.data.find(p => p.id === item.id);
+              if (latest) {
+                const hasDiscount = Boolean(latest.is_discount && latest.discount_percent > 0);
+                const activePrice = Number(latest.price);
+                const originalPrice = latest.original_price ? Number(latest.original_price) : activePrice;
+                return {
+                  ...item,
+                  ...latest,
+                  hasDiscount,
+                  price: activePrice,
+                  originalPrice,
+                  discountPercent: latest.discount_percent || 0
+                };
+              }
+              return item;
+            });
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (items.length > 0) {
       localStorage.setItem('dimsum_checkout_items', JSON.stringify(items));
     }
   }, [items]);
 
-  const subtotal = items.reduce((sum, item) => sum + (Number(item.price) * item.quantity), 0);
+  // Voucher state & calculation
+  const [appliedVoucher, setAppliedVoucher] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dimsum_applied_voucher');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Re-sync voucher when location changes or window regains focus (e.g. after returning from /vouchers)
+  useEffect(() => {
+    const syncVoucher = () => {
+      try {
+        const saved = localStorage.getItem('dimsum_applied_voucher');
+        setAppliedVoucher(saved ? JSON.parse(saved) : null);
+      } catch {
+        setAppliedVoucher(null);
+      }
+    };
+    syncVoucher();
+    window.addEventListener('focus', syncVoucher);
+    return () => window.removeEventListener('focus', syncVoucher);
+  }, [location]);
+
+  // Price calculations: original subtotal, product discount savings, subtotal menu, voucher discount, final total
+  const subtotalOriginal = items.reduce((sum, item) => {
+    const origUnitPrice = Number(item.originalPrice || item.original_price || item.price);
+    return sum + (origUnitPrice * item.quantity);
+  }, 0);
+
+  const subtotalMenu = items.reduce((sum, item) => {
+    return sum + (Number(item.price) * item.quantity);
+  }, 0);
+
+  // Auto-resync voucher if discount was zero or missing discount_value metadata
+  useEffect(() => {
+    if (appliedVoucher && appliedVoucher.code && subtotalMenu > 0 && (!appliedVoucher.discount_value || Number(appliedVoucher.discount) === 0)) {
+      fetch('/api/vouchers/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: appliedVoucher.code, subtotal: subtotalMenu })
+      })
+        .then(r => r.json())
+        .then(res => {
+          if (res.success && res.data) {
+            const updated = {
+              code: res.data.code,
+              discount: res.data.discount,
+              min_spend: res.data.min_spend,
+              discount_type: res.data.discount_type,
+              discount_value: res.data.discount_value,
+              max_discount: res.data.max_discount
+            };
+            setAppliedVoucher(updated);
+            localStorage.setItem('dimsum_applied_voucher', JSON.stringify(updated));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [appliedVoucher?.code, subtotalMenu]);
+
+  const totalMenuDiscount = Math.max(0, subtotalOriginal - subtotalMenu);
+
+  const voucherDiscount = React.useMemo(() => {
+    if (!appliedVoucher) return 0;
+    if (appliedVoucher.discount_type === 'percent') {
+      const pct = Number(appliedVoucher.discount_value || 0);
+      let disc = (pct / 100) * subtotalMenu;
+      if (appliedVoucher.max_discount !== null && appliedVoucher.max_discount !== undefined) {
+        disc = Math.min(disc, Number(appliedVoucher.max_discount));
+      }
+      return Math.round(Math.min(disc, subtotalMenu));
+    }
+    return Math.round(Math.min(Number(appliedVoucher.discount || appliedVoucher.discount_value || 0), subtotalMenu));
+  }, [appliedVoucher, subtotalMenu]);
+
   const otherFees = 0;
-  const total = subtotal + otherFees;
+  const finalTotal = Math.max(0, subtotalMenu - voucherDiscount + otherFees);
+  const totalSavings = totalMenuDiscount + voucherDiscount;
   const currentTotalItems = items.reduce((sum, item) => sum + item.quantity, 0);
 
   const updateItemQty = (id, change) => {
@@ -200,30 +340,41 @@ export default function Checkout() {
   const isOverLimit = orderLimit && currentTotalItems > orderLimit;
   const isNearLimit = orderLimit && currentTotalItems >= Math.floor(orderLimit * 0.9) && !isOverLimit;
 
-  // We can reuse the time modal logic here if they want to change it on this page too,
-  // but for now we'll just display it as a static UI component based on the screenshot.
-  // The screenshot shows a "Select Time" button.
+  // Fallback while redirecting if directly accessed with empty cart
+  const savedPending = localStorage.getItem('dimsum_pending_order');
+  if (!savedPending && (!items || items.length === 0)) {
+    return (
+      <div className="max-w-[480px] mx-auto min-h-screen bg-[#F8F9FA] flex items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-brand-gold border-t-transparent rounded-full animate-spin"></div>
+          <p className="font-body font-bold text-[14px] text-text-secondary">Memeriksa keranjang belanja...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-[#F8F9FA] flex flex-col">
-      {/* 1. Header */}
-      <div className="bg-white flex items-center justify-between p-4 sticky top-0 z-50 border-b border-gray-100">
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
-          <ArrowLeft size={24} className="text-text-primary" />
-        </button>
-        <h1 className="font-body font-black text-[18px] text-text-primary">
-          Pesanan
-        </h1>
-        <div className="w-8"></div> {/* Spacer for centering */}
-      </div>
+    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-clip bg-[#F8F9FA] flex flex-col">
+      {/* 1. Sticky Navbar & Progress Bar */}
+      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-xs">
+        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+          <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
+            <ArrowLeft size={24} className="text-text-primary" />
+          </button>
+          <h1 className="font-body font-black text-[18px] text-text-primary">
+            Pesanan
+          </h1>
+          <div className="w-8"></div> {/* Spacer for centering */}
+        </div>
 
-      {/* Progress Bar (half filled) */}
-      <div className="w-full bg-gray-200 h-1">
-        <div className="bg-brand-gold w-1/2 h-full"></div>
-      </div>
+        {/* Progress Bar (half filled with ease animation, retracting if returning from checkout/payment) */}
+        <div className="w-full bg-gray-200 h-1 overflow-hidden">
+          <div className={`bg-brand-gold h-full ${isReturningFromPayment ? 'animate-bar-retract-half' : 'animate-bar-fill-half'}`}></div>
+        </div>
+      </header>
 
       {/* 2. Scrollable Content */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar pb-32">
+      <div className="flex-1 pb-32">
 
         {/* Order Type Banner */}
         <div className="bg-white px-4 py-4 mb-2">
@@ -270,40 +421,81 @@ export default function Checkout() {
             </div>
           )}
 
-          {items.map(item => (
-            <div key={item.id} className="flex flex-col border-b border-gray-100 pb-4 mb-4">
-              <div className="flex justify-between items-start mb-2">
-                <h3 className="font-body font-bold text-[14px] text-text-primary uppercase leading-tight">
-                  {item.name}
-                </h3>
-              </div>
+          {items.map(item => {
+            const origUnitPrice = Number(item.originalPrice || item.original_price || item.price);
+            const saleUnitPrice = Number(item.price);
+            const itemHasDiscount = Boolean(item.hasDiscount || (item.is_discount && item.discount_percent > 0) || origUnitPrice > saleUnitPrice);
+            const itemDiscountPercent = item.discountPercent || item.discount_percent || (origUnitPrice > saleUnitPrice ? Math.round(((origUnitPrice - saleUnitPrice) / origUnitPrice) * 100) : 0);
+            const itemOrigTotal = origUnitPrice * item.quantity;
+            const itemSaleTotal = saleUnitPrice * item.quantity;
+            const itemSavings = Math.max(0, itemOrigTotal - itemSaleTotal);
 
-              <div className="flex flex-col gap-0.5 mb-3 text-[#6B7280]">
-                <span className="font-body font-medium text-[13px]">{item.quantity}x MIX (Semua Varian)</span>
-              </div>
+            return (
+              <div key={item.id} className="flex flex-col border-b border-gray-100 pb-4 mb-4">
+                <div className="flex justify-between items-start mb-1">
+                  <h3 className="font-body font-bold text-[14px] text-text-primary uppercase leading-tight">
+                    {item.name}
+                  </h3>
+                </div>
 
-              <div className="flex justify-between items-center mt-4">
-                <span className="font-body font-bold text-[15px] text-[#6B7280]">
-                  Rp{(Number(item.price) * item.quantity).toLocaleString('id-ID')}
-                </span>
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => updateItemQty(item.id, -1)}
-                    className="w-6 h-6 rounded-full border border-text-primary flex items-center justify-center text-text-primary"
-                  >
-                    <Minus size={14} strokeWidth={2.5} />
-                  </button>
-                  <span className="font-body font-bold text-[14px] w-3 text-center">{item.quantity}</span>
-                  <button
-                    onClick={() => updateItemQty(item.id, 1)}
-                    className="w-6 h-6 rounded-full border border-text-primary flex items-center justify-center text-text-primary"
-                  >
-                    <Plus size={14} strokeWidth={2.5} />
-                  </button>
+                {/* Promo Badge & Savings Info */}
+                {itemHasDiscount && (
+                  <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-brand-red/10 text-brand-red border border-brand-red/25 leading-none">
+                      <Flame size={9.5} className="fill-brand-red text-brand-red -skew-x-[14deg] -rotate-[6deg] transform shrink-0" />
+                      <span className="italic">PROMO {itemDiscountPercent}%</span>
+                    </span>
+                    {itemSavings > 0 && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold italic text-green-700 bg-green-50 border border-green-200 leading-none">
+                        <Coins size={9.5} className="shrink-0 -skew-x-[12deg] transform" />
+                        <span className="italic">Hemat Rp{itemSavings.toLocaleString('id-ID')}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-0.5 mb-2 text-[#6B7280]">
+                  <span className="font-body font-medium text-[13px]">{item.quantity}x MIX (Semua Varian)</span>
+                </div>
+
+                <div className="flex justify-between items-end mt-2">
+                  <div className="flex flex-col">
+                    {itemHasDiscount && (
+                      <span className="font-body font-medium text-[11.5px] text-gray-400 line-through leading-tight">
+                        Rp{itemOrigTotal.toLocaleString('id-ID')}
+                      </span>
+                    )}
+                    <div className="flex items-baseline gap-1.5 mt-0.5">
+                      <span className="font-body font-black text-[15px] text-brand-gold leading-tight">
+                        Rp{itemSaleTotal.toLocaleString('id-ID')}
+                      </span>
+                      {itemHasDiscount && (
+                        <span className="bg-brand-red/10 text-brand-red border border-brand-red/25 font-body font-bold text-[9px] px-1 py-0.2 rounded leading-tight">
+                          -{itemDiscountPercent}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => updateItemQty(item.id, -1)}
+                      className="w-6 h-6 rounded-full border border-text-primary flex items-center justify-center text-text-primary hover:bg-gray-100 transition-colors"
+                    >
+                      <Minus size={14} strokeWidth={2.5} />
+                    </button>
+                    <span className="font-body font-bold text-[14px] w-3 text-center">{item.quantity}</span>
+                    <button
+                      onClick={() => updateItemQty(item.id, 1)}
+                      className="w-6 h-6 rounded-full border border-text-primary flex items-center justify-center text-text-primary hover:bg-gray-100 transition-colors"
+                    >
+                      <Plus size={14} strokeWidth={2.5} />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Add Notes Trigger */}
           <div className="mt-1">
@@ -338,28 +530,131 @@ export default function Checkout() {
           </div>
         </div>
 
+        {/* Promo / Voucher Trigger Section */}
+        <div className="bg-white p-4 mb-2">
+          <div 
+            onClick={() => {
+              navigate('/vouchers', { 
+                state: { 
+                  ...location.state, 
+                  confirmedTime, 
+                  cartItems: items, 
+                  totalPrice: subtotalMenu, 
+                  orderNotes 
+                } 
+              });
+            }}
+            className="p-3.5 rounded-[14px] border border-brand-gold/40 bg-brand-gold/5 flex justify-between items-center cursor-pointer hover:bg-brand-gold/10 transition-colors"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-brand-gold/15 flex items-center justify-center text-brand-gold shrink-0">
+                <Ticket size={16} />
+              </div>
+              {appliedVoucher ? (
+                <span className="font-body font-bold text-[13px] text-brand-gold truncate">
+                  Voucher: {appliedVoucher.code}
+                </span>
+              ) : (
+                <span className="font-body font-bold text-[13px] text-brand-gold">
+                  Tambah Promo atau Voucher
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2.5 shrink-0">
+              {appliedVoucher && (
+                <div className="relative inline-flex items-center justify-center px-3 py-1 bg-green-100 text-green-800 text-[11px] font-black rounded-sm border border-dashed border-green-400 overflow-hidden shadow-2xs">
+                  {/* Left Ticket Cutout Notch */}
+                  <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-[#faf8f5] rounded-full border-r border-green-400" />
+                  <span className="font-body font-black tracking-tight px-1">
+                    -Rp{voucherDiscount.toLocaleString('id-ID')}
+                  </span>
+                  {/* Right Ticket Cutout Notch */}
+                  <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-[#faf8f5] rounded-full border-l border-green-400" />
+                </div>
+              )}
+              <ChevronRight size={18} className="text-text-primary" />
+            </div>
+          </div>
+        </div>
+
         {/* Payment Details */}
         <div className="bg-white p-4 pb-8">
           <div className="border border-gray-100 shadow-sm rounded-[16px] p-5">
             <h2 className="font-body font-bold text-[15px] text-text-primary mb-5 text-center">Rincian Pembayaran</h2>
 
-            <div className="flex justify-between items-center mb-4">
-              <span className="font-body font-medium text-[14px] text-text-primary">Subtotal <span className="text-gray-400">({currentTotalItems} menu)</span></span>
-              <span className="font-body font-bold text-[14px] text-text-primary">Rp{subtotal.toLocaleString('id-ID')}</span>
+            {/* Subtotal Normal (Parent) */}
+            <div className="flex justify-between items-center mb-2.5">
+              <span className="font-body font-bold text-[14px] text-text-primary">
+                Subtotal <span className="text-gray-400 font-medium">({currentTotalItems} menu)</span>
+              </span>
+              <span className="font-body font-bold text-[14px] text-text-primary">
+                Rp{subtotalOriginal.toLocaleString('id-ID')}
+              </span>
             </div>
 
-            <div className="flex justify-between items-center mb-5">
+            {/* Diskon Menu Promo (Child of Subtotal) */}
+            {totalMenuDiscount > 0 && (
+              <div className="flex justify-between items-center mb-2 pl-3 ml-1 border-l-2 border-brand-red/25">
+                <div className="flex items-center gap-1.5 text-brand-red">
+                  <Flame size={12} className="fill-brand-red text-brand-red -skew-x-[14deg] -rotate-[6deg] transform" />
+                  <span className="font-body font-medium text-[12px]">Diskon Menu Promo</span>
+                </div>
+                <span className="font-body font-bold text-[12px] text-brand-red">
+                  -Rp{totalMenuDiscount.toLocaleString('id-ID')}
+                </span>
+              </div>
+            )}
+
+            {/* Diskon Voucher (Child of Subtotal) */}
+            {voucherDiscount > 0 && (
+              <div className="flex justify-between items-center mb-2.5 pl-3 ml-1 border-l-2 border-green-300">
+                <div className="flex items-center gap-1.5 text-green-700">
+                  <Ticket size={12} className="text-green-700" />
+                  <span className="font-body font-medium text-[12px]">
+                    Diskon Voucher ({appliedVoucher?.code})
+                  </span>
+                </div>
+                <span className="font-body font-bold text-[12px] text-green-700">
+                  -Rp{voucherDiscount.toLocaleString('id-ID')}
+                </span>
+              </div>
+            )}
+
+            {/* Biaya Lainnya */}
+            <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-1 cursor-pointer">
                 <span className="font-body font-medium text-[14px] text-text-primary">Biaya Lainnya</span>
                 <ChevronDown size={14} className="text-text-primary" />
               </div>
-              <span className="font-body font-bold text-[14px] text-text-primary">Rp{otherFees.toLocaleString('id-ID')}</span>
+              <span className="font-body font-bold text-[14px] text-text-primary">
+                Rp{otherFees.toLocaleString('id-ID')}
+              </span>
             </div>
 
+            {/* Total Pembayaran */}
             <div className="border-t border-gray-100 pt-4 flex justify-between items-center">
               <span className="font-body font-bold text-[15px] text-text-primary">Total</span>
-              <span className="font-body font-bold text-[15px] text-brand-gold">Rp{total.toLocaleString('id-ID')}</span>
+              <span className="font-body font-black text-[16px] text-brand-gold">
+                Rp{finalTotal.toLocaleString('id-ID')}
+              </span>
             </div>
+
+            {/* Total Savings Banner */}
+            {totalSavings > 0 && (
+              <div className="mt-4 p-3 rounded-xl bg-red-50/70 border border-brand-red/20 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-brand-red text-white flex items-center justify-center shrink-0">
+                    <Flame size={12} className="fill-white text-white -skew-x-[14deg] -rotate-[6deg] transform" />
+                  </div>
+                  <span className="text-xs font-bold text-gray-800">
+                    Total Penghematan Kamu
+                  </span>
+                </div>
+                <span className="text-xs font-black text-brand-red">
+                  Hemat Rp{totalSavings.toLocaleString('id-ID')}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -367,18 +662,35 @@ export default function Checkout() {
       {/* 3. Sticky Bottom Bar */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white rounded-t-[24px] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-[100]">
         <div className="p-5 flex justify-between items-center">
-          <div className="flex flex-col">
-            <span className="font-body font-medium text-[13px] text-text-secondary">Total Pembayaran</span>
-            <span className="font-body font-black text-[20px] text-text-primary mt-0.5">
-              Rp{total.toLocaleString('id-ID')}
+          <div className="flex flex-col justify-center">
+            <span className="font-body font-medium text-[12px] text-text-secondary leading-tight">Total Pembayaran</span>
+            <span className="font-body font-black text-[20px] text-text-primary leading-tight mt-0.5">
+              Rp{finalTotal.toLocaleString('id-ID')}
             </span>
+            {totalSavings > 0 && (
+              <span className="text-[11px] font-bold text-brand-red leading-tight mt-0.5">
+                (Hemat Rp{totalSavings.toLocaleString('id-ID')})
+              </span>
+            )}
           </div>
           <button
             onClick={() => {
               if (isOverLimit) return;
+              if (!confirmedTime || confirmedTime === 'Pilih Waktu Pickup' || !getValidPickupTime()) {
+                setIsTimeModalOpen(true);
+                return;
+              }
               sessionStorage.removeItem('dimsum_promo_return_method');
               localStorage.removeItem('dimsum_payment_method');
-              navigate('/payment', { state: { confirmedTime: confirmedTime, cartItems: items, totalPrice: total, orderNotes: orderNotes } });
+              navigate('/payment', { 
+                state: { 
+                  confirmedTime: confirmedTime, 
+                  cartItems: items, 
+                  totalPrice: subtotalMenu, 
+                  finalTotal: finalTotal,
+                  orderNotes: orderNotes 
+                } 
+              });
             }}
             disabled={isOverLimit}
             className={`h-[48px] font-body font-bold text-[14px] px-8 rounded-[12px] shadow-elevated transition-transform active:scale-95 ${
@@ -448,7 +760,8 @@ export default function Checkout() {
             <div className="p-4 border-t border-gray-100">
               <button
                 onClick={() => {
-                  setConfirmedTime(`${selectedDate}, ${selectedTime}`);
+                  const label = savePickupTime(selectedDate, selectedTime, availableDates);
+                  setConfirmedTime(label);
                   closeTimeModal();
                 }}
                 className="w-full bg-brand-gold text-white font-body font-black text-[15px] py-3.5 rounded-[12px] shadow-elevated"

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
   Search,
@@ -7,12 +7,14 @@ import {
   ChevronRight,
   ConciergeBell,
   ShoppingBasket,
+  ShoppingBag,
   X,
   Plus,
   Minus,
   Clock,
   Check,
-  AlertCircle
+  AlertCircle,
+  Flame
 } from 'lucide-react';
 
 import imgWortel from '../assets/icon/wortel.webp';
@@ -23,9 +25,26 @@ import imgCrabstick from '../assets/icon/crabstick.webp';
 import imgKeju from '../assets/icon/keju.webp';
 
 import bannerMenu from '../assets/banner/banner_menu.webp';
+import { Squash as Hamburger } from 'hamburger-react';
+import HeaderDropdown from '../components/HeaderDropdown';
+import { getValidPickupTime, savePickupTime } from '../utils/pickupTime';
 
 function MenuPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [emptyCartToast, setEmptyCartToast] = useState('');
+
+  // Listen for empty cart notices from route guards
+  useEffect(() => {
+    if (location.state?.emptyCartNotice) {
+      setEmptyCartToast(location.state.emptyCartNotice);
+      const timer = setTimeout(() => setEmptyCartToast(''), 4000);
+      window.history.replaceState({}, document.title);
+      return () => clearTimeout(timer);
+    }
+  }, [location.state?.emptyCartNotice]);
+
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [qty, setQty] = useState(1);
   const [selectedTopping, setSelectedTopping] = useState('Wortel');
@@ -68,6 +87,10 @@ function MenuPage() {
     localStorage.setItem('dimsum_cart', JSON.stringify(cart));
   }, [cart]);
 
+  useEffect(() => {
+    sessionStorage.removeItem('dimsum_returned_from_payment');
+  }, []);
+
   // Order Limit
   const [orderLimit, setOrderLimit] = useState(null);
   const [limitToast, setLimitToast] = useState(false);
@@ -77,7 +100,7 @@ function MenuPage() {
       .then(data => {
         if (data.success) setOrderLimit(data.data.order_item_limit);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Verify pending order validity with server and check expiry interval
@@ -91,7 +114,11 @@ function MenuPage() {
       }
     };
 
-    fetch(`/api/orders/${pendingOrder.orderId}`)
+    const token = pendingOrder.accessToken || localStorage.getItem('dimsum_current_order_token');
+    const headers = {};
+    if (token) headers['X-Order-Token'] = token;
+
+    fetch(`/api/orders/${pendingOrder.orderId}`, { headers })
       .then(res => res.json())
       .then(data => {
         if (data.success && data.data) {
@@ -99,7 +126,7 @@ function MenuPage() {
             localStorage.removeItem('dimsum_pending_order');
             setPendingOrder(null);
           }
-        } else {
+        } else if (data.status === 404 || data.error?.includes('tidak ditemukan')) {
           localStorage.removeItem('dimsum_pending_order');
           setPendingOrder(null);
         }
@@ -187,13 +214,20 @@ function MenuPage() {
   const [selectedTime, setSelectedTime] = useState(availableTimes[0]);
 
   const [confirmedTime, setConfirmedTime] = useState(() => {
-    return localStorage.getItem('dimsum_time') || null;
+    return getValidPickupTime();
   });
 
+  // Watch for expiry: if the selected pickup time passes while user is browsing, auto-reset
   useEffect(() => {
-    if (confirmedTime) {
-      localStorage.setItem('dimsum_time', confirmedTime);
-    }
+    const checkExpiry = () => {
+      const valid = getValidPickupTime();
+      if (!valid && confirmedTime) {
+        setConfirmedTime(null);
+      }
+    };
+
+    const timer = setInterval(checkExpiry, 5000);
+    return () => clearInterval(timer);
   }, [confirmedTime]);
 
   const orderTypeRef = useRef(null);
@@ -233,13 +267,36 @@ function MenuPage() {
 
         let formattedProducts = [];
         if (data.success) {
-          formattedProducts = data.data.map(p => ({
-            ...p,
-            weight: p.weight || '18-20 Gram/Pcs',
-            description: p.description || '',
-            priceFormatted: `Rp${Number(p.price).toLocaleString('id-ID')}`,
-            image: p.image_url || imgWortel
-          }));
+          formattedProducts = data.data.map(p => {
+            const hasDiscount = Boolean(p.is_discount && p.discount_percent > 0);
+            const activePrice = Number(p.price);
+            const originalPrice = p.original_price ? Number(p.original_price) : activePrice;
+            const discountPercent = p.discount_percent || 0;
+
+            return {
+              ...p,
+              weight: p.weight || '18-20 Gram/Pcs',
+              description: p.description || '',
+              hasDiscount,
+              price: activePrice,
+              originalPrice,
+              discountPercent,
+              priceFormatted: `Rp${activePrice.toLocaleString('id-ID')}`,
+              originalPriceFormatted: `Rp${originalPrice.toLocaleString('id-ID')}`,
+              image: p.image_url || imgWortel
+            };
+          });
+
+          // Sort products: highest discount percentage first, then regular non-promo products
+          formattedProducts.sort((a, b) => {
+            const discountA = a.hasDiscount ? a.discountPercent : 0;
+            const discountB = b.hasDiscount ? b.discountPercent : 0;
+            if (discountB !== discountA) {
+              return discountB - discountA;
+            }
+            return a.name.localeCompare(b.name);
+          });
+
           setProducts(formattedProducts);
 
           setCart(prevCart => {
@@ -315,29 +372,46 @@ function MenuPage() {
       {/* 1. Header & Hero Section */}
       <div className="relative">
         {/* Top Navbar */}
-        <div className="absolute top-0 left-0 w-full flex justify-between items-center px-4 py-4 z-10">
-          <button onClick={() => navigate('/')} className="w-10 h-10 bg-white text-brand-blue rounded-full flex items-center justify-center shadow-sm">
-            <ArrowLeft size={20} strokeWidth={2.5} />
-          </button>
-
-          <div className="flex gap-2 ml-auto">
-            <button className="w-10 h-10 bg-white text-brand-blue rounded-full flex items-center justify-center shadow-sm">
-              <MenuIcon size={20} strokeWidth={2.5} />
+        <div className={`absolute top-0 left-0 w-full px-4 pt-4 pb-2 transition-all duration-300 ${isMenuOpen ? 'z-[110]' : 'z-50'}`}>
+          <div className="flex justify-between items-center relative z-50">
+            <button
+              onClick={() => navigate('/')}
+              className="w-12 h-12 bg-white text-brand-blue rounded-full flex items-center justify-center shadow-md cursor-pointer hover:bg-white/90 active:scale-95 transition-all"
+            >
+              <ArrowLeft size={20} strokeWidth={2.5} />
             </button>
+
+            <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-md hover:bg-white/90 active:scale-95 transition-all cursor-pointer">
+              <Hamburger
+                toggled={isMenuOpen}
+                toggle={setIsMenuOpen}
+                size={20}
+                color="#4E8298"
+                rounded
+                label="Buka Menu"
+              />
+            </div>
           </div>
+
+          {/* Expand-Down Navbar Collapse */}
+          <HeaderDropdown
+            isOpen={isMenuOpen}
+            onClose={() => setIsMenuOpen(false)}
+            variant="white"
+          />
         </div>
 
         {/* Hero Banner */}
-        <div className="w-full">
+        <div className="w-full relative z-0">
           <img src={bannerMenu} alt="Menu Banner" className="w-full h-auto object-cover" />
         </div>
       </div>
 
-      {/* 2. Location Card */}
-      <div className="px-4 -mt-10 relative z-20">
+      {/* 2. Location Card (Layered on top of banner without text cut-off) */}
+      <div className="px-4 -mt-6 relative z-30">
         <button
           onClick={() => navigate('/outlet')}
-          className="w-full text-left bg-white rounded-[20px] p-5 shadow-card flex justify-between items-center transition-transform active:scale-95"
+          className="w-full text-left bg-white rounded-[20px] p-5 shadow-elevated flex justify-between items-center transition-transform active:scale-95"
         >
           <div className="flex flex-col gap-1">
             <h2 className="font-body font-bold text-[16px] text-brand-blue">
@@ -404,27 +478,54 @@ function MenuPage() {
                 setQty(productQty || 1);
                 setSelectedTopping('Wortel');
               }}
-              className={`bg-white rounded-[16px] shadow-sm flex p-3 cursor-pointer border ${productQty > 0
-                ? 'border-gray-100 border-r-4 border-r-brand-gold'
-                : 'border-gray-100 border-r-4 border-r-transparent'
+              className={`bg-white rounded-[16px] shadow-sm flex p-3 cursor-pointer transition-all ${
+                product.hasDiscount
+                  ? productQty > 0
+                    ? 'border-[1.2px] border-brand-red/40 border-r-4 border-r-brand-red'
+                    : 'border-[1.2px] border-brand-red/40'
+                  : productQty > 0
+                  ? 'border border-gray-100 border-r-4 border-r-brand-gold'
+                  : 'border border-gray-100 border-r-4 border-r-transparent'
                 }`}
             >
               {/* Product Image Box */}
-              <div className="w-[84px] h-[84px] bg-gray-100 rounded-[12px] flex items-center justify-center shrink-0 overflow-hidden">
-                <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+              <div className="relative w-[84px] h-[84px] shrink-0">
+                <div className="w-full h-full bg-gray-100 rounded-[12px] overflow-hidden flex items-center justify-center">
+                  <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                </div>
+                {product.hasDiscount && (
+                  <span className="absolute -top-2 -left-2 bg-brand-red text-white border-2 border-white rounded-full px-1.5 py-0.5 shadow-md flex items-center gap-0.5 z-10">
+                    <Flame size={10} className="fill-white text-white shrink-0 -skew-x-[14deg] -rotate-[6deg] transform" />
+                    <span className="font-body font-black italic text-[9.5px] leading-none tracking-tight">
+                      {product.discountPercent}%
+                    </span>
+                  </span>
+                )}
               </div>
               {/* Product Info */}
-              <div className="pl-3 flex flex-col flex-grow justify-center">
-                <h4 className="font-body font-bold text-[14px] text-brand-blue leading-tight">
+              <div className="pl-3 flex flex-col flex-grow justify-center min-w-0">
+                <h4 className="font-body font-bold text-[14px] text-brand-blue leading-tight truncate">
                   {product.name}
                 </h4>
                 <span className="font-body font-medium text-[11px] text-text-secondary mt-0.5">
                   {product.weight}
                 </span>
-                <div className="flex justify-between items-center mt-2">
-                  <span className="font-body font-bold text-[14px] text-brand-gold">
-                    {product.priceFormatted}
-                  </span>
+                <div className="flex justify-between items-end mt-1.5">
+                  <div className="flex flex-col">
+                    {product.hasDiscount && (
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="font-body font-medium text-[11px] text-text-secondary line-through">
+                          {product.originalPriceFormatted}
+                        </span>
+                        <span className="bg-brand-red/10 text-brand-red border border-brand-red/25 font-body font-bold text-[10px] px-1.5 py-0.2 rounded-[4px] leading-tight">
+                          -{product.discountPercent}%
+                        </span>
+                      </div>
+                    )}
+                    <span className="font-body font-black text-[14px] text-brand-gold leading-tight">
+                      {product.priceFormatted}
+                    </span>
+                  </div>
 
                   {productQty === 0 ? (
                     <button
@@ -515,6 +616,7 @@ function MenuPage() {
               if (!confirmedTime) {
                 setIsHighlighting(true);
                 orderTypeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setIsTimeModalOpen(true);
                 setTimeout(() => setIsHighlighting(false), 2000);
               } else {
                 // Pass total and items to checkout
@@ -568,7 +670,22 @@ function MenuPage() {
               <h1 className="font-heading font-black text-[22px] text-text-primary uppercase leading-tight">
                 {selectedProduct.name}
               </h1>
-              <p className="font-body font-black text-[18px] text-text-primary mt-1">{selectedProduct.priceFormatted}</p>
+              {selectedProduct.hasDiscount ? (
+                <div className="mt-1.5 flex items-baseline gap-2 flex-wrap">
+                  <span className="font-body font-black text-[20px] text-brand-gold">
+                    {selectedProduct.priceFormatted}
+                  </span>
+                  <span className="font-body font-medium text-[13px] text-text-secondary line-through">
+                    {selectedProduct.originalPriceFormatted}
+                  </span>
+                  <span className="bg-brand-red/10 text-brand-red border border-brand-red/25 font-body font-bold text-[11px] px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Flame size={12} className="fill-brand-red text-brand-red shrink-0 -skew-x-[14deg] -rotate-[6deg] transform" />
+                    <span className="italic font-black">Diskon {selectedProduct.discountPercent}%</span>
+                  </span>
+                </div>
+              ) : (
+                <p className="font-body font-black text-[18px] text-text-primary mt-1">{selectedProduct.priceFormatted}</p>
+              )}
               <p className="font-body font-medium text-[12px] text-text-secondary mt-3 leading-relaxed">
                 {selectedProduct.description || `Dimsum premium ${selectedProduct.weight}. Tersedia dalam kemasan higienis, diproduksi segar setiap hari.`}
               </p>
@@ -698,7 +815,7 @@ function MenuPage() {
           <div className={`relative bg-white w-full max-w-[480px] mx-auto rounded-t-[24px] shadow-2xl flex flex-col overscroll-contain ${isTimeModalClosing ? 'animate-slide-down' : 'animate-slide-up'}`}>
             {/* Header */}
             <div className="p-5 flex justify-between items-center border-b border-gray-100">
-              <h2 className="font-body font-black text-[16px] text-text-primary">Select Pick Up Time</h2>
+              <h2 className="font-body font-black text-[16px] text-text-primary">Pilih waktu Pick Up</h2>
               <button
                 onClick={closeTimeModal}
                 className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-text-primary"
@@ -748,7 +865,8 @@ function MenuPage() {
             <div className="p-4 border-t border-gray-100">
               <button
                 onClick={() => {
-                  setConfirmedTime(`${selectedDate}, ${selectedTime}`);
+                  const label = savePickupTime(selectedDate, selectedTime, availableDates);
+                  setConfirmedTime(label);
                   closeTimeModal();
                 }}
                 className="w-full bg-brand-gold text-white font-body font-black text-[15px] py-3.5 rounded-[16px] shadow-elevated"
@@ -823,6 +941,31 @@ function MenuPage() {
             </div>
             <button
               onClick={() => setLimitToast(false)}
+              className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white shrink-0 transition-colors"
+            >
+              <X size={14} strokeWidth={2.5} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 12. Empty Cart Route Guard Toast */}
+      {emptyCartToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-[400px] animate-toast-in">
+          <div className="bg-brand-blue/95 backdrop-blur-xs text-white px-4 py-3 rounded-[16px] shadow-elevated flex items-center justify-between gap-3 border border-white/20">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <ShoppingBag size={18} className="text-white" strokeWidth={2.5} />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="font-heading font-black text-[14px] leading-tight">Keranjang Belanja Kosong</span>
+                <span className="font-body font-medium text-[12px] text-white/90 leading-tight mt-0.5">
+                  {emptyCartToast}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => setEmptyCartToast('')}
               className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white shrink-0 transition-colors"
             >
               <X size={14} strokeWidth={2.5} />

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CheckCircle2, RefreshCw, Check, XCircle, Download } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { updateOrderStatusInHistory, getOrderHistory } from '../utils/orderHistory';
 
 export default function OrderStatus() {
   const location = useLocation();
@@ -40,7 +41,7 @@ export default function OrderStatus() {
 
         const pngUrl = canvas.toDataURL('image/png');
         const a = document.createElement('a');
-        a.download = `QR-Pengambilan-MakanDimsum-${orderId || 'order'}.png`;
+        a.download = `QR-Pengambilan-MakanDimsum-${orderId || 'pickup'}.png`;
         a.href = pngUrl;
         document.body.appendChild(a);
         a.click();
@@ -60,10 +61,15 @@ export default function OrderStatus() {
     if (!orderId) return;
     if (isManual) setIsRefreshing(true);
     try {
+      const historyOrder = getOrderHistory().find(o => o.orderId === orderId);
+      const token = location.state?.accessToken || historyOrder?.accessToken || localStorage.getItem('dimsum_current_order_token');
+      const headers = {};
+      if (token) headers['X-Order-Token'] = token;
+
       // Manual refresh calls sync-payment fallback; auto-poll calls lightweight local DB endpoint
       const endpoint = isManual ? `/api/orders/${orderId}/sync-payment` : `/api/orders/${orderId}`;
       const method = isManual ? 'POST' : 'GET';
-      const res = await fetch(endpoint, { method });
+      const res = await fetch(endpoint, { method, headers });
       const data = await res.json();
       if (data.success && data.data) {
         const s = data.data.status;
@@ -71,10 +77,13 @@ export default function OrderStatus() {
         if (s === 'paid' || s === 'fulfilling' || s === 'completed') {
           localStorage.removeItem('dimsum_pending_order');
           localStorage.removeItem('dimsum_cart');
+          localStorage.removeItem('dimsum_checkout_items');
+          localStorage.removeItem('dimsum_order_notes');
         }
         if (data.data.qr_token) {
           setQrToken(data.data.qr_token);
         }
+        updateOrderStatusInHistory(orderId, s, { qrToken: data.data.qr_token });
       }
     } catch (e) {
       console.error("Failed to check order status:", e);
@@ -143,6 +152,7 @@ export default function OrderStatus() {
     localStorage.removeItem('dimsum_cart');
     localStorage.removeItem('dimsum_checkout_items');
     localStorage.removeItem('dimsum_time');
+    localStorage.removeItem('dimsum_order_notes');
     localStorage.removeItem('dimsum_pending_order');
     localStorage.removeItem('dimsum_applied_voucher');
     localStorage.removeItem('dimsum_payment_method');

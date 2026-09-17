@@ -24,6 +24,7 @@ import {
   AlertCircle,
   X
 } from 'lucide-react';
+import { saveOrderToHistory, updateOrderStatusInHistory } from '../utils/orderHistory';
 
 export default function Payment() {
   const navigate = useNavigate();
@@ -32,6 +33,36 @@ export default function Payment() {
   const cartItems = location.state?.cartItems || [];
   const total = location.state?.totalPrice || 0;
   const orderNotes = location.state?.orderNotes || localStorage.getItem('dimsum_order_notes') || '';
+
+  // Security Route Guard: Prevent direct URL navigation without active order or cart items
+  useEffect(() => {
+    const savedPending = localStorage.getItem('dimsum_pending_order');
+    let hasValidPending = false;
+    if (savedPending) {
+      try {
+        const parsed = JSON.parse(savedPending);
+        if (parsed.orderId && (!parsed.expiresAt || new Date(parsed.expiresAt).getTime() > Date.now())) {
+          hasValidPending = true;
+        }
+      } catch (e) {}
+    }
+
+    const hasCart = (cartItems && cartItems.length > 0) || (() => {
+      try {
+        const chk = localStorage.getItem('dimsum_checkout_items');
+        return chk ? JSON.parse(chk).length > 0 : false;
+      } catch {
+        return false;
+      }
+    })();
+
+    if (!hasValidPending && !hasCart) {
+      navigate('/menu', { 
+        replace: true, 
+        state: { emptyCartNotice: 'Keranjang belanja Anda masih kosong. Silakan pilih menu terlebih dahulu.' } 
+      });
+    }
+  }, [cartItems, navigate]);
 
   const [customerName, setCustomerName] = useState(() => localStorage.getItem('dimsum_customer_name') || '');
   const [customerPhone, setCustomerPhone] = useState(() => localStorage.getItem('dimsum_customer_phone') || '');
@@ -67,6 +98,13 @@ export default function Payment() {
 
   useEffect(() => {
     localStorage.removeItem('dimsum_payment_method');
+    const handlePopState = () => {
+      sessionStorage.setItem('dimsum_returned_from_payment', 'true');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, []);
 
   const showToast = (msg) => {
@@ -222,7 +260,18 @@ export default function Payment() {
     }
   });
 
-  const discountAmount = appliedVoucher ? Math.min(appliedVoucher.discount || 0, total) : 0;
+  const discountAmount = React.useMemo(() => {
+    if (!appliedVoucher) return 0;
+    if (appliedVoucher.discount_type === 'percent') {
+      const pct = Number(appliedVoucher.discount_value || 0);
+      let disc = (pct / 100) * total;
+      if (appliedVoucher.max_discount !== null && appliedVoucher.max_discount !== undefined) {
+        disc = Math.min(disc, Number(appliedVoucher.max_discount));
+      }
+      return Math.round(Math.min(disc, total));
+    }
+    return Math.round(Math.min(Number(appliedVoucher.discount || appliedVoucher.discount_value || 0), total));
+  }, [appliedVoucher, total]);
   const finalTotal = Math.max(0, total - discountAmount);
 
   // Countdown timer & expiry state
@@ -325,7 +374,15 @@ export default function Payment() {
 
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/orders/${orderId}`);
+        const pendingRaw = localStorage.getItem('dimsum_pending_order');
+        let orderToken = localStorage.getItem('dimsum_current_order_token');
+        if (!orderToken && pendingRaw) {
+          try { orderToken = JSON.parse(pendingRaw).accessToken; } catch {}
+        }
+        const headers = {};
+        if (orderToken) headers['X-Order-Token'] = orderToken;
+
+        const res = await fetch(`/api/orders/${orderId}`, { headers });
         const data = await res.json();
         if (data.success && data.data) {
           const s = data.data.status;
@@ -333,10 +390,14 @@ export default function Payment() {
             clearInterval(pollInterval);
             localStorage.removeItem('dimsum_pending_order');
             localStorage.removeItem('dimsum_cart');
-            navigate('/order-status', { state: { orderId } });
+            localStorage.removeItem('dimsum_checkout_items');
+            localStorage.removeItem('dimsum_order_notes');
+            updateOrderStatusInHistory(orderId, s, { qrToken: data.data.qr_token });
+            navigate('/order-status', { state: { orderId, accessToken: orderToken } });
           } else if (s === 'cancelled') {
             setIsExpired(true);
             localStorage.removeItem('dimsum_pending_order');
+            updateOrderStatusInHistory(orderId, 'cancelled');
           }
         }
       } catch (err) {
@@ -363,38 +424,69 @@ export default function Payment() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customer: { name: customerName, phone: customerPhone, email: customerEmail },
-          items: cartItems.map(item => ({ product_id: item.id, quantity: item.quantity }))
+          items: cartItems.map(item => ({ product_id: item.id, quantity: item.quantity })),
+          notes: orderNotes ? orderNotes.trim() : null,
+          voucher_code: appliedVoucher?.code || null,
+          pickup_time: confirmedTime || null
         })
       });
       const data = await response.json();
       if (data.success) {
         const orderObj = data.data.order;
         const paywuzObj = data.data.paywuz;
+        const token = orderObj?.access_token;
+        if (token) {
+          localStorage.setItem('dimsum_current_order_token', token);
+        }
         const amt = Math.round(Number(orderObj?.total_amount || paywuzObj?.amount || finalTotal || total || 0));
         const totalItemsCount = cartItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
         const expiresAt = paywuzObj?.expiresAt || new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
         const pendingObj = {
           orderId: orderObj.id,
+          accessToken: token,
           qrisData: paywuzObj,
           totalAmount: amt,
           totalItems: totalItemsCount,
           confirmedTime,
           customerName,
           customerPhone,
+          notes: orderNotes ? orderNotes.trim() : null,
           createdAt: new Date().toISOString(),
           expiresAt: expiresAt
         };
         localStorage.setItem('dimsum_pending_order', JSON.stringify(pendingObj));
+        localStorage.removeItem('dimsum_order_notes');
+
+        // Record order into local order history
+        saveOrderToHistory({
+          orderId: orderObj.id,
+          accessToken: token,
+          createdAt: new Date().toISOString(),
+          status: 'pending_payment',
+          totalAmount: amt,
+          totalItems: totalItemsCount,
+          confirmedTime: confirmedTime || 'Pick Up',
+          customerName,
+          customerPhone,
+          notes: orderNotes ? orderNotes.trim() : null,
+          items: cartItems.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            image_url: item.image_url
+          }))
+        });
 
         setQrisData(paywuzObj);
         setOrderId(orderObj.id);
         setPayableAmount(amt);
       } else {
-        alert(data.error);
+        alert(data.message || data.error || "Gagal membuat pesanan. Silakan periksa kembali keranjang dan voucher Anda.");
       }
     } catch (e) {
-      alert("Failed to process payment");
+      alert("Gagal memproses pembayaran. Periksa koneksi internet Anda.");
     } finally {
       setIsLoading(false);
     }
@@ -647,27 +739,54 @@ export default function Payment() {
     );
   }
 
-  return (
-    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-[#F8F9FA] flex flex-col">
-      {/* 1. Header */}
-      <div className="bg-white flex items-center justify-between p-4 sticky top-0 z-50 border-b border-gray-100">
-        <button onClick={() => {
-          sessionStorage.removeItem('dimsum_promo_return_method');
-          navigate(-1);
-        }} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
-          <ArrowLeft size={24} className="text-text-primary" />
-        </button>
-        <h1 className="font-body font-black text-[18px] text-text-primary">
-          Pembayaran
-        </h1>
-        <div className="w-8"></div> {/* Spacer for centering */}
-      </div>
+  // Fallback while redirecting if directly accessed with empty cart and no pending order
+  const savedPending = localStorage.getItem('dimsum_pending_order');
+  const hasCart = (cartItems && cartItems.length > 0) || (() => {
+    try {
+      const chk = localStorage.getItem('dimsum_checkout_items');
+      return chk ? JSON.parse(chk).length > 0 : false;
+    } catch {
+      return false;
+    }
+  })();
 
-      {/* Progress Bar (Full) */}
-      <div className="w-full bg-brand-gold h-1"></div>
+  if (!qrisData && !savedPending && !hasCart) {
+    return (
+      <div className="max-w-[480px] mx-auto min-h-screen bg-[#F8F9FA] flex items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-brand-gold border-t-transparent rounded-full animate-spin"></div>
+          <p className="font-body font-bold text-[14px] text-text-secondary">Memeriksa pesanan...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-clip bg-[#F8F9FA] flex flex-col">
+      {/* 1. Sticky Navbar & Progress Bar */}
+      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-xs">
+        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+          <button onClick={() => {
+            sessionStorage.removeItem('dimsum_promo_return_method');
+            sessionStorage.setItem('dimsum_returned_from_payment', 'true');
+            navigate(-1);
+          }} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
+            <ArrowLeft size={24} className="text-text-primary" />
+          </button>
+          <h1 className="font-body font-black text-[18px] text-text-primary">
+            Pembayaran
+          </h1>
+          <div className="w-8"></div> {/* Spacer for centering */}
+        </div>
+
+        {/* Progress Bar (Full with matching ease animation) */}
+        <div className="w-full bg-gray-200 h-1 overflow-hidden">
+          <div className="bg-brand-gold h-full animate-bar-fill-full"></div>
+        </div>
+      </header>
 
       {/* 2. Scrollable Content */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar pb-40">
+      <div className="flex-1 pb-40">
         
         {/* Order Type */}
         <div className="bg-white px-4 py-4 mb-2">
@@ -779,57 +898,6 @@ export default function Payment() {
 
       {/* 3. Sticky Bottom Bar */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white rounded-t-[24px] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-[100]">
-        <div 
-          onClick={() => {
-            if (selectedPaymentMethod) {
-              sessionStorage.setItem('dimsum_promo_return_method', selectedPaymentMethod);
-            }
-            navigate('/vouchers', { 
-              state: { 
-                ...location.state, 
-                confirmedTime, 
-                cartItems, 
-                totalPrice: total, 
-                orderNotes, 
-                selectedPaymentMethod 
-              } 
-            });
-          }}
-          className="p-4 flex justify-between items-center border-b border-gray-50 bg-brand-gold/5 rounded-t-[24px] cursor-pointer hover:bg-brand-gold/10 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <Ticket size={18} className="text-brand-gold" />
-            {appliedVoucher ? (
-              <div className="flex items-center gap-2">
-                <span className="font-body font-bold text-[13px] text-brand-gold">
-                  Voucher: {appliedVoucher.code}
-                </span>
-                <span className="bg-green-100 text-green-700 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                  -Rp{discountAmount.toLocaleString('id-ID')}
-                </span>
-              </div>
-            ) : (
-              <span className="font-body font-bold text-[13px] text-brand-gold">Add Promos or Vouchers</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {appliedVoucher && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  localStorage.removeItem('dimsum_applied_voucher');
-                  setAppliedVoucher(null);
-                }}
-                className="text-red-500 font-body font-bold text-[11px] hover:underline mr-1"
-              >
-                Remove
-              </button>
-            )}
-            <ChevronRight size={18} className="text-text-primary" />
-          </div>
-        </div>
-        
         <div className="p-5 flex justify-between items-center h-[88px] pb-6">
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5 cursor-pointer">
