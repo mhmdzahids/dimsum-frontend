@@ -269,6 +269,57 @@
       width: 50%;
     }
   }
+
+  --animate-bounce-happy: bounce-happy 1.4s ease-in-out infinite;
+
+  @keyframes bounce-happy {
+    0%, 100% {
+      transform: translateY(0) scale(1, 1);
+    }
+    30% {
+      transform: translateY(-16px) scale(0.95, 1.06);
+    }
+    50% {
+      transform: translateY(0) scale(1.06, 0.94);
+    }
+    65% {
+      transform: translateY(-8px) scale(0.98, 1.02);
+    }
+    80% {
+      transform: translateY(0) scale(1.02, 0.98);
+    }
+  }
+
+  --animate-steam: steam 2.2s ease-out infinite;
+
+  @keyframes steam {
+    0% {
+      transform: translateY(0) scaleX(1);
+      opacity: 0;
+    }
+    30% {
+      opacity: 0.65;
+    }
+    70% {
+      transform: translateY(-18px) scaleX(1.3) rotate(6deg);
+      opacity: 0.35;
+    }
+    100% {
+      transform: translateY(-30px) scaleX(1.6) rotate(-6deg);
+      opacity: 0;
+    }
+  }
+
+  --animate-wiggle-hand: wiggle-hand 0.8s ease-in-out infinite;
+
+  @keyframes wiggle-hand {
+    0%, 100% {
+      transform: rotate(0deg);
+    }
+    50% {
+      transform: rotate(22deg);
+    }
+  }
 }
 
 @layer utilities {

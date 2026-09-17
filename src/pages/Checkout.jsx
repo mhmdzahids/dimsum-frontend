@@ -682,6 +682,7 @@ export default function Checkout() {
               }
               sessionStorage.removeItem('dimsum_promo_return_method');
               localStorage.removeItem('dimsum_payment_method');
+              window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
               navigate('/payment', { 
                 state: { 
                   confirmedTime: confirmedTime, 

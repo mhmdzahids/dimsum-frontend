@@ -1,8 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { CheckCircle2, RefreshCw, Check, XCircle, Download } from 'lucide-react';
+import { 
+  CheckCircle2, 
+  RefreshCw, 
+  Check, 
+  XCircle, 
+  Download, 
+  Home as HomeIcon 
+} from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { updateOrderStatusInHistory, getOrderHistory } from '../utils/orderHistory';
+import HappyDimsumCharacter from '../components/HappyDimsumCharacter';
 
 export default function OrderStatus() {
   const location = useLocation();
@@ -11,9 +19,17 @@ export default function OrderStatus() {
   
   const [status, setStatus] = useState('Checking...');
   const [qrToken, setQrToken] = useState(null);
+  const [orderDetail, setOrderDetail] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [isVerifyingTransition, setIsVerifyingTransition] = useState(false);
+  const isTransitioningRef = useRef(false);
   const qrCodeRef = useRef(null);
+
+  // Auto scroll to top on mount and whenever status changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  }, [status]);
 
   const handleDownloadQR = () => {
     try {
@@ -73,7 +89,7 @@ export default function OrderStatus() {
       const data = await res.json();
       if (data.success && data.data) {
         const s = data.data.status;
-        setStatus(s);
+        setOrderDetail(data.data);
         if (s === 'paid' || s === 'fulfilling' || s === 'completed') {
           localStorage.removeItem('dimsum_pending_order');
           localStorage.removeItem('dimsum_cart');
@@ -84,6 +100,20 @@ export default function OrderStatus() {
           setQrToken(data.data.qr_token);
         }
         updateOrderStatusInHistory(orderId, s, { qrToken: data.data.qr_token });
+
+        // If cashier just scanned QR and status changed to completed: show branded loading screen transition first!
+        if (s === 'completed' && (status === 'paid' || status === 'fulfilling') && !isTransitioningRef.current) {
+          isTransitioningRef.current = true;
+          setIsVerifyingTransition(true);
+          window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+          setTimeout(() => {
+            setIsVerifyingTransition(false);
+            setStatus('completed');
+            window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+          }, 900);
+        } else if (!isTransitioningRef.current) {
+          setStatus(s);
+        }
       }
     } catch (e) {
       console.error("Failed to check order status:", e);
@@ -117,14 +147,15 @@ export default function OrderStatus() {
     return () => clearTimeout(returnTimer);
   }, [orderId, navigate, location.state]);
 
+  // Polling effect: actively polls while unpaid OR while waiting for cashier QR scan!
   useEffect(() => {
     if (!orderId) return;
     
     // Initial fetch
     checkStatus(false);
 
-    // If already finalized, do not schedule polling
-    if (status === 'paid' || status === 'fulfilling' || status === 'completed' || status === 'cancelled') {
+    // Stop polling only when final state is reached: completed or cancelled
+    if (status === 'completed' || status === 'cancelled') {
       return;
     }
 
@@ -133,11 +164,11 @@ export default function OrderStatus() {
 
     const scheduleNextCheck = () => {
       attempts++;
-      // Stop polling after ~3 minutes (max 25 attempts)
-      if (attempts > 25) return;
+      // Stop polling after ~15 minutes of idle
+      if (attempts > 360) return;
 
-      // 4s for the first 12 checks (~48s), then 8s thereafter
-      const delay = attempts <= 12 ? 4000 : 8000;
+      // While waiting for cashier pickup scan (paid or fulfilling), check every 2.5s for instant response
+      const delay = (status === 'paid' || status === 'fulfilling') ? 2500 : (attempts <= 12 ? 4000 : 8000);
       timerId = setTimeout(async () => {
         await checkStatus(false);
         scheduleNextCheck();
@@ -160,20 +191,67 @@ export default function OrderStatus() {
   };
 
   if (!orderId) {
-    return <div className="p-8 text-center text-text-secondary">No order ID found</div>;
+    return (
+      <div className="max-w-[480px] mx-auto min-h-screen bg-bg-cream flex flex-col items-center justify-center p-6 text-center">
+        <p className="font-body font-bold text-text-secondary mb-4">ID Pesanan tidak ditemukan</p>
+        <button 
+          onClick={() => navigate('/')} 
+          className="px-6 py-2.5 bg-brand-gold text-white font-bold rounded-xl shadow-elevated"
+        >
+          Kembali ke Beranda
+        </button>
+      </div>
+    );
+  }
+
+  // Branded Loading Screen transition right after QR is scanned by cashier
+  // (Identical style to Home -> Menu transition: gold spinner, cream bg, pulsing text)
+  if (isVerifyingTransition) {
+    return (
+      <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl bg-bg-cream flex flex-col items-center justify-center z-50 animate-fade-in">
+        <div className="w-12 h-12 border-4 border-brand-gold border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-4 font-body font-bold text-[14px] text-brand-blue animate-pulse">
+          Memverifikasi Pengambilan...
+        </p>
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-[#F8F9FA] flex flex-col items-center pt-16 px-6 pb-12">
-      <h1 className="font-body font-black text-[22px] mb-6 text-text-primary">Order Status</h1>
+    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-bg-cream flex flex-col items-center pt-8 px-5 pb-16">
       
-      <div className="bg-white p-6 rounded-[24px] shadow-elevated w-full max-w-[340px] flex flex-col items-center">
+      {/* Top Brand Bar */}
+      <div className="w-full flex items-center justify-between mb-4 px-1">
+        <button
+          onClick={handleBackHome}
+          className="w-10 h-10 rounded-full bg-white text-brand-blue shadow-sm flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all"
+          title="Kembali ke Beranda"
+        >
+          <HomeIcon size={18} />
+        </button>
+        <span className="font-heading font-black text-[17px] text-brand-blue tracking-wide">
+          Status Pesanan
+        </span>
+        <button
+          onClick={() => checkStatus(true)}
+          disabled={isRefreshing}
+          className="w-10 h-10 rounded-full bg-white text-brand-blue shadow-sm flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all disabled:opacity-50"
+          title="Perbarui Status"
+        >
+          <RefreshCw size={17} className={isRefreshing ? "animate-spin text-brand-gold" : ""} />
+        </button>
+      </div>
+
+      {/* Main Status Container */}
+      <div className="bg-white p-6 rounded-[28px] shadow-elevated w-full max-w-[360px] flex flex-col items-center border border-gray-100 relative overflow-hidden animate-fade-in">
+        
+        {/* CASE 1: ORDER PAID / WAITING FOR CASHIER PICKUP SCAN */}
         {status === 'paid' || status === 'fulfilling' ? (
           <>
             {/* Animated Checkmark Badge */}
-            <div className="flex items-center justify-center mb-3">
+            <div className="flex items-center justify-center mb-2">
               <svg 
-                className="w-16 h-16 text-green-500 animate-check-bounce"
+                className="w-14 h-14 text-green-500 animate-check-bounce"
                 viewBox="0 0 52 52" 
                 fill="none" 
                 xmlns="http://www.w3.org/2000/svg"
@@ -206,36 +284,50 @@ export default function OrderStatus() {
               </svg>
             </div>
 
-            <h2 className="font-body font-bold text-[18px] mb-1 text-text-primary">Pembayaran Berhasil!</h2>
-            <p className="font-body text-[13px] text-center text-text-secondary mb-4">
-              Tunjukkan QR Code ini ke kasir untuk mengambil pesanan Anda:
+            <h2 className="font-heading font-black text-[20px] text-text-primary text-center mb-1">
+              Pembayaran Berhasil!
+            </h2>
+            <p className="font-body text-[12.5px] text-center text-text-secondary mb-3 leading-relaxed">
+              Tunjukkan QR Code ini ke kasir di outlet untuk mengambil pesananmu:
             </p>
 
+            {/* QR Code Container with subtle gold accent border */}
             <div 
               ref={qrCodeRef}
-              className="bg-white p-4 rounded-[20px] border border-gray-100 shadow-sm flex flex-col items-center justify-center w-full my-1"
+              className="bg-white p-4 rounded-[22px] border-2 border-dashed border-brand-gold/30 shadow-card flex flex-col items-center justify-center w-full my-1 relative group"
             >
               {qrToken ? (
-                <QRCodeSVG 
-                  value={qrToken} 
-                  size={200}
-                  level="M"
-                />
+                <>
+                  <QRCodeSVG 
+                    value={qrToken} 
+                    size={200}
+                    level="M"
+                    includeMargin={true}
+                  />
+                  <span className="font-mono text-[11px] text-text-secondary mt-2 tracking-wider">
+                    #{orderId.slice(0, 8)}...
+                  </span>
+                </>
               ) : (
                 <div className="w-[200px] h-[200px] flex flex-col items-center justify-center text-text-secondary gap-2">
-                  <RefreshCw size={24} className="text-brand-gold animate-spin" />
-                  <span className="text-[12px]">Memuat QR Code...</span>
+                  <RefreshCw size={26} className="text-brand-gold animate-spin" />
+                  <span className="text-[12px] font-medium">Menyiapkan QR Code...</span>
                 </div>
               )}
             </div>
 
+            {/* Live Real-time Listening Indicator */}
+            <div className="flex items-center gap-2 py-1.5 px-3.5 rounded-full bg-amber-50 border border-amber-200/80 text-amber-800 text-[11px] font-semibold my-3 shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
+              <span>Menunggu kasir memindai QR Code...</span>
+            </div>
 
-            {/* Action Buttons: Unduh QR & Kembali ke Beranda */}
+            {/* Action Buttons: Unduh QR & Kembali */}
             {qrToken && (
               <button 
                 type="button"
                 onClick={handleDownloadQR}
-                className="mt-3 w-full py-3 px-4 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue/20 border border-brand-blue/30 font-body font-bold text-[13px] rounded-[14px] shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2"
+                className="w-full py-3 px-4 bg-brand-blue/10 hover:bg-brand-blue/15 text-brand-blue border border-brand-blue/25 font-body font-bold text-[13px] rounded-[14px] shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2"
               >
                 {downloadSuccess ? (
                   <>
@@ -245,7 +337,7 @@ export default function OrderStatus() {
                 ) : (
                   <>
                     <Download size={16} strokeWidth={2.2} />
-                    <span>Unduh QR Code</span>
+                    <span>Unduh QR Code ke Galeri</span>
                   </>
                 )}
               </button>
@@ -253,17 +345,43 @@ export default function OrderStatus() {
 
             <button 
               onClick={handleBackHome} 
-              className="mt-2.5 w-full py-3 bg-brand-gold text-white font-body font-bold text-[14px] rounded-[14px] shadow-elevated transition-transform active:scale-95"
+              className="mt-2.5 w-full py-3 bg-brand-gold hover:bg-brand-gold-dark text-white font-body font-bold text-[14px] rounded-[14px] shadow-elevated transition-transform active:scale-95"
             >
               Kembali ke Beranda
             </button>
           </>
         ) : status === 'completed' ? (
-          <>
-            <CheckCircle2 size={56} className="text-brand-gold mb-3" />
-            <h2 className="font-body font-bold text-[18px] mb-1 text-text-primary">Pesanan Selesai!</h2>
-            <p className="font-body text-[13px] text-center text-text-secondary mb-6">
-              Pesanan telah berhasil diverifikasi dan diambil. Selamat menikmati santapan Anda!
+          /* CASE 2: QR SCANNED & PICKUP COMPLETED — SIMPLE CELEBRATION SCREEN */
+          <div className="flex flex-col items-center w-full animate-fade-in text-center py-2">
+            
+            {/* Happy Dimsum Bao Character Animation */}
+            <div className="my-2">
+              <HappyDimsumCharacter size={170} />
+            </div>
+
+            {/* Joyful Headline & Thank You Text */}
+            <h1 className="font-heading font-black text-[22px] sm:text-[24px] text-brand-blue tracking-wide leading-tight mb-2">
+              Terima Kasih Sudah Order!
+            </h1>
+            <p className="font-body font-medium text-[13px] text-text-secondary leading-relaxed max-w-[290px] mb-6">
+              Pesanan dimsum hangatmu telah berhasil diverifikasi oleh kasir. Selamat menikmati kelezatan spesial dari Makan Dimsum Indonesia!
+            </p>
+
+            {/* Single clean action button */}
+            <button 
+              onClick={handleBackHome} 
+              className="w-full py-3.5 bg-brand-gold hover:bg-brand-gold-dark text-white font-body font-bold text-[14px] rounded-[14px] shadow-elevated transition-transform active:scale-95 cursor-pointer"
+            >
+              Kembali ke Beranda
+            </button>
+          </div>
+        ) : status === 'cancelled' ? (
+          /* CASE 3: CANCELLED */
+          <div className="flex flex-col items-center w-full py-2">
+            <XCircle size={56} className="text-red-500 mb-3 animate-bounce" />
+            <h2 className="font-heading font-black text-[18px] mb-1 text-text-primary">Pesanan Dibatalkan</h2>
+            <p className="font-body text-[13px] text-center text-text-secondary mb-6 leading-relaxed">
+              Pesanan ini telah dibatalkan atau waktu pembayaran telah habis.
             </p>
             <button 
               onClick={handleBackHome} 
@@ -271,38 +389,28 @@ export default function OrderStatus() {
             >
               Kembali ke Beranda
             </button>
-          </>
-        ) : status === 'cancelled' ? (
-          <>
-            <XCircle size={56} className="text-red-500 mb-3" />
-            <h2 className="font-body font-bold text-[18px] mb-1 text-text-primary">Order Cancelled</h2>
-            <p className="font-body text-[13px] text-center text-text-secondary mb-6">
-              Pesanan ini telah dibatalkan atau kedaluwarsa.
-            </p>
-            <button 
-              onClick={handleBackHome} 
-              className="w-full py-3 border border-gray-300 text-text-primary font-body font-bold text-[14px] rounded-[14px] transition-transform active:scale-95"
-            >
-              Kembali ke Beranda
-            </button>
-          </>
+          </div>
         ) : (
-          <>
+          /* CASE 4: CHECKING / REFRESHING */
+          <div className="flex flex-col items-center w-full py-4">
             <RefreshCw size={44} className="text-brand-gold animate-spin mb-4" />
-            <h2 className="font-body font-bold text-[18px] mb-2 text-text-primary">Waiting for Payment...</h2>
-            <p className="font-body text-[14px] text-center text-text-secondary mb-4">
-              Status Anda saat ini: <strong>{status}</strong>
+            <h2 className="font-heading font-black text-[18px] mb-1 text-text-primary text-center">
+              Memeriksa Pembayaran...
+            </h2>
+            <p className="font-body text-[13px] text-center text-text-secondary mb-5">
+              Status saat ini: <strong className="text-brand-blue capitalize">{status}</strong>
             </p>
             <button 
               onClick={() => checkStatus(true)} 
               disabled={isRefreshing}
-              className="border border-brand-gold text-brand-gold px-5 py-2.5 rounded-xl font-body font-bold text-[14px] transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50"
+              className="border-2 border-brand-gold text-brand-gold px-5 py-2.5 rounded-xl font-body font-bold text-[13.5px] transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50"
             >
               <RefreshCw size={16} className={isRefreshing ? "animate-spin" : ""} />
-              <span>{isRefreshing ? "Checking..." : "Refresh Status"}</span>
+              <span>{isRefreshing ? "Memeriksa..." : "Refresh Status"}</span>
             </button>
-          </>
+          </div>
         )}
+
       </div>
     </div>
   );

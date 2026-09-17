@@ -342,13 +342,17 @@ function Home() {
         </div>
       </footer>
 
-      {/* Floating Action Button (if no pending order) */}
-      {!pendingOrder && (
-        <button className="fixed bottom-6 right-6 md:right-[calc(50%-240px+24px)] bg-brand-gold text-white border-none rounded-full py-4 px-6 flex items-center gap-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)] font-bold cursor-pointer z-10">
-          <Headset size={20} />
-          Ada Keluhan?
-        </button>
-      )}
+      {/* Floating Action Button "Ada Keluhan?" (Always floating on top, z-[70]) */}
+      <button 
+        onClick={() => window.open('https://wa.me/6281234567890?text=Halo%20Admin%20Makan%20Dimsum,%20saya%20butuh%20bantuan/ada%20keluhan%20pesanan...', '_blank')}
+        className={`fixed ${
+          pendingOrder && pendingOrder.orderId ? 'bottom-24' : 'bottom-6'
+        } right-5 md:right-[calc(50%-240px+20px)] bg-brand-gold hover:bg-brand-gold-dark text-white border-none rounded-full py-3.5 px-5 flex items-center gap-2 shadow-elevated font-body font-bold text-[13px] cursor-pointer z-[70] hover:scale-105 active:scale-95 transition-all duration-200`}
+        title="Hubungi Layanan Pelanggan"
+      >
+        <Headset size={19} strokeWidth={2.2} />
+        <span>Ada Keluhan?</span>
+      </button>
 
       {/* Floating Continue Payment Bar if pending order exists */}
       {pendingOrder && pendingOrder.orderId && (

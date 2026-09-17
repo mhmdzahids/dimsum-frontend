@@ -79,9 +79,35 @@ export default function Payment() {
   React.useEffect(() => {
     localStorage.setItem('dimsum_customer_email', customerEmail);
   }, [customerEmail]);
+
+  const [pageLoading, setPageLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [qrisData, setQrisData] = useState(null);
   const [orderId, setOrderId] = useState(null);
+
+  // Auto-scroll to top and simulate smooth loading transition matching Menu.jsx
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    const timer = setTimeout(() => {
+      setPageLoading(false);
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }, 700);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Ensure scroll is at top whenever QRIS data appears
+  useEffect(() => {
+    if (qrisData) {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }
+  }, [qrisData]);
+
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(() => {
     // Only restore if returning from Promo/Vouchers page
     const fromPromo = sessionStorage.getItem('dimsum_promo_return_method');
@@ -491,6 +517,18 @@ export default function Payment() {
       setIsLoading(false);
     }
   };
+
+  // Loading Screen matching Menu.jsx
+  if (pageLoading || isLoading) {
+    return (
+      <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl bg-bg-cream flex flex-col items-center justify-center z-50">
+        <div className="w-12 h-12 border-4 border-brand-gold border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-4 font-body font-bold text-[14px] text-brand-blue animate-pulse">
+          {isLoading ? 'Menyiapkan QRIS...' : 'Menyiapkan Pembayaran...'}
+        </p>
+      </div>
+    );
+  }
 
   if (qrisData) {
     const displayAmount = Math.round(Number(payableAmount || finalTotal || total || 0));
