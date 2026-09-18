@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, 
   Clock, 
@@ -10,16 +10,27 @@ import {
   RotateCw, 
   ArrowRight, 
   PenLine,
-  UtensilsCrossed
+  UtensilsCrossed,
+  Loader2
 } from 'lucide-react';
 import { getOrderHistory, syncOrderHistoryWithServer } from '../utils/orderHistory';
 
 export default function OrderHistory() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'all';
   const [orders, setOrders] = useState(() => getOrderHistory());
   const [isSyncing, setIsSyncing] = useState(false);
-  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'pending' | 'completed'
+  const [activeTab, setActiveTab] = useState(initialTab); // 'all' | 'pending' | 'processing' | 'delivering' | 'completed'
   const [reorderToast, setReorderToast] = useState('');
+  const [isReorderLoading, setIsReorderLoading] = useState(false);
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
 
   // Active pending order in localStorage
   const [pendingOrder, setPendingOrder] = useState(() => {
@@ -86,22 +97,26 @@ export default function OrderHistory() {
       return;
     }
 
-    try {
-      const existingCart = JSON.parse(localStorage.getItem('dimsum_cart') || '{}');
-      order.items.forEach(item => {
-        const pId = item.id || item.product_id;
-        if (pId) {
-          existingCart[pId] = (existingCart[pId] || 0) + (item.quantity || 1);
-        }
-      });
-      localStorage.setItem('dimsum_cart', JSON.stringify(existingCart));
-      setReorderToast('Item telah ditambahkan ke keranjang belanja!');
-      setTimeout(() => {
+    // 1. Show loading screen first
+    setIsReorderLoading(true);
+
+    // 2. Wait for loading screen, then add items to cart and navigate to menu
+    setTimeout(() => {
+      try {
+        const existingCart = JSON.parse(localStorage.getItem('dimsum_cart') || '{}');
+        order.items.forEach(item => {
+          const pId = item.id || item.product_id;
+          if (pId) {
+            existingCart[pId] = (existingCart[pId] || 0) + (item.quantity || 1);
+          }
+        });
+        localStorage.setItem('dimsum_cart', JSON.stringify(existingCart));
         navigate('/menu');
-      }, 1000);
-    } catch (e) {
-      navigate('/menu');
-    }
+      } catch (e) {
+        console.error('Failed to reorder:', e);
+        navigate('/menu');
+      }
+    }, 1200);
   };
 
   // Filter orders
@@ -109,14 +124,22 @@ export default function OrderHistory() {
     if (activeTab === 'pending') {
       return order.status === 'pending_payment';
     }
+    if (activeTab === 'processing') {
+      return order.status === 'processing' || order.status === 'paid' || order.status === 'preparing';
+    }
+    if (activeTab === 'delivering') {
+      return order.status === 'delivering' || order.status === 'shipped' || order.status === 'ready';
+    }
     if (activeTab === 'completed') {
-      return order.status === 'paid' || order.status === 'fulfilling' || order.status === 'completed' || order.status === 'cancelled';
+      return order.status === 'completed' || order.status === 'cancelled';
     }
     return true;
   });
 
   const pendingCount = orders.filter(o => o.status === 'pending_payment').length;
-  const completedCount = orders.filter(o => o.status === 'paid' || o.status === 'fulfilling' || o.status === 'completed').length;
+  const processingCount = orders.filter(o => o.status === 'processing' || o.status === 'paid' || o.status === 'preparing').length;
+  const deliveringCount = orders.filter(o => o.status === 'delivering' || o.status === 'shipped' || o.status === 'ready').length;
+  const completedCount = orders.filter(o => o.status === 'completed' || o.status === 'cancelled').length;
 
   const formatDate = (isoString) => {
     if (!isoString) return '';
@@ -163,7 +186,7 @@ export default function OrderHistory() {
         <div className="flex border-t border-gray-100 bg-white px-3 py-2 gap-2 overflow-x-auto hide-scrollbar">
           <button
             onClick={() => setActiveTab('all')}
-            className={`flex-1 py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap text-center ${
+            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap text-center shrink-0 ${
               activeTab === 'all'
                 ? 'bg-brand-blue text-white shadow-xs'
                 : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
@@ -173,13 +196,13 @@ export default function OrderHistory() {
           </button>
           <button
             onClick={() => setActiveTab('pending')}
-            className={`flex-1 py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 ${
+            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${
               activeTab === 'pending'
                 ? 'bg-brand-gold text-white shadow-xs'
                 : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
             }`}
           >
-            <span>Menunggu Bayar</span>
+            <span>Belum Bayar</span>
             {pendingCount > 0 && (
               <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeTab === 'pending' ? 'bg-white text-brand-gold' : 'bg-brand-gold text-white'}`}>
                 {pendingCount}
@@ -187,8 +210,38 @@ export default function OrderHistory() {
             )}
           </button>
           <button
+            onClick={() => setActiveTab('processing')}
+            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${
+              activeTab === 'processing'
+                ? 'bg-brand-blue text-white shadow-xs'
+                : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
+            }`}
+          >
+            <span>Dikemas</span>
+            {processingCount > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeTab === 'processing' ? 'bg-white text-brand-blue' : 'bg-gray-200 text-text-secondary'}`}>
+                {processingCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('delivering')}
+            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${
+              activeTab === 'delivering'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
+            }`}
+          >
+            <span>Dikirim</span>
+            {deliveringCount > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeTab === 'delivering' ? 'bg-white text-emerald-600' : 'bg-gray-200 text-text-secondary'}`}>
+                {deliveringCount}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setActiveTab('completed')}
-            className={`flex-1 py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 ${
+            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${
               activeTab === 'completed'
                 ? 'bg-brand-blue text-white shadow-xs'
                 : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
@@ -444,6 +497,35 @@ export default function OrderHistory() {
           </div>
         )}
       </div>
+
+      {/* Reorder Loading Screen */}
+      {isReorderLoading && (
+        <div className="fixed inset-0 z-50 bg-bg-cream/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-200">
+          <div className="bg-white rounded-[28px] p-7 shadow-elevated border border-gray-100/90 flex flex-col items-center max-w-[320px] w-full transform animate-in zoom-in-95 duration-200">
+            {/* Animated Shopping Bag / Steamer Icon */}
+            <div className="relative w-20 h-20 rounded-full bg-brand-gold/10 flex items-center justify-center text-brand-gold mb-4 border border-brand-gold/25">
+              <ShoppingBag size={34} className="text-brand-gold animate-bounce" />
+              <div className="absolute -inset-1 rounded-full border-2 border-brand-gold/40 border-t-transparent animate-spin" />
+            </div>
+
+            <h3 className="font-heading font-black text-[18px] text-text-primary leading-tight mb-2">
+              Menyiapkan Pesanan...
+            </h3>
+            <p className="font-body text-[12.5px] text-text-secondary leading-relaxed mb-4">
+              Menambahkan menu pilihan ke keranjang belanja Anda.
+            </p>
+
+            {/* Spinner and progress bar */}
+            <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+              <div className="h-full bg-brand-gold rounded-full animate-bar-fill-half w-full"></div>
+            </div>
+            <span className="font-body text-[11px] text-brand-gold font-bold mt-3 inline-flex items-center gap-1.5">
+              <Loader2 size={13} className="animate-spin" />
+              <span>Memproses...</span>
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

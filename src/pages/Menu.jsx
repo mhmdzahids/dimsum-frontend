@@ -28,6 +28,11 @@ import bannerMenu from '../assets/banner/banner_menu.webp';
 import { Squash as Hamburger } from 'hamburger-react';
 import HeaderDropdown from '../components/HeaderDropdown';
 import { getValidPickupTime, savePickupTime } from '../utils/pickupTime';
+import {
+  isCustomerLoggedIn,
+  getCustomerUser,
+  subscribeCustomerAuth
+} from '../utils/customerAuth';
 
 function MenuPage() {
   const navigate = useNavigate();
@@ -44,6 +49,18 @@ function MenuPage() {
       return () => clearTimeout(timer);
     }
   }, [location.state?.emptyCartNotice]);
+
+  // Customer Auth State
+  const [isLoggedIn, setIsLoggedIn] = useState(() => isCustomerLoggedIn());
+  const [customerUser, setCustomerUser] = useState(() => getCustomerUser());
+
+  useEffect(() => {
+    const unsub = subscribeCustomerAuth(() => {
+      setIsLoggedIn(isCustomerLoggedIn());
+      setCustomerUser(getCustomerUser());
+    });
+    return unsub;
+  }, []);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [qty, setQty] = useState(1);
@@ -424,6 +441,7 @@ function MenuPage() {
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
       </div>
+
 
       {/* 3. Order Type Card */}
       <div className="px-4 mt-4">

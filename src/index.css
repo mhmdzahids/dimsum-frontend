@@ -24,6 +24,19 @@
   --shadow-elevated: 0px 10px 15px -3px rgba(0, 0, 0, 0.1), 0px 4px 6px -4px rgba(0, 0, 0, 0.1);
 
   --animate-giggle: giggle 0.3s ease-in-out;
+  --animate-progress: progress-bar 1.5s ease-in-out infinite;
+
+  @keyframes progress-bar {
+    0% {
+      transform: translateX(-100%);
+    }
+    50% {
+      transform: translateX(30%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
 
   @keyframes giggle {
 

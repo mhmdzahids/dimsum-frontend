@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Phone, Mail, Lock, Eye, EyeOff, CheckCircle2, Shield } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, User, Phone, Mail, Lock, Eye, EyeOff, CheckCircle2, Shield, Loader2 } from 'lucide-react';
+import { GoogleLogin } from '@react-oauth/google';
 import logoImg from '../assets/logo.webp';
+import { loginCustomer, isCustomerLoggedIn } from '../utils/customerAuth';
 
 export default function Auth() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/menu';
+
   const [activeTab, setActiveTab] = useState('login'); // 'login' | 'register'
 
   // Form states
@@ -19,62 +24,193 @@ export default function Auth() {
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(true);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Post-login / register loading transition state
+  const [isSuccessRedirecting, setIsSuccessRedirecting] = useState(false);
+  const [successUser, setSuccessUser] = useState(null);
+  const [successType, setSuccessType] = useState('login'); // 'login' | 'register'
+
+  useEffect(() => {
+    if (isCustomerLoggedIn()) {
+      navigate(redirectTo, { replace: true });
+    }
+  }, [navigate, redirectTo]);
 
   const triggerToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 3000);
   };
 
-  const handleGoogleAuth = () => {
-    triggerToast('Layanan Login Google sedang disiapkan. Silakan gunakan formulir masuk di bawah.');
+  const handleGoogleSuccess = async (credentialResponse) => {
+    if (!credentialResponse?.credential) {
+      triggerToast('Kredensial akun Google tidak ditemukan.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: credentialResponse.credential })
+      });
+      const data = await res.json();
+      if (data.success && data.data?.token) {
+        loginCustomer(data.data.token, data.data.user);
+        setSuccessUser(data.data.user);
+        setSuccessType('login');
+        setIsSuccessRedirecting(true);
+        setTimeout(() => {
+          navigate(redirectTo, { replace: true });
+        }, 1300);
+      } else {
+        triggerToast(data.error || 'Gagal masuk dengan akun Google.');
+      }
+    } catch (err) {
+      triggerToast('Terjadi gangguan jaringan saat memproses login Google.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleLoginSubmit = (e) => {
+  const handleGoogleError = () => {
+    triggerToast('Login Google dibatalkan atau tidak berhasil.');
+  };
+
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!loginIdentifier || !loginPassword) {
       triggerToast('Mohon isi nomor WhatsApp/Email dan kata sandi.');
       return;
     }
 
-    // Save profile mock to local storage for pleasant UX
-    if (!localStorage.getItem('dimsum_customer_name')) {
-      localStorage.setItem('dimsum_customer_name', loginIdentifier.includes('@') ? loginIdentifier.split('@')[0] : 'Pelanggan Setia');
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: loginIdentifier.trim(),
+          password: loginPassword
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        loginCustomer(data.data.token, data.data.user);
+        setSuccessUser(data.data.user);
+        setSuccessType('login');
+        setIsSuccessRedirecting(true);
+        setTimeout(() => {
+          navigate(redirectTo, { replace: true });
+        }, 1300);
+      } else {
+        triggerToast(data.error || 'Email/Nomor WhatsApp atau kata sandi tidak cocok.');
+      }
+    } catch (err) {
+      triggerToast('Terjadi gangguan jaringan. Silakan coba lagi.');
+    } finally {
+      setIsSubmitting(false);
     }
-    if (loginIdentifier.includes('@')) {
-      localStorage.setItem('dimsum_customer_email', loginIdentifier);
-    } else {
-      localStorage.setItem('dimsum_customer_phone', loginIdentifier);
-    }
-
-    triggerToast('Berhasil masuk! Mengalihkan ke menu...');
-    setTimeout(() => {
-      navigate('/menu');
-    }, 1200);
   };
 
-  const handleRegisterSubmit = (e) => {
+  const handleRegisterSubmit = async (e) => {
     e.preventDefault();
-    if (!regName || !regPhone || !regPassword) {
-      triggerToast('Mohon lengkapi nama, nomor WhatsApp, dan kata sandi.');
+    if (!regName || (!regPhone && !regEmail) || !regPassword) {
+      triggerToast('Mohon lengkapi nama, nomor WhatsApp/Email, dan kata sandi.');
       return;
     }
     if (!agreeTerms) {
       triggerToast('Anda perlu menyetujui Kebijakan Privasi.');
       return;
     }
-
-    localStorage.setItem('dimsum_customer_name', regName.trim());
-    localStorage.setItem('dimsum_customer_phone', regPhone.trim());
-    if (regEmail.trim()) {
-      localStorage.setItem('dimsum_customer_email', regEmail.trim());
+    if (regPassword.length < 6) {
+      triggerToast('Kata sandi minimal 6 karakter.');
+      return;
     }
 
-    triggerToast('Akun berhasil didaftarkan! Selamat datang di Makan Dimsum.');
-    setTimeout(() => {
-      navigate('/menu');
-    }, 1200);
+    setIsSubmitting(true);
+    try {
+      const identifier = (regPhone.trim() || regEmail.trim());
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier,
+          full_name: regName.trim(),
+          password: regPassword
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        loginCustomer(data.data.token, data.data.user, 1500);
+        setSuccessUser(data.data.user);
+        setSuccessType('register');
+        setIsSuccessRedirecting(true);
+        setTimeout(() => {
+          navigate(redirectTo, { replace: true });
+        }, 1300);
+      } else {
+        triggerToast(data.error || 'Pendaftaran gagal. Silakan periksa kembali data Anda.');
+      }
+    } catch (err) {
+      triggerToast('Terjadi gangguan koneksi saat mendaftar.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  if (isSuccessRedirecting) {
+    return (
+      <div className="max-w-[480px] mx-auto min-h-screen bg-bg-cream flex flex-col items-center justify-center px-6 py-12 relative overflow-hidden shadow-2xl">
+        {/* Soft background ambient glow */}
+        <div className="absolute w-72 h-72 rounded-full bg-brand-gold/15 blur-3xl -top-12 -left-12 pointer-events-none" />
+        <div className="absolute w-72 h-72 rounded-full bg-brand-blue/10 blur-3xl -bottom-12 -right-12 pointer-events-none" />
+
+        <div className="relative z-10 w-full max-w-[360px] bg-white rounded-[28px] p-8 shadow-card border border-gray-100 flex flex-col items-center text-center animate-fade-in">
+          {/* Animated Logo with Glowing Ring */}
+          <div className="relative mb-6">
+            <div className="absolute -inset-2 rounded-full bg-gradient-to-tr from-brand-gold via-brand-blue to-brand-gold opacity-40 blur-md animate-pulse" />
+            <div className="relative w-24 h-24 rounded-full bg-white shadow-elevated flex items-center justify-center p-3 border-2 border-brand-gold/30">
+              <img src={logoImg} alt="Makan Dimsum" className="w-full h-full object-contain drop-shadow-sm" />
+            </div>
+            {/* Spinning Indicator Badge */}
+            <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-brand-gold text-white flex items-center justify-center shadow-md animate-spin">
+              <Loader2 size={16} strokeWidth={2.5} />
+            </div>
+          </div>
+
+          {/* Success Status Tag */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 mb-3.5 shadow-2xs">
+            <CheckCircle2 size={15} className="text-emerald-600" />
+            <span className="font-body font-bold text-[11px] tracking-wide uppercase">
+              {successType === 'login' ? 'Login Berhasil' : 'Registrasi Berhasil'}
+            </span>
+          </div>
+
+          {/* Greeting */}
+          <h2 className="font-heading font-black text-[20px] text-text-primary mb-1.5 leading-tight">
+            Selamat Datang, {successUser?.full_name || 'Pelanggan'}!
+          </h2>
+          <p className="font-body text-[13px] text-text-secondary leading-snug mb-6">
+            {successType === 'login'
+              ? 'Akun Anda berhasil masuk. Menyiapkan menu pilihan Anda...'
+              : 'Akun Anda berhasil dibuat & otomatis terhubung. Mengalihkan ke menu...'}
+          </p>
+
+          {/* Animated Progress Bar */}
+          <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden mb-3.5">
+            <div className="h-full bg-gradient-to-r from-brand-blue via-brand-gold to-brand-blue rounded-full w-full animate-progress" />
+          </div>
+
+          <span className="font-body font-medium text-[11px] text-text-secondary">
+            Otomatis ter-login & mengalihkan...
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-clip bg-bg-cream flex flex-col">
@@ -144,35 +280,19 @@ export default function Auth() {
           </button>
         </div>
 
-        {/* Google Authentication Button */}
-        <button
-          type="button"
-          onClick={handleGoogleAuth}
-          className="w-full bg-white hover:bg-gray-50 border border-gray-200 active:scale-[0.98] transition-all rounded-[16px] p-3.5 shadow-sm flex items-center justify-center gap-3 cursor-pointer mb-5"
-        >
-          {/* Official Google Multi-Color SVG Icon */}
-          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-            <path
-              fill="#4285F4"
-              d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-            />
-            <path
-              fill="#34A853"
-              d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.25 21.36 7.31 24 12 24z"
-            />
-            <path
-              fill="#FBBC05"
-              d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.94 0 12s.46 3.84 1.26 5.42l4.02-3.15z"
-            />
-            <path
-              fill="#EA4335"
-              d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-            />
-          </svg>
-          <span className="font-body font-bold text-[13px] text-text-primary">
-            Lanjutkan dengan Google
-          </span>
-        </button>
+        {/* Google Authentication Component */}
+        <div className="w-full flex justify-center mb-5 min-h-[44px]">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={handleGoogleError}
+            theme="outline"
+            size="large"
+            text="continue_with"
+            shape="pill"
+            locale="id"
+            width="340"
+          />
+        </div>
 
         {/* Or Divider */}
         <div className="flex items-center gap-3 mb-5">
@@ -238,9 +358,17 @@ export default function Auth() {
 
             <button
               type="submit"
-              className="mt-2 w-full py-3 bg-brand-gold hover:bg-brand-gold/90 text-white font-body font-bold text-[14px] rounded-[14px] shadow-elevated transition-transform active:scale-95 cursor-pointer"
+              disabled={isSubmitting}
+              className="mt-2 w-full py-3 bg-brand-gold hover:bg-brand-gold/90 text-white font-body font-bold text-[14px] rounded-[14px] shadow-elevated transition-transform active:scale-95 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-70"
             >
-              Masuk Sekarang
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  <span>Memproses Masuk...</span>
+                </>
+              ) : (
+                'Masuk Sekarang'
+              )}
             </button>
           </form>
         )}
@@ -347,9 +475,17 @@ export default function Auth() {
 
             <button
               type="submit"
-              className="mt-2 w-full py-3 bg-brand-gold hover:bg-brand-gold/90 text-white font-body font-bold text-[14px] rounded-[14px] shadow-elevated transition-transform active:scale-95 cursor-pointer"
+              disabled={isSubmitting}
+              className="mt-2 w-full py-3 bg-brand-gold hover:bg-brand-gold/90 text-white font-body font-bold text-[14px] rounded-[14px] shadow-elevated transition-transform active:scale-95 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-70"
             >
-              Buat Akun Baru
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  <span>Membuat Akun...</span>
+                </>
+              ) : (
+                'Daftar Sekarang'
+              )}
             </button>
           </form>
         )}

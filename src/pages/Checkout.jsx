@@ -7,22 +7,21 @@ import {
   Plus,
   ConciergeBell,
   PenLine,
-  SquarePen,
   CheckCircle2,
-  StickyNote,
-  Clock,
   ChevronDown,
-  User,
-  Phone,
-  Mail,
   X,
   Flame,
   Ticket,
-  Sparkles,
+  Truck,
+  MapPin,
   Coins
 } from 'lucide-react';
-import imgWortel from '../assets/icon/wortel.webp';
 import { getValidPickupTime, savePickupTime } from '../utils/pickupTime';
+import {
+  isCustomerLoggedIn,
+  getCustomerUser,
+  subscribeCustomerAuth
+} from '../utils/customerAuth';
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -48,7 +47,7 @@ export default function Checkout() {
         if (parsed.orderId) {
           navigate('/payment', { state: { resumePending: true } });
         }
-      } catch (e) {}
+      } catch (e) { }
     }
   }, [navigate]);
 
@@ -60,7 +59,7 @@ export default function Checkout() {
       .then(data => {
         if (data.success) setOrderLimit(data.data.order_item_limit);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const generateDates = () => {
@@ -111,6 +110,59 @@ export default function Checkout() {
     setOrderNotes(trimmed);
     localStorage.setItem('dimsum_order_notes', trimmed);
     closeNotesModal();
+  };
+
+  // Customer Auth & Coins State
+  const [isLoggedIn, setIsLoggedIn] = useState(() => isCustomerLoggedIn());
+  const [customerUser, setCustomerUser] = useState(() => getCustomerUser());
+  useEffect(() => {
+    const unsub = subscribeCustomerAuth(() => {
+      setIsLoggedIn(isCustomerLoggedIn());
+      setCustomerUser(getCustomerUser());
+    });
+    return unsub;
+  }, []);
+
+  // Order Type & Delivery States
+  const [orderType, setOrderType] = useState(() => {
+    return localStorage.getItem('dimsum_order_type') || 'pickup';
+  });
+  const [deliveryAddress, setDeliveryAddress] = useState(() => {
+    return localStorage.getItem('dimsum_delivery_address') || '';
+  });
+  const [deliveryNotes, setDeliveryNotes] = useState(() => {
+    return localStorage.getItem('dimsum_delivery_notes') || '';
+  });
+  const [isDeliveryAuthModalOpen, setIsDeliveryAuthModalOpen] = useState(false);
+  const [deliveryToast, setDeliveryToast] = useState('');
+
+  const showDeliveryToast = (msg) => {
+    setDeliveryToast(msg);
+    setTimeout(() => setDeliveryToast(''), 3000);
+  };
+
+  const handleSelectOrderType = (type) => {
+    if (type === 'delivery') {
+      if (!isCustomerLoggedIn()) {
+        setIsDeliveryAuthModalOpen(true);
+        return;
+      }
+      setOrderType('delivery');
+      localStorage.setItem('dimsum_order_type', 'delivery');
+    } else {
+      setOrderType('pickup');
+      localStorage.setItem('dimsum_order_type', 'pickup');
+    }
+  };
+
+  const handleAddressChange = (e) => {
+    setDeliveryAddress(e.target.value);
+    localStorage.setItem('dimsum_delivery_address', e.target.value);
+  };
+
+  const handleDeliveryNotesChange = (e) => {
+    setDeliveryNotes(e.target.value);
+    localStorage.setItem('dimsum_delivery_notes', e.target.value);
   };
 
   const deleteNotes = () => {
@@ -195,9 +247,9 @@ export default function Checkout() {
   useEffect(() => {
     const savedPending = localStorage.getItem('dimsum_pending_order');
     if (!savedPending && (!items || items.length === 0)) {
-      navigate('/menu', { 
-        replace: true, 
-        state: { emptyCartNotice: 'Keranjang belanja Anda masih kosong. Silakan pilih menu terlebih dahulu.' } 
+      navigate('/menu', {
+        replace: true,
+        state: { emptyCartNotice: 'Keranjang belanja Anda masih kosong. Silakan pilih menu terlebih dahulu.' }
       });
     }
   }, [items, navigate]);
@@ -229,7 +281,7 @@ export default function Checkout() {
           });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -296,7 +348,7 @@ export default function Checkout() {
             localStorage.setItem('dimsum_applied_voucher', JSON.stringify(updated));
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [appliedVoucher?.code, subtotalMenu]);
 
@@ -316,7 +368,8 @@ export default function Checkout() {
   }, [appliedVoucher, subtotalMenu]);
 
   const otherFees = 0;
-  const finalTotal = Math.max(0, subtotalMenu - voucherDiscount + otherFees);
+  const deliveryFee = orderType === 'delivery' ? 10000 : 0;
+  const finalTotal = Math.max(0, subtotalMenu - voucherDiscount + otherFees + deliveryFee);
   const totalSavings = totalMenuDiscount + voucherDiscount;
   const currentTotalItems = items.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -344,7 +397,7 @@ export default function Checkout() {
   const savedPending = localStorage.getItem('dimsum_pending_order');
   if (!savedPending && (!items || items.length === 0)) {
     return (
-      <div className="max-w-[480px] mx-auto min-h-screen bg-[#F8F9FA] flex items-center justify-center p-6">
+      <div className="max-w-[480px] mx-auto min-h-screen bg-[#F5F1EB] flex items-center justify-center p-6">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-3 border-brand-gold border-t-transparent rounded-full animate-spin"></div>
           <p className="font-body font-bold text-[14px] text-text-secondary">Memeriksa keranjang belanja...</p>
@@ -354,7 +407,7 @@ export default function Checkout() {
   }
 
   return (
-    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-clip bg-[#F8F9FA] flex flex-col">
+    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-clip bg-[#F5F1EB] flex flex-col">
       {/* 1. Sticky Navbar & Progress Bar */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-xs">
         <div className="flex items-center justify-between p-4 border-b border-gray-100">
@@ -376,120 +429,189 @@ export default function Checkout() {
       {/* 2. Scrollable Content */}
       <div className="flex-1 pb-32">
 
-        {/* Order Type Banner */}
-        <div className="bg-white px-4 py-4 mb-2">
-          <div className="border border-brand-gold rounded-[12px] p-3 flex justify-between items-center mb-3">
-            <span className="font-body font-medium text-[14px] text-text-secondary">Tipe Pesanan</span>
-            <div className="flex items-center gap-2">
-              <span className="font-body font-bold text-[14px] text-text-primary">Pick Up</span>
-              <CheckCircle2 size={18} className="text-brand-gold" />
+        {/* Order Fulfillment (Pickup vs Delivery) Card */}
+        <div className="mx-4 mt-3 mb-3 bg-white rounded-[16px] p-4 border border-gray-100/90 shadow-xs flex flex-col gap-3">
+          {/* Header & Segmented Switcher */}
+          <div className="flex flex-col gap-2.5 pb-2.5 border-b border-gray-100/70">
+            <div className="flex items-center justify-between">
+              <span className="font-body text-[13px] text-text-secondary font-medium">Tipe Pesanan</span>
+            </div>
+
+            {/* Segmented Control: Pick Up vs Delivery */}
+            <div className="bg-gray-100/80 p-1 rounded-[12px] flex gap-1">
+              <button
+                type="button"
+                onClick={() => handleSelectOrderType('pickup')}
+                className={`flex-1 py-2 rounded-[9px] font-body font-bold text-[12px] transition-all flex items-center justify-center gap-1.5 cursor-pointer ${orderType === 'pickup'
+                  ? 'bg-white text-text-primary shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary'
+                  }`}
+              >
+                <ConciergeBell size={14} className={orderType === 'pickup' ? 'text-brand-blue' : ''} />
+                <span>Pick Up Outlet</span>
+              </button>
+              <button
+                type="button"
+                disabled={true}
+                className="flex-1 py-2 rounded-[9px] font-body font-medium text-[12px] transition-all flex items-center justify-center gap-1.5 cursor-not-allowed bg-gray-200/70 text-text-secondary/60 shadow-none relative select-none"
+                title="Layanan Pesan Antar (Delivery) Segera Hadir"
+              >
+                <Truck size={14} className="text-text-secondary/60 shrink-0" />
+                <span>Delivery Order</span>
+                <span className="absolute -top-2 -right-1 bg-brand-gold text-white text-[8.5px] font-bold px-1.5 py-0.5 rounded-full shadow-xs leading-none tracking-tight">
+                  Segera
+                </span>
+              </button>
             </div>
           </div>
 
-          <div className="bg-white border border-gray-100 shadow-sm rounded-[12px] p-4 flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <ConciergeBell size={24} className="text-text-primary" />
-              <span className="font-body font-bold text-[14px] text-text-primary">
-                {confirmedTime !== 'Pilih Waktu Pickup' ? confirmedTime : 'Ambil Sekarang'}
-              </span>
+          {/* If Pick Up: show pickup time selector */}
+          {orderType === 'pickup' ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-brand-blue/10 flex items-center justify-center text-brand-blue shrink-0">
+                  <ConciergeBell size={18} />
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-body text-[11px] text-text-secondary font-medium">Waktu Pengambilan</span>
+                  <span className="font-body font-bold text-[14px] text-text-primary leading-tight">
+                    {confirmedTime !== 'Pilih Waktu Pickup' ? confirmedTime : 'Ambil Sekarang'}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTimeModalOpen(true)}
+                className="border border-brand-gold/40 text-brand-gold rounded-[8px] px-3 py-1.5 font-body font-semibold text-[12px] hover:bg-brand-gold hover:text-white transition-colors cursor-pointer"
+              >
+                Pilih Waktu
+              </button>
             </div>
-            <button onClick={() => setIsTimeModalOpen(true)} className="border border-brand-gold rounded-[8px] px-4 py-1.5 text-brand-gold font-body font-bold text-[12px] hover:bg-brand-gold hover:text-white transition-colors">
-              Pilih Waktu
-            </button>
-          </div>
+          ) : (
+            /* If Delivery: show address & courier notes inputs */
+            <div className="flex flex-col gap-3 animate-fade-in">
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="font-body font-bold text-[12px] text-text-primary flex items-center gap-1.5">
+                    <MapPin size={14} className="text-brand-gold" />
+                    Alamat Pengiriman Lengkap
+                  </label>
+                  <span className="font-body text-[10px] text-text-secondary">Wajib diisi</span>
+                </div>
+                <textarea
+                  rows={2}
+                  required
+                  value={deliveryAddress}
+                  onChange={handleAddressChange}
+                  placeholder="Nama jalan, nomor rumah/kos, RT/RW, kelurahan, kecamatan..."
+                  className="w-full px-3 py-2 text-[12px] font-body bg-gray-50 border border-gray-200 rounded-[10px] focus:outline-none focus:border-brand-blue focus:bg-white text-text-primary resize-none transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block font-body font-medium text-[11px] text-text-secondary mb-1">
+                  Patokan / Catatan Kurir <span className="font-normal">(Opsional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={deliveryNotes}
+                  onChange={handleDeliveryNotesChange}
+                  placeholder="Contoh: Pagar hitam seberang masjid, titip di sekuriti"
+                  className="w-full px-3 py-1.5 text-[12px] font-body bg-gray-50 border border-gray-200 rounded-[10px] focus:outline-none focus:border-brand-blue focus:bg-white text-text-primary transition-all"
+                />
+              </div>
+
+              <div className="bg-blue-50/70 border border-blue-100 rounded-[10px] px-3 py-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Truck size={15} className="text-brand-blue shrink-0" />
+                  <span className="font-body text-[11px] text-brand-blue font-medium">
+                    Estimasi tiba: <strong>30 - 45 Menit</strong>
+                  </span>
+                </div>
+                <span className="font-body font-bold text-[11px] text-text-primary">
+                  Ongkir Rp10.000
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Ordered Items */}
-        <div className="bg-white p-4 mb-2">
-          {/* Header row with thin separator line underneath */}
-          <div className="flex justify-between items-center pb-4 mb-4 border-b border-gray-100">
-            <h2 className="font-body font-bold text-[16px] text-text-primary">Menu Dipesan ({currentTotalItems}){orderLimit && <span className="text-[12px] font-medium text-gray-400 ml-1">/ maks {orderLimit}</span>}</h2>
-            <button onClick={() => navigate('/menu')} className="border border-brand-gold text-brand-gold rounded-[8px] px-4 py-1.5 font-body font-bold text-[12px] hover:bg-brand-gold hover:text-white transition-colors">
+        <div className="mx-4 mb-3 bg-white rounded-[16px] p-4.5 border border-gray-100/90 shadow-xs">
+          {/* Header row */}
+          <div className="flex justify-between items-center pb-3 mb-3 border-b border-gray-100/80">
+            <h2 className="font-body font-bold text-[15px] text-text-primary">
+              Menu Dipesan
+            </h2>
+            <button
+              type="button"
+              onClick={() => navigate('/menu')}
+              className="border border-brand-gold/40 text-brand-gold rounded-[8px] px-3 py-1 font-body font-semibold text-[12px] hover:bg-brand-gold hover:text-white transition-colors cursor-pointer"
+            >
               + Tambah Menu
             </button>
           </div>
 
-          {/* Order limit warnings */}
-          {isNearLimit && (
-            <div className="bg-amber-50 border border-amber-200 rounded-[10px] px-3 py-2 mb-3 flex items-center gap-2">
-              <span className="text-amber-600 text-[12px] font-body font-medium">⚠️ Mendekati batas pembelian ({currentTotalItems}/{orderLimit} item)</span>
-            </div>
-          )}
-          {isOverLimit && (
-            <div className="bg-red-50 border border-red-200 rounded-[10px] px-3 py-2 mb-3 flex items-center gap-2">
-              <span className="text-red-600 text-[12px] font-body font-bold">❌ Melebihi batas pembelian ({currentTotalItems}/{orderLimit} item). Kurangi jumlah item.</span>
-            </div>
-          )}
-
-          {items.map(item => {
+          {items.map((item, index) => {
             const origUnitPrice = Number(item.originalPrice || item.original_price || item.price);
             const saleUnitPrice = Number(item.price);
             const itemHasDiscount = Boolean(item.hasDiscount || (item.is_discount && item.discount_percent > 0) || origUnitPrice > saleUnitPrice);
             const itemDiscountPercent = item.discountPercent || item.discount_percent || (origUnitPrice > saleUnitPrice ? Math.round(((origUnitPrice - saleUnitPrice) / origUnitPrice) * 100) : 0);
             const itemOrigTotal = origUnitPrice * item.quantity;
             const itemSaleTotal = saleUnitPrice * item.quantity;
-            const itemSavings = Math.max(0, itemOrigTotal - itemSaleTotal);
 
             return (
-              <div key={item.id} className="flex flex-col border-b border-gray-100 pb-4 mb-4">
-                <div className="flex justify-between items-start mb-1">
-                  <h3 className="font-body font-bold text-[14px] text-text-primary uppercase leading-tight">
+              <div
+                key={item.id}
+                className={`flex flex-col py-3.5 ${index !== items.length - 1 ? 'border-b border-gray-100/70' : ''}`}
+              >
+                <div className="flex justify-between items-start">
+                  <h3 className="font-body font-semibold text-[14px] text-text-primary leading-tight">
                     {item.name}
                   </h3>
                 </div>
 
-                {/* Promo Badge & Savings Info */}
+                {/* Promo Badge: Clean single badge in brand red */}
                 {itemHasDiscount && (
-                  <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-brand-red/10 text-brand-red border border-brand-red/25 leading-none">
-                      <Flame size={9.5} className="fill-brand-red text-brand-red -skew-x-[14deg] -rotate-[6deg] transform shrink-0" />
-                      <span className="italic">PROMO {itemDiscountPercent}%</span>
+                  <div className="mt-1.5">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-red/10 text-brand-red border border-brand-red/20 leading-tight">
+                      <Flame size={10} className="fill-brand-red text-brand-red shrink-0" />
+                      <span>PROMO {itemDiscountPercent}%</span>
                     </span>
-                    {itemSavings > 0 && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold italic text-green-700 bg-green-50 border border-green-200 leading-none">
-                        <Coins size={9.5} className="shrink-0 -skew-x-[12deg] transform" />
-                        <span className="italic">Hemat Rp{itemSavings.toLocaleString('id-ID')}</span>
-                      </span>
-                    )}
                   </div>
                 )}
 
-                <div className="flex flex-col gap-0.5 mb-2 text-[#6B7280]">
-                  <span className="font-body font-medium text-[13px]">{item.quantity}x MIX (Semua Varian)</span>
+                <div className="flex flex-col gap-0.5 mt-1 text-text-secondary">
+                  <span className="font-body text-[12px]">{item.quantity}x MIX (Semua Varian)</span>
                 </div>
 
-                <div className="flex justify-between items-end mt-2">
+                <div className="flex justify-between items-end mt-2.5">
                   <div className="flex flex-col">
                     {itemHasDiscount && (
-                      <span className="font-body font-medium text-[11.5px] text-gray-400 line-through leading-tight">
+                      <span className="font-body text-[11.5px] text-gray-400 line-through leading-tight">
                         Rp{itemOrigTotal.toLocaleString('id-ID')}
                       </span>
                     )}
-                    <div className="flex items-baseline gap-1.5 mt-0.5">
-                      <span className="font-body font-black text-[15px] text-brand-gold leading-tight">
-                        Rp{itemSaleTotal.toLocaleString('id-ID')}
-                      </span>
-                      {itemHasDiscount && (
-                        <span className="bg-brand-red/10 text-brand-red border border-brand-red/25 font-body font-bold text-[9px] px-1 py-0.2 rounded leading-tight">
-                          -{itemDiscountPercent}%
-                        </span>
-                      )}
-                    </div>
+                    <span className="font-body font-bold text-[15px] text-brand-gold leading-tight mt-0.5">
+                      Rp{itemSaleTotal.toLocaleString('id-ID')}
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3">
                     <button
+                      type="button"
                       onClick={() => updateItemQty(item.id, -1)}
-                      className="w-6 h-6 rounded-full border border-text-primary flex items-center justify-center text-text-primary hover:bg-gray-100 transition-colors"
+                      className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center text-text-primary hover:border-text-primary hover:bg-gray-50 transition-colors cursor-pointer"
                     >
-                      <Minus size={14} strokeWidth={2.5} />
+                      <Minus size={13} strokeWidth={2.5} />
                     </button>
-                    <span className="font-body font-bold text-[14px] w-3 text-center">{item.quantity}</span>
+                    <span className="font-body font-bold text-[14px] min-w-[20px] text-center text-text-primary">{item.quantity}</span>
                     <button
+                      type="button"
                       onClick={() => updateItemQty(item.id, 1)}
-                      className="w-6 h-6 rounded-full border border-text-primary flex items-center justify-center text-text-primary hover:bg-gray-100 transition-colors"
+                      className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center text-text-primary hover:border-text-primary hover:bg-gray-50 transition-colors cursor-pointer"
                     >
-                      <Plus size={14} strokeWidth={2.5} />
+                      <Plus size={13} strokeWidth={2.5} />
                     </button>
                   </div>
                 </div>
@@ -497,208 +619,214 @@ export default function Checkout() {
             );
           })}
 
-          {/* Add Notes Trigger */}
-          <div className="mt-1">
+          {/* Add Notes: Minimalist secondary action */}
+          <div className="mt-2 pt-3 border-t border-gray-100/70">
             {!orderNotes ? (
               <button
                 type="button"
                 onClick={openNotesModal}
-                className="w-full flex items-center gap-3 py-3 px-1 rounded-[12px] hover:bg-gray-50 active:bg-gray-100/70 transition-colors text-left"
+                className="inline-flex items-center gap-2 text-text-secondary hover:text-brand-gold transition-colors py-1 cursor-pointer font-body text-[13px] font-medium"
               >
-                <div className="w-8 h-8 rounded-full bg-brand-gold/10 flex items-center justify-center text-brand-gold shrink-0">
-                  <SquarePen size={16} />
-                </div>
-                <span className="font-body font-medium text-[13px] text-[#6B7280] italic">Tambah Catatan</span>
+                <PenLine size={14} className="text-text-secondary" />
+                <span>Tambah Catatan Pesanan</span>
               </button>
             ) : (
               <div
                 onClick={openNotesModal}
-                className="w-full flex flex-col p-3.5 rounded-[14px] border border-brand-gold/40 bg-brand-gold/5 cursor-pointer hover:bg-brand-gold/10 transition-colors"
+                className="w-full flex items-start justify-between p-3 rounded-[12px] bg-amber-50/40 border border-brand-gold/25 cursor-pointer hover:bg-amber-50/70 transition-colors"
               >
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2 text-brand-gold">
-                    <SquarePen size={14} />
-                    <span className="font-body font-bold text-[13px]">Catatan Pesanan</span>
-                  </div>
-                  <span className="font-body font-bold text-[12px] text-brand-gold underline">Ubah</span>
+                <div className="flex flex-col gap-0.5 pr-2">
+                  <span className="font-body font-semibold text-[11px] text-text-secondary uppercase tracking-wider">Catatan Pesanan:</span>
+                  <p className="font-body text-[13px] text-text-primary italic leading-snug break-words">
+                    "{orderNotes}"
+                  </p>
                 </div>
-                <p className="font-body text-[13px] text-text-primary italic leading-relaxed break-words">
-                  "{orderNotes}"
-                </p>
+                <span className="font-body font-semibold text-[12px] text-brand-gold shrink-0 hover:underline">Ubah</span>
               </div>
             )}
           </div>
         </div>
 
         {/* Promo / Voucher Trigger Section */}
-        <div className="bg-white p-4 mb-2">
-          <div 
+        <div className="mx-4 mb-3 bg-white rounded-[16px] p-4 border border-gray-100/90 shadow-xs">
+          <div
             onClick={() => {
-              navigate('/vouchers', { 
-                state: { 
-                  ...location.state, 
-                  confirmedTime, 
-                  cartItems: items, 
-                  totalPrice: subtotalMenu, 
-                  orderNotes 
-                } 
+              navigate('/vouchers', {
+                state: {
+                  ...location.state,
+                  confirmedTime,
+                  cartItems: items,
+                  totalPrice: subtotalMenu,
+                  orderNotes
+                }
               });
             }}
-            className="p-3.5 rounded-[14px] border border-brand-gold/40 bg-brand-gold/5 flex justify-between items-center cursor-pointer hover:bg-brand-gold/10 transition-colors"
+            className="flex justify-between items-center cursor-pointer group"
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-brand-gold/15 flex items-center justify-center text-brand-gold shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-brand-gold/10 flex items-center justify-center text-brand-gold shrink-0">
                 <Ticket size={16} />
               </div>
               {appliedVoucher ? (
-                <span className="font-body font-bold text-[13px] text-brand-gold truncate">
-                  Voucher: {appliedVoucher.code}
-                </span>
+                <div className="flex flex-col min-w-0">
+                  <span className="font-body text-[11px] text-text-secondary font-medium">Voucher Digunakan</span>
+                  <span className="font-body font-bold text-[14px] text-text-primary truncate">
+                    {appliedVoucher.code}
+                  </span>
+                </div>
               ) : (
-                <span className="font-body font-bold text-[13px] text-brand-gold">
-                  Tambah Promo atau Voucher
+                <span className="font-body font-semibold text-[14px] text-text-primary group-hover:text-brand-gold transition-colors">
+                  Gunakan Voucher Promo
                 </span>
               )}
             </div>
             <div className="flex items-center gap-2.5 shrink-0">
               {appliedVoucher && (
-                <div className="relative inline-flex items-center justify-center px-3 py-1 bg-green-100 text-green-800 text-[11px] font-black rounded-sm border border-dashed border-green-400 overflow-hidden shadow-2xs">
-                  {/* Left Ticket Cutout Notch */}
-                  <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-[#faf8f5] rounded-full border-r border-green-400" />
-                  <span className="font-body font-black tracking-tight px-1">
-                    -Rp{voucherDiscount.toLocaleString('id-ID')}
-                  </span>
-                  {/* Right Ticket Cutout Notch */}
-                  <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-[#faf8f5] rounded-full border-l border-green-400" />
-                </div>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-brand-gold/15 text-brand-gold border border-brand-gold/30 font-body font-bold text-[12px]">
+                  -Rp{voucherDiscount.toLocaleString('id-ID')}
+                </span>
               )}
-              <ChevronRight size={18} className="text-text-primary" />
+              <ChevronRight size={18} className="text-text-secondary group-hover:text-brand-gold transition-colors" />
             </div>
           </div>
         </div>
 
         {/* Payment Details */}
-        <div className="bg-white p-4 pb-8">
-          <div className="border border-gray-100 shadow-sm rounded-[16px] p-5">
-            <h2 className="font-body font-bold text-[15px] text-text-primary mb-5 text-center">Rincian Pembayaran</h2>
+        <div className="mx-4 mb-4 bg-white rounded-[16px] p-5 border border-gray-100/90 shadow-xs">
+          <h2 className="font-body font-bold text-[15px] text-text-primary mb-4">Rincian Pembayaran</h2>
 
-            {/* Subtotal Normal (Parent) */}
-            <div className="flex justify-between items-center mb-2.5">
-              <span className="font-body font-bold text-[14px] text-text-primary">
-                Subtotal <span className="text-gray-400 font-medium">({currentTotalItems} menu)</span>
+          <div className="flex flex-col divide-y divide-gray-50">
+            {/* Subtotal Normal */}
+            <div className="flex justify-between items-center py-2.5">
+              <span className="font-body text-[13px] text-text-secondary">
+                Subtotal <span className="text-[12px]">({currentTotalItems} item)</span>
               </span>
-              <span className="font-body font-bold text-[14px] text-text-primary">
+              <span className="font-body font-semibold text-[13px] text-text-primary">
                 Rp{subtotalOriginal.toLocaleString('id-ID')}
               </span>
             </div>
 
-            {/* Diskon Menu Promo (Child of Subtotal) */}
+            {/* Diskon Menu Promo */}
             {totalMenuDiscount > 0 && (
-              <div className="flex justify-between items-center mb-2 pl-3 ml-1 border-l-2 border-brand-red/25">
+              <div className="flex justify-between items-center py-2.5">
                 <div className="flex items-center gap-1.5 text-brand-red">
-                  <Flame size={12} className="fill-brand-red text-brand-red -skew-x-[14deg] -rotate-[6deg] transform" />
-                  <span className="font-body font-medium text-[12px]">Diskon Menu Promo</span>
+                  <Flame size={13} className="fill-brand-red text-brand-red" />
+                  <span className="font-body text-[13px] font-medium">Diskon Menu Promo</span>
                 </div>
-                <span className="font-body font-bold text-[12px] text-brand-red">
+                <span className="font-body font-semibold text-[13px] text-brand-red">
                   -Rp{totalMenuDiscount.toLocaleString('id-ID')}
                 </span>
               </div>
             )}
 
-            {/* Diskon Voucher (Child of Subtotal) */}
+            {/* Diskon Voucher */}
             {voucherDiscount > 0 && (
-              <div className="flex justify-between items-center mb-2.5 pl-3 ml-1 border-l-2 border-green-300">
-                <div className="flex items-center gap-1.5 text-green-700">
-                  <Ticket size={12} className="text-green-700" />
-                  <span className="font-body font-medium text-[12px]">
+              <div className="flex justify-between items-center py-2.5">
+                <div className="flex items-center gap-1.5 text-brand-gold">
+                  <Ticket size={13} className="text-brand-gold" />
+                  <span className="font-body text-[13px] font-medium">
                     Diskon Voucher ({appliedVoucher?.code})
                   </span>
                 </div>
-                <span className="font-body font-bold text-[12px] text-green-700">
+                <span className="font-body font-semibold text-[13px] text-brand-gold">
                   -Rp{voucherDiscount.toLocaleString('id-ID')}
                 </span>
               </div>
             )}
 
-            {/* Biaya Lainnya */}
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-1 cursor-pointer">
-                <span className="font-body font-medium text-[14px] text-text-primary">Biaya Lainnya</span>
-                <ChevronDown size={14} className="text-text-primary" />
+            {/* Ongkos Kirim Delivery */}
+            {orderType === 'delivery' && (
+              <div className="flex justify-between items-center py-2.5">
+                <div className="flex items-center gap-1.5 text-brand-blue">
+                  <Truck size={14} className="text-brand-blue" />
+                  <span className="font-body text-[13px] font-medium">Ongkos Kirim (Delivery)</span>
+                </div>
+                <span className="font-body font-semibold text-[13px] text-text-primary">
+                  Rp{deliveryFee.toLocaleString('id-ID')}
+                </span>
               </div>
-              <span className="font-body font-bold text-[14px] text-text-primary">
+            )}
+
+            {/* Biaya Lainnya */}
+            <div className="flex justify-between items-center py-2.5">
+              <div className="flex items-center gap-1">
+                <span className="font-body text-[13px] text-text-secondary">Biaya Penanganan</span>
+                <ChevronDown size={13} className="text-text-secondary" />
+              </div>
+              <span className="font-body font-semibold text-[13px] text-text-primary">
                 Rp{otherFees.toLocaleString('id-ID')}
               </span>
             </div>
 
             {/* Total Pembayaran */}
-            <div className="border-t border-gray-100 pt-4 flex justify-between items-center">
-              <span className="font-body font-bold text-[15px] text-text-primary">Total</span>
-              <span className="font-body font-black text-[16px] text-brand-gold">
+            <div className="flex justify-between items-center pt-3.5 mt-0.5 border-t border-gray-100">
+              <span className="font-body font-bold text-[14px] text-text-primary">Total</span>
+              <span className="font-body font-bold text-[16px] text-brand-gold">
                 Rp{finalTotal.toLocaleString('id-ID')}
               </span>
             </div>
-
-            {/* Total Savings Banner */}
-            {totalSavings > 0 && (
-              <div className="mt-4 p-3 rounded-xl bg-red-50/70 border border-brand-red/20 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-brand-red text-white flex items-center justify-center shrink-0">
-                    <Flame size={12} className="fill-white text-white -skew-x-[14deg] -rotate-[6deg] transform" />
-                  </div>
-                  <span className="text-xs font-bold text-gray-800">
-                    Total Penghematan Kamu
-                  </span>
-                </div>
-                <span className="text-xs font-black text-brand-red">
-                  Hemat Rp{totalSavings.toLocaleString('id-ID')}
-                </span>
-              </div>
-            )}
           </div>
         </div>
       </div>
 
       {/* 3. Sticky Bottom Bar */}
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white rounded-t-[24px] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-[100]">
-        <div className="p-5 flex justify-between items-center">
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white/95 backdrop-blur-md border-t border-[#EAEAEA] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] z-[100]">
+        <div className="px-5 py-3.5 flex justify-between items-center">
           <div className="flex flex-col justify-center">
-            <span className="font-body font-medium text-[12px] text-text-secondary leading-tight">Total Pembayaran</span>
-            <span className="font-body font-black text-[20px] text-text-primary leading-tight mt-0.5">
+            <span className="font-body font-medium text-[11px] text-text-secondary uppercase tracking-wider leading-tight">
+              Total Pembayaran
+            </span>
+            <span className="font-body font-black text-[20px] text-brand-gold leading-tight mt-0.5">
               Rp{finalTotal.toLocaleString('id-ID')}
             </span>
             {totalSavings > 0 && (
-              <span className="text-[11px] font-bold text-brand-red leading-tight mt-0.5">
-                (Hemat Rp{totalSavings.toLocaleString('id-ID')})
-              </span>
+              <div className="flex items-center gap-1 leading-tight mt-0.5">
+                <span className="font-body font-medium text-[11px] text-text-secondary">
+                  Hemat
+                </span>
+                <span className="font-body font-bold text-[11px] text-brand-gold">
+                  Rp{totalSavings.toLocaleString('id-ID')}
+                </span>
+              </div>
             )}
           </div>
           <button
+            type="button"
             onClick={() => {
               if (isOverLimit) return;
-              if (!confirmedTime || confirmedTime === 'Pilih Waktu Pickup' || !getValidPickupTime()) {
-                setIsTimeModalOpen(true);
-                return;
+              if (orderType === 'pickup') {
+                if (!confirmedTime || confirmedTime === 'Pilih Waktu Pickup' || !getValidPickupTime()) {
+                  setIsTimeModalOpen(true);
+                  return;
+                }
+              } else if (orderType === 'delivery') {
+                if (!deliveryAddress || deliveryAddress.trim().length < 5) {
+                  showDeliveryToast('Mohon masukkan alamat pengiriman lengkap (minimal 5 karakter).');
+                  return;
+                }
               }
               sessionStorage.removeItem('dimsum_promo_return_method');
               localStorage.removeItem('dimsum_payment_method');
               window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-              navigate('/payment', { 
-                state: { 
-                  confirmedTime: confirmedTime, 
-                  cartItems: items, 
-                  totalPrice: subtotalMenu, 
+              navigate('/payment', {
+                state: {
+                  confirmedTime: orderType === 'delivery' ? 'Delivery (30-45 mnt)' : confirmedTime,
+                  cartItems: items,
+                  totalPrice: subtotalMenu,
                   finalTotal: finalTotal,
-                  orderNotes: orderNotes 
-                } 
+                  orderNotes: orderNotes,
+                  orderType: orderType,
+                  deliveryAddress: orderType === 'delivery' ? deliveryAddress.trim() : null,
+                  deliveryNotes: orderType === 'delivery' ? deliveryNotes.trim() : null,
+                  deliveryFee: deliveryFee
+                }
               });
             }}
             disabled={isOverLimit}
-            className={`h-[48px] font-body font-bold text-[14px] px-8 rounded-[12px] shadow-elevated transition-transform active:scale-95 ${
-              isOverLimit
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-brand-gold text-white'
-            }`}
+            className={`h-[48px] font-body font-bold text-[14px] px-7 rounded-[12px] shadow-elevated transition-transform active:scale-95 cursor-pointer ${isOverLimit
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-brand-gold hover:bg-brand-gold-dark text-white'
+              }`}
           >
             Lanjut ke Pembayaran
           </button>
@@ -836,6 +964,79 @@ export default function Checkout() {
                   Hapus Catatan
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Delivery Toast */}
+      {deliveryToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[250] w-[90%] max-w-[400px] animate-toast-in">
+          <div className="bg-text-primary/95 backdrop-blur-xs text-white px-4 py-3 rounded-[16px] shadow-elevated flex items-center gap-3 border border-white/20">
+            <Truck size={18} className="text-brand-gold shrink-0" />
+            <span className="font-body font-medium text-[12px] leading-snug">
+              {deliveryToast}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Ajakan Login untuk Delivery Order & Bonus Koin */}
+      {isDeliveryAuthModalOpen && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-xs animate-fade-in"
+            onClick={() => setIsDeliveryAuthModalOpen(false)}
+          />
+          <div className="relative bg-white w-full max-w-[380px] rounded-[24px] p-6 shadow-2xl flex flex-col items-center text-center z-10 animate-scale-up">
+            <button
+              onClick={() => setIsDeliveryAuthModalOpen(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:text-text-primary transition-colors cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center text-brand-gold mb-3 shadow-xs">
+              <Truck size={28} />
+            </div>
+
+            <h3 className="font-heading font-black text-[18px] text-text-primary mb-1">
+              Pesan Antar (Delivery)
+            </h3>
+            <p className="font-body text-[12px] text-text-secondary leading-relaxed mb-4">
+              Layanan pesan antar khusus untuk pelanggan terdaftar demi kemudahan pelacakan pesanan Anda.
+            </p>
+
+            <div className="w-full bg-gradient-to-r from-amber-500/10 via-brand-gold/15 to-amber-500/10 border border-brand-gold/30 rounded-[14px] p-3 mb-5 flex items-center gap-2.5 text-left">
+              <Coins size={22} className="text-amber-600 shrink-0" />
+              <div>
+                <span className="font-body font-bold text-[12px] text-amber-900 block leading-tight">
+                  Bonus 1.000 Dimsum Coins!
+                </span>
+                <span className="font-body text-[11px] text-amber-800 leading-tight">
+                  Daftar akun sekarang & nikmati kemudahan pesan antar.
+                </span>
+              </div>
+            </div>
+
+            <div className="w-full flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeliveryAuthModalOpen(false);
+                  navigate('/auth?redirect=/checkout');
+                }}
+                className="w-full py-3 bg-brand-gold hover:bg-brand-gold/90 text-white font-body font-bold text-[13px] rounded-[12px] shadow-elevated transition-all active:scale-95 cursor-pointer"
+              >
+                Masuk / Buat Akun Baru
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDeliveryAuthModalOpen(false)}
+                className="w-full py-2.5 text-text-secondary hover:text-text-primary font-body font-semibold text-[12px] transition-colors cursor-pointer"
+              >
+                Tetap Pick Up di Outlet (Guest)
+              </button>
             </div>
           </div>
         </div>

@@ -22,7 +22,9 @@ import {
   Clock,
   AlertTriangle,
   AlertCircle,
-  X
+  X,
+  Bike,
+  MapPin
 } from 'lucide-react';
 import { saveOrderToHistory, updateOrderStatusInHistory } from '../utils/orderHistory';
 
@@ -32,7 +34,12 @@ export default function Payment() {
   const confirmedTime = location.state?.confirmedTime || 'Pick Up Now';
   const cartItems = location.state?.cartItems || [];
   const total = location.state?.totalPrice || 0;
+  const locationFinalTotal = location.state?.finalTotal;
   const orderNotes = location.state?.orderNotes || localStorage.getItem('dimsum_order_notes') || '';
+  const orderType = location.state?.orderType || (localStorage.getItem('dimsum_order_type') || 'pickup');
+  const deliveryAddress = location.state?.deliveryAddress || (localStorage.getItem('dimsum_delivery_address') || null);
+  const deliveryNotes = location.state?.deliveryNotes || (localStorage.getItem('dimsum_delivery_notes') || null);
+  const deliveryFee = location.state?.deliveryFee !== undefined ? location.state.deliveryFee : (orderType === 'delivery' ? 10000 : 0);
 
   // Security Route Guard: Prevent direct URL navigation without active order or cart items
   useEffect(() => {
@@ -115,7 +122,7 @@ export default function Payment() {
       sessionStorage.removeItem('dimsum_promo_return_method');
       return fromPromo;
     }
-    return null;
+    return 'qris';
   });
   const [payableAmount, setPayableAmount] = useState(null);
   const [isGuideOpen, setIsGuideOpen] = useState(true);
@@ -298,7 +305,7 @@ export default function Payment() {
     }
     return Math.round(Math.min(Number(appliedVoucher.discount || appliedVoucher.discount_value || 0), total));
   }, [appliedVoucher, total]);
-  const finalTotal = Math.max(0, total - discountAmount);
+  const finalTotal = locationFinalTotal !== undefined ? Number(locationFinalTotal) : Math.max(0, total - discountAmount);
 
   // Countdown timer & expiry state
   const [timeLeft, setTimeLeft] = useState(null);
@@ -435,25 +442,34 @@ export default function Payment() {
   }, [orderId, qrisData, navigate]);
 
   const handlePayment = async () => {
-    if (!customerName || !customerPhone) {
-      alert("Please fill in Name and Phone Number");
+    if (!customerName?.trim() || !customerPhone?.trim()) {
+      showToast("Mohon lengkapi Nama dan Nomor WhatsApp terlebih dahulu");
       return;
     }
     if (!selectedPaymentMethod) {
-      alert("Please select a payment method (QRIS)");
+      showToast("Silakan pilih metode pembayaran (QRIS)");
       return;
     }
     setIsLoading(true);
     try {
+      const fullDeliveryAddress = deliveryAddress ? (deliveryAddress + (deliveryNotes ? ` (Patokan: ${deliveryNotes})` : '')) : null;
+      const customerToken = localStorage.getItem('dimsum_customer_token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (customerToken) {
+        headers['Authorization'] = `Bearer ${customerToken}`;
+      }
+
       const response = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           customer: { name: customerName, phone: customerPhone, email: customerEmail },
           items: cartItems.map(item => ({ product_id: item.id, quantity: item.quantity })),
           notes: orderNotes ? orderNotes.trim() : null,
           voucher_code: appliedVoucher?.code || null,
-          pickup_time: confirmedTime || null
+          pickup_time: orderType === 'delivery' ? null : (confirmedTime || null),
+          order_type: orderType,
+          delivery_address: orderType === 'delivery' ? fullDeliveryAddress : null
         })
       });
       const data = await response.json();
@@ -474,9 +490,11 @@ export default function Payment() {
           qrisData: paywuzObj,
           totalAmount: amt,
           totalItems: totalItemsCount,
-          confirmedTime,
+          confirmedTime: orderType === 'delivery' ? 'Delivery Order' : confirmedTime,
           customerName,
           customerPhone,
+          orderType,
+          deliveryAddress: fullDeliveryAddress,
           notes: orderNotes ? orderNotes.trim() : null,
           createdAt: new Date().toISOString(),
           expiresAt: expiresAt
@@ -492,9 +510,11 @@ export default function Payment() {
           status: 'pending_payment',
           totalAmount: amt,
           totalItems: totalItemsCount,
-          confirmedTime: confirmedTime || 'Pick Up',
+          confirmedTime: orderType === 'delivery' ? 'Delivery Order' : (confirmedTime || 'Pick Up'),
           customerName,
           customerPhone,
+          orderType,
+          deliveryAddress: fullDeliveryAddress,
           notes: orderNotes ? orderNotes.trim() : null,
           items: cartItems.map(item => ({
             id: item.id,
@@ -790,7 +810,7 @@ export default function Payment() {
 
   if (!qrisData && !savedPending && !hasCart) {
     return (
-      <div className="max-w-[480px] mx-auto min-h-screen bg-[#F8F9FA] flex items-center justify-center p-6">
+      <div className="max-w-[480px] mx-auto min-h-screen bg-[#F5F1EB] flex items-center justify-center p-6">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-3 border-brand-gold border-t-transparent rounded-full animate-spin"></div>
           <p className="font-body font-bold text-[14px] text-text-secondary">Memeriksa pesanan...</p>
@@ -800,7 +820,39 @@ export default function Payment() {
   }
 
   return (
-    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-clip bg-[#F8F9FA] flex flex-col">
+    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-clip bg-[#F5F1EB] flex flex-col">
+      {/* Floating Toast Notification Banner */}
+      {toastMessage && (
+        <div className="fixed top-4 left-4 right-4 max-w-[440px] mx-auto z-[250] bg-white rounded-[16px] p-3.5 shadow-elevated border border-amber-200/80 flex items-start gap-3 animate-toast-in">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+            toastMessage.includes('belum') || toastMessage.includes('Gagal') || toastMessage.includes('Mohon') || toastMessage.includes('Silakan')
+              ? 'bg-amber-50 text-amber-600 border border-amber-200/60'
+              : 'bg-green-50 text-green-600 border border-green-200/60'
+          }`}>
+            {toastMessage.includes('belum') || toastMessage.includes('Gagal') || toastMessage.includes('Mohon') || toastMessage.includes('Silakan') ? (
+              <AlertCircle size={18} strokeWidth={2.2} />
+            ) : (
+              <CheckCircle2 size={18} strokeWidth={2.2} />
+            )}
+          </div>
+          <div className="flex-1 min-w-0 flex flex-col justify-center">
+            <span className="font-body font-bold text-[13px] text-text-primary">
+              {toastMessage.includes('Mohon') || toastMessage.includes('Silakan') ? 'Perhatian' : 'Informasi'}
+            </span>
+            <p className="font-body font-medium text-[12px] text-text-secondary leading-snug mt-0.5">
+              {toastMessage}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage('')}
+            className="text-gray-400 hover:text-gray-600 p-1 shrink-0 -mr-1 cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* 1. Sticky Navbar & Progress Bar */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-xs">
         <div className="flex items-center justify-between p-4 border-b border-gray-100">
@@ -808,7 +860,7 @@ export default function Payment() {
             sessionStorage.removeItem('dimsum_promo_return_method');
             sessionStorage.setItem('dimsum_returned_from_payment', 'true');
             navigate(-1);
-          }} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
+          }} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors cursor-pointer">
             <ArrowLeft size={24} className="text-text-primary" />
           </button>
           <h1 className="font-body font-black text-[18px] text-text-primary">
@@ -824,75 +876,106 @@ export default function Payment() {
       </header>
 
       {/* 2. Scrollable Content */}
-      <div className="flex-1 pb-40">
+      <div className="flex-1 pb-28">
         
-        {/* Order Type */}
-        <div className="bg-white px-4 py-4 mb-2">
-          <div className="border border-brand-gold/30 bg-brand-gold/5 rounded-[12px] p-3 flex justify-between items-center">
-            <span className="font-body font-medium text-[14px] text-text-secondary">Order Type</span>
-            <div className="flex items-center gap-2 text-brand-gold">
-              <span className="font-body font-bold text-[14px]">Pick Up</span>
-              <CheckCircle2 size={16} className="fill-brand-gold text-white" />
+        {/* Detail Pengambilan & Outlet Card */}
+        <div className="mx-4 mt-3 mb-3 bg-white rounded-[16px] p-4.5 border border-gray-100/90 shadow-xs flex flex-col gap-3">
+          <div className="flex items-center justify-between pb-2.5 border-b border-gray-100/70">
+            <span className="font-body text-[13px] text-text-secondary font-medium">Tipe Pesanan</span>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-brand-gold/10 text-brand-gold font-body font-semibold text-[12px]">
+              <CheckCircle2 size={13} className="text-brand-gold" />
+              <span>{orderType === 'delivery' ? 'Delivery Order (Pesan Antar)' : 'Pick Up di Outlet'}</span>
             </div>
           </div>
-        </div>
 
-        {/* Customer Information */}
-        <div className="bg-white p-4 mb-2">
-          <h2 className="font-body font-bold text-[15px] text-text-primary mb-4">Customer Information</h2>
-          
-          <div className="flex flex-col gap-4">
-            <div>
-              <label className="font-body font-medium text-[12px] text-text-secondary mb-1.5 block">Full Name<span className="text-red-500">*</span></label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User size={18} className="text-gray-400" />
-                </div>
-                <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Full Name" className="w-full border border-gray-200 rounded-[12px] pl-10 pr-4 py-3 font-body text-[14px] focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold transition-colors" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-brand-blue/10 flex items-center justify-center text-brand-blue shrink-0">
+                {orderType === 'delivery' ? <Bike size={18} /> : <ConciergeBell size={18} />}
               </div>
-            </div>
-
-            <div>
-              <label className="font-body font-medium text-[12px] text-text-secondary mb-1.5 block">Phone Number (for upcoming promos)<span className="text-red-500">*</span></label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Phone size={18} className="text-gray-400" />
-                </div>
-                <input type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Phone Number" className="w-full border border-gray-200 rounded-[12px] pl-10 pr-4 py-3 font-body text-[14px] focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold transition-colors" />
-              </div>
-            </div>
-
-            <div>
-              <label className="font-body font-medium text-[12px] text-text-secondary mb-1.5 block">Send Receipt to Email</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail size={18} className="text-gray-400" />
-                </div>
-                <input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="Email" className="w-full border border-gray-200 rounded-[12px] pl-10 pr-4 py-3 font-body text-[14px] focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold transition-colors" />
+              <div className="flex flex-col">
+                <span className="font-body font-bold text-[14px] text-text-primary leading-tight">
+                  {orderType === 'delivery' ? 'Dikirim ke Alamat Anda' : 'Makan Dimsum Cabang Utama'}
+                </span>
+                <span className="font-body text-[12px] text-text-secondary mt-0.5">
+                  {orderType === 'delivery' 
+                    ? (deliveryAddress || 'Alamat Pengiriman')
+                    : <>Waktu: <span className="font-semibold text-text-primary">{confirmedTime}</span></>}
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* You ordered from */}
-        <div className="bg-white p-4 mb-2">
-          <h2 className="font-body font-bold text-[15px] text-text-primary mb-1">You ordered from</h2>
-          <p className="font-body font-medium text-[13px] text-text-secondary mb-3">Makan Dimsum Cabang Utama</p>
+        {/* Customer Information Card */}
+        <div className="mx-4 mb-3 bg-white rounded-[16px] p-4.5 border border-gray-100/90 shadow-xs">
+          <h2 className="font-body font-bold text-[15px] text-text-primary mb-3.5">Data Pemesan</h2>
           
-          <div className="border border-gray-200 rounded-[12px] p-4 flex items-center gap-3">
-            <ConciergeBell size={20} className="text-text-primary" />
-            <span className="font-body font-bold text-[14px] text-text-primary">{confirmedTime}</span>
+          <div className="flex flex-col gap-3.5">
+            <div>
+              <label className="font-body font-medium text-[12px] text-text-secondary mb-1.5 block">
+                Nama Pemesan <span className="text-red-500 font-bold">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                  <User size={17} className="text-gray-400" />
+                </div>
+                <input 
+                  type="text" 
+                  value={customerName} 
+                  onChange={e => setCustomerName(e.target.value)} 
+                  placeholder="Contoh: Budi Santoso" 
+                  className="w-full border border-gray-200 rounded-[12px] pl-10 pr-4 py-2.5 font-body text-[14px] text-text-primary focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold transition-colors" 
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="font-body font-medium text-[12px] text-text-secondary mb-1.5 block">
+                Nomor WhatsApp / HP <span className="text-red-500 font-bold">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                  <Phone size={17} className="text-gray-400" />
+                </div>
+                <input 
+                  type="tel" 
+                  value={customerPhone} 
+                  onChange={e => setCustomerPhone(e.target.value)} 
+                  placeholder="Contoh: 081234567890" 
+                  className="w-full border border-gray-200 rounded-[12px] pl-10 pr-4 py-2.5 font-body text-[14px] text-text-primary focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold transition-colors" 
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="font-body font-medium text-[12px] text-text-secondary mb-1.5 block">
+                Email (opsional)
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                  <Mail size={17} className="text-gray-400" />
+                </div>
+                <input 
+                  type="email" 
+                  value={customerEmail} 
+                  onChange={e => setCustomerEmail(e.target.value)} 
+                  placeholder="Untuk bukti pembayaran (opsional)" 
+                  className="w-full border border-gray-200 rounded-[12px] pl-10 pr-4 py-2.5 font-body text-[14px] text-text-primary focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold transition-colors" 
+                />
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Order Notes (if added) */}
         {orderNotes && (
-          <div className="bg-white p-4 mb-2">
-            <div className="flex items-center gap-2 text-brand-gold mb-2">
-              <PenLine size={16} />
-              <h2 className="font-body font-bold text-[14px]">Notes Pesanan</h2>
+          <div className="mx-4 mb-3 bg-white rounded-[16px] p-4 border border-gray-100/90 shadow-xs">
+            <div className="flex items-center gap-2 text-text-secondary mb-2">
+              <PenLine size={15} />
+              <h2 className="font-body font-semibold text-[13px] text-text-primary">Catatan Pesanan</h2>
             </div>
-            <div className="border border-brand-gold/30 bg-brand-gold/5 rounded-[12px] p-3.5">
+            <div className="rounded-[12px] bg-amber-50/40 border border-brand-gold/20 p-3">
               <p className="font-body text-[13px] text-text-primary italic leading-relaxed break-words">
                 "{orderNotes}"
               </p>
@@ -900,14 +983,14 @@ export default function Payment() {
           </div>
         )}
 
-        {/* Complete Payment */}
-        <div className="bg-white p-4 pb-8">
-          <h2 className="font-body font-medium text-[15px] text-text-primary mb-3">Complete Payment</h2>
+        {/* Metode Pembayaran Card */}
+        <div className="mx-4 mb-4 bg-white rounded-[16px] p-4.5 border border-gray-100/90 shadow-xs">
+          <h2 className="font-body font-bold text-[15px] text-text-primary mb-3">Metode Pembayaran</h2>
           <div 
-            onClick={() => setSelectedPaymentMethod(selectedPaymentMethod === 'qris' ? null : 'qris')}
-            className={`border rounded-[14px] p-4 flex justify-between items-center cursor-pointer transition-all ${
+            onClick={() => setSelectedPaymentMethod('qris')}
+            className={`border rounded-[14px] p-3.5 flex justify-between items-center cursor-pointer transition-all ${
               selectedPaymentMethod === 'qris' 
-                ? 'border-brand-gold bg-brand-gold/5 shadow-sm' 
+                ? 'border-brand-gold bg-brand-gold/5 shadow-xs' 
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
           >
@@ -935,31 +1018,40 @@ export default function Payment() {
       </div>
 
       {/* 3. Sticky Bottom Bar */}
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white rounded-t-[24px] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-[100]">
-        <div className="p-5 flex justify-between items-center h-[88px] pb-6">
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5 cursor-pointer">
-              <span className="font-body font-medium text-[12px] text-text-secondary">Payment Total</span>
-              {appliedVoucher && (
-                <span className="text-green-600 font-body font-bold text-[11px]">
-                  (-Rp{discountAmount.toLocaleString('id-ID')})
-                </span>
-              )}
-            </div>
-            <span className="font-body font-black text-[18px] text-text-primary mt-0.5">
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white/95 backdrop-blur-md border-t border-[#EAEAEA] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] z-[100]">
+        <div className="px-5 py-3.5 flex justify-between items-center">
+          <div className="flex flex-col justify-center">
+            <span className="font-body font-medium text-[11px] text-text-secondary uppercase tracking-wider leading-tight">
+              Total Pembayaran
+            </span>
+            <span className="font-body font-black text-[20px] text-brand-gold leading-tight mt-0.5">
               Rp{finalTotal.toLocaleString('id-ID')}
             </span>
+            {appliedVoucher && discountAmount > 0 && (
+              <div className="flex items-center gap-1 leading-tight mt-0.5">
+                <span className="font-body font-medium text-[11px] text-text-secondary">
+                  Hemat
+                </span>
+                <span className="font-body font-bold text-[11px] text-brand-gold">
+                  Rp{discountAmount.toLocaleString('id-ID')}
+                </span>
+              </div>
+            )}
           </div>
           <button 
+            type="button"
             onClick={handlePayment} 
-            disabled={isLoading || !selectedPaymentMethod} 
-            className={`h-[48px] font-body font-bold text-[14px] px-10 rounded-[12px] shadow-elevated transition-all active:scale-95 ${
-              !selectedPaymentMethod || isLoading
-                ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
-                : 'bg-brand-gold text-white hover:bg-brand-gold/90'
-            }`}
+            disabled={isLoading} 
+            className="h-[48px] font-body font-bold text-[14px] px-8 rounded-[12px] shadow-elevated transition-transform active:scale-95 bg-brand-gold hover:bg-brand-gold-dark text-white cursor-pointer flex items-center justify-center gap-2"
           >
-            {isLoading ? 'Processing...' : 'Pay'}
+            {isLoading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Memproses...</span>
+              </>
+            ) : (
+              <span>Bayar Sekarang</span>
+            )}
           </button>
         </div>
       </div>
