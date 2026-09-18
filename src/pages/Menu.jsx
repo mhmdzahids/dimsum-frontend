@@ -14,7 +14,8 @@ import {
   Clock,
   Check,
   AlertCircle,
-  Flame
+  Flame,
+  Utensils
 } from 'lucide-react';
 
 import imgWortel from '../assets/icon/wortel.webp';
@@ -39,6 +40,9 @@ function MenuPage() {
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [emptyCartToast, setEmptyCartToast] = useState('');
+  const [reorderNotice, setReorderNotice] = useState(null);
+  const [isCartBumping, setIsCartBumping] = useState(false);
+  const pendingReorderRef = useRef(location.state?.reorderItems || null);
 
   // Listen for empty cart notices from route guards
   useEffect(() => {
@@ -64,15 +68,6 @@ function MenuPage() {
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [qty, setQty] = useState(1);
-  const [selectedTopping, setSelectedTopping] = useState('Wortel');
-  const [activeTopping, setActiveTopping] = useState(null);
-
-  const handleToppingClick = (name) => {
-    setActiveTopping(name);
-    setTimeout(() => {
-      setActiveTopping((prev) => (prev === name ? null : prev));
-    }, 450);
-  };
   const [cart, setCart] = useState(() => {
     const saved = localStorage.getItem('dimsum_cart');
     return saved ? JSON.parse(saved) : {};
@@ -228,11 +223,45 @@ function MenuPage() {
 
   const availableTimes = React.useMemo(() => getAvailableTimes(selectedDate), [getAvailableTimes, selectedDate]);
 
-  const [selectedTime, setSelectedTime] = useState(availableTimes[0]);
+  const [selectedTime, setSelectedTime] = useState(() => {
+    const times = getAvailableTimes(availableDates[0]);
+    return times.length > 0 ? times[0] : '';
+  });
 
   const [confirmedTime, setConfirmedTime] = useState(() => {
     return getValidPickupTime();
   });
+
+  const openTimeModal = () => {
+    if (confirmedTime) {
+      const parts = confirmedTime.split(',').map(s => s.trim());
+      const cDate = parts[0];
+      const cTime = parts[1];
+      if (cDate && availableDates.includes(cDate)) {
+        setSelectedDate(cDate);
+        const times = getAvailableTimes(cDate);
+        if (times.includes(cTime)) {
+          setSelectedTime(cTime);
+        } else if (times.length > 0) {
+          setSelectedTime(times[0]);
+        } else {
+          setSelectedTime('');
+        }
+        setIsTimeModalOpen(true);
+        return;
+      }
+    }
+
+    const curTimes = getAvailableTimes(selectedDate);
+    if (curTimes.length > 0) {
+      if (!curTimes.includes(selectedTime)) {
+        setSelectedTime(curTimes[0]);
+      }
+    } else {
+      setSelectedTime('');
+    }
+    setIsTimeModalOpen(true);
+  };
 
   // Watch for expiry: if the selected pickup time passes while user is browsing, auto-reset
   useEffect(() => {
@@ -275,10 +304,15 @@ function MenuPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [assetsLoaded, setAssetsLoaded] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(12);
 
   useEffect(() => {
+    let isMounted = true;
+
     const loadDataAndAssets = async () => {
       try {
+        if (isMounted) setLoadingProgress(15);
+
         const res = await fetch('/api/products');
         const data = await res.json();
 
@@ -314,19 +348,22 @@ function MenuPage() {
             return a.name.localeCompare(b.name);
           });
 
-          setProducts(formattedProducts);
+          if (isMounted) {
+            setProducts(formattedProducts);
+            setLoadingProgress(40);
 
-          setCart(prevCart => {
-            const newCart = { ...prevCart };
-            let changed = false;
-            for (const id in newCart) {
-              if (!formattedProducts.some(p => p.id === id)) {
-                delete newCart[id];
-                changed = true;
+            setCart(prevCart => {
+              const newCart = { ...prevCart };
+              let changed = false;
+              for (const id in newCart) {
+                if (!formattedProducts.some(p => p.id === id)) {
+                  delete newCart[id];
+                  changed = true;
+                }
               }
-            }
-            return changed ? newCart : prevCart;
-          });
+              return changed ? newCart : prevCart;
+            });
+          }
         }
 
         // --- Preload Assets ---
@@ -336,32 +373,99 @@ function MenuPage() {
           if (p.image) imageUrlsToLoad.push(p.image);
         });
 
-        // Create promises for each image to load
+        // Create promises for each image to load with dynamic progress
+        let loadedCount = 0;
+        const totalImages = imageUrlsToLoad.length;
         const imagePromises = imageUrlsToLoad.map(src => {
           return new Promise((resolve) => {
             const img = new Image();
             img.src = src;
-            img.onload = resolve;
-            img.onerror = resolve; // Resolve even on error to prevent infinite loading
+            img.onload = () => {
+              loadedCount++;
+              if (isMounted) {
+                setLoadingProgress(Math.min(85, Math.round(40 + (loadedCount / totalImages) * 45)));
+              }
+              resolve();
+            };
+            img.onerror = () => {
+              loadedCount++;
+              if (isMounted) {
+                setLoadingProgress(Math.min(85, Math.round(40 + (loadedCount / totalImages) * 45)));
+              }
+              resolve();
+            };
           });
         });
 
-        // Minimum 2 second loading delay
-        const minLoadingTime = new Promise(resolve => setTimeout(resolve, 700));
+        // Smooth minimum delay (850ms) so users perceive the satisfying filling animation
+        const minLoadingTime = new Promise(resolve => setTimeout(resolve, 850));
 
         await Promise.all([...imagePromises, minLoadingTime]);
 
-        setAssetsLoaded(true);
-        setLoading(false);
+        if (isMounted) {
+          setLoadingProgress(100);
+          setTimeout(() => {
+            if (isMounted) {
+              setAssetsLoaded(true);
+              setLoading(false);
+            }
+          }, 200);
+        }
       } catch (err) {
         console.error('Error fetching products and assets:', err);
-        setAssetsLoaded(true); // Fallback to allow rendering
-        setLoading(false);
+        if (isMounted) {
+          setLoadingProgress(100);
+          setAssetsLoaded(true);
+          setLoading(false);
+        }
       }
     };
 
     loadDataAndAssets();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  // Handle items from "Pesan Lagi" (reorder) only after menu loading finishes
+  useEffect(() => {
+    if (!loading && assetsLoaded && pendingReorderRef.current) {
+      const itemsToAdd = pendingReorderRef.current;
+      pendingReorderRef.current = null;
+
+      if (location.state?.reorderItems) {
+        window.history.replaceState({}, document.title);
+      }
+
+      // Small perceptible delay (350ms) after menu content appears so user clearly feels items entering cart
+      const timer = setTimeout(() => {
+        let totalQtyAdded = 0;
+        setCart(prevCart => {
+          const updated = { ...prevCart };
+          itemsToAdd.forEach(item => {
+            const pId = item.id || item.product_id;
+            if (pId) {
+              const addQty = item.quantity || 1;
+              updated[pId] = (updated[pId] || 0) + addQty;
+              totalQtyAdded += addQty;
+            }
+          });
+          return updated;
+        });
+
+        setReorderNotice({
+          count: totalQtyAdded || itemsToAdd.length
+        });
+        setIsCartBumping(true);
+
+        setTimeout(() => setIsCartBumping(false), 1200);
+        setTimeout(() => setReorderNotice(null), 4000);
+      }, 350);
+
+      return () => clearTimeout(timer);
+    }
+  }, [loading, assetsLoaded, location.state]);
 
   const validCartEntries = Object.entries(cart).filter(([id]) => products.some(p => p.id === id));
   const totalItems = validCartEntries.reduce((sum, [, qty]) => sum + qty, 0);
@@ -373,18 +477,61 @@ function MenuPage() {
     return total;
   }, 0);
 
-  // Loading Screen
+  // Loading Screen with Animated Utensils & Noticeable Progressive Loading Bar
   if (loading || !assetsLoaded) {
     return (
-      <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl bg-bg-cream flex flex-col items-center justify-center z-50">
-        <div className="w-12 h-12 border-4 border-brand-gold border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-4 font-body font-bold text-[14px] text-brand-blue animate-pulse">Menyiapkan Menu...</p>
+      <div key="menu-loading-screen" className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl bg-bg-cream flex flex-col items-center justify-center z-50 px-8 select-none">
+        {/* Alternating Fork & Spoon Animated Utensils (Clean, no background, no radar) */}
+        <div className="flex items-center justify-center mb-2">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="46"
+            height="46"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-brand-gold overflow-visible drop-shadow-xs"
+          >
+            {/* Fork (Garpu) - Naik, diam, turun */}
+            <g className="animate-fork-bounce">
+              <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
+              <path d="M7 2v20" />
+            </g>
+            {/* Spoon (Sendok) - Bergantian naik dan turun */}
+            <g className="animate-spoon-bounce">
+              <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
+            </g>
+          </svg>
+        </div>
+
+        <p className="mt-4 font-body font-bold text-[15px] text-brand-blue animate-pulse tracking-wide">
+          Menyiapkan Menu...
+        </p>
+
+        {/* Noticeable Progressive Loading Bar */}
+        <div className="w-56 h-2.5 bg-bg-cream-dark rounded-full overflow-hidden mt-3.5 shadow-inner border border-brand-gold/30 p-0.5 relative">
+          <div
+            className="h-full bg-gradient-to-r from-brand-gold to-brand-gold-light rounded-full transition-all duration-500 ease-out shadow-xs relative overflow-hidden"
+            style={{ width: `${loadingProgress}%` }}
+          >
+            {/* Shimmer light beam running across the fill bar */}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer" />
+          </div>
+        </div>
+
+        {/* Progress indicator percentage */}
+        <span className="font-body text-[11px] font-bold text-brand-blue/70 mt-1.5 tracking-wider">
+          {Math.round(loadingProgress)}%
+        </span>
       </div>
     );
   }
 
   return (
-    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-bg-cream pb-24">
+    <div key="menu-main-content" className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-bg-cream pb-24">
 
       {/* 1. Header & Hero Section */}
       <div className="relative">
@@ -445,7 +592,7 @@ function MenuPage() {
 
       {/* 3. Order Type Card */}
       <div className="px-4 mt-4">
-        <div ref={orderTypeRef} className={`bg-white rounded-[20px] shadow-card overflow-hidden transition-all duration-300 ${isHighlighting ? 'animate-flash-ring' : ''}`}>
+        <div ref={orderTypeRef} className={`bg-white rounded-[20px] shadow-card overflow-hidden transition-shadow duration-300 ${isHighlighting ? 'animate-flash-ring' : ''}`}>
           {/* Top Row */}
           <div className="flex justify-between items-center p-4 border-b border-gray-100">
             <span className="font-body font-medium text-[14px] text-text-primary">Order Type</span>
@@ -464,7 +611,7 @@ function MenuPage() {
               </div>
             </div>
             <button
-              onClick={() => setIsTimeModalOpen(true)}
+              onClick={openTimeModal}
               className="border border-brand-gold rounded-[10px] px-4 py-1.5 text-brand-gold font-body font-bold text-[13px]"
             >
               Select Time
@@ -494,14 +641,12 @@ function MenuPage() {
                 }
                 setSelectedProduct(product);
                 setQty(productQty || 1);
-                setSelectedTopping('Wortel');
               }}
-              className={`bg-white rounded-[16px] shadow-sm flex p-3 cursor-pointer transition-all ${
-                product.hasDiscount
-                  ? productQty > 0
-                    ? 'border-[1.2px] border-brand-red/40 border-r-4 border-r-brand-red'
-                    : 'border-[1.2px] border-brand-red/40'
-                  : productQty > 0
+              className={`bg-white rounded-[16px] shadow-sm flex p-3 cursor-pointer transition-all ${product.hasDiscount
+                ? productQty > 0
+                  ? 'border-[1.2px] border-brand-red/40 border-r-4 border-r-brand-red'
+                  : 'border-[1.2px] border-brand-red/40'
+                : productQty > 0
                   ? 'border border-gray-100 border-r-4 border-r-brand-gold'
                   : 'border border-gray-100 border-r-4 border-r-transparent'
                 }`}
@@ -513,7 +658,7 @@ function MenuPage() {
                 </div>
                 {product.hasDiscount && (
                   <span className="absolute -top-2 -left-2 bg-brand-red text-white border-2 border-white rounded-full px-1.5 py-0.5 shadow-md flex items-center gap-0.5 z-10">
-                    <Flame size={10} className="fill-white text-white shrink-0 -skew-x-[14deg] -rotate-[6deg] transform" />
+                    <Flame size={10} className="fill-white text-white shrink-0 origin-bottom animate-flame-burn" />
                     <span className="font-body font-black italic text-[9.5px] leading-none tracking-tight">
                       {product.discountPercent}%
                     </span>
@@ -531,14 +676,9 @@ function MenuPage() {
                 <div className="flex justify-between items-end mt-1.5">
                   <div className="flex flex-col">
                     {product.hasDiscount && (
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="font-body font-medium text-[11px] text-text-secondary line-through">
-                          {product.originalPriceFormatted}
-                        </span>
-                        <span className="bg-brand-red/10 text-brand-red border border-brand-red/25 font-body font-bold text-[10px] px-1.5 py-0.2 rounded-[4px] leading-tight">
-                          -{product.discountPercent}%
-                        </span>
-                      </div>
+                      <span className="font-body font-medium text-[11px] text-text-secondary line-through mb-0.5">
+                        {product.originalPriceFormatted}
+                      </span>
                     )}
                     <span className="font-body font-black text-[14px] text-brand-gold leading-tight">
                       {product.priceFormatted}
@@ -555,7 +695,6 @@ function MenuPage() {
                         }
                         setSelectedProduct(product);
                         setQty(1);
-                        setSelectedTopping('Wortel');
                       }}
                       className="border border-brand-gold text-brand-gold font-body font-bold text-[12px] rounded-full px-5 py-1 transition-colors hover:bg-brand-gold hover:text-white"
                     >
@@ -634,7 +773,7 @@ function MenuPage() {
               if (!confirmedTime) {
                 setIsHighlighting(true);
                 orderTypeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                setIsTimeModalOpen(true);
+                openTimeModal();
                 setTimeout(() => setIsHighlighting(false), 2000);
               } else {
                 // Pass total and items to checkout
@@ -645,12 +784,14 @@ function MenuPage() {
                 navigate('/checkout', { state: { confirmedTime, cartItems, totalPrice, totalItems } });
               }
             }}
-            className="w-full h-full bg-brand-gold rounded-[20px] shadow-elevated flex items-center justify-between overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+            className={`w-full h-full bg-brand-gold rounded-[20px] shadow-elevated flex items-center justify-between overflow-hidden cursor-pointer transition-all duration-300 ${isCartBumping ? 'scale-[1.03] ring-4 ring-brand-gold/40 shadow-2xl' : 'active:scale-[0.98]'
+              }`}
           >
             {/* Basket Icon */}
             <div className="bg-white/20 h-full self-stretch px-4 flex items-center justify-center relative">
-              <ShoppingBasket size={28} className="text-white" />
-              <div className="absolute top-2.5 right-2 bg-brand-blue text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+              <ShoppingBasket size={28} className={`text-white transition-transform ${isCartBumping ? 'animate-bounce' : ''}`} />
+              <div className={`absolute top-2.5 right-2 bg-brand-blue text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center transition-transform ${isCartBumping ? 'scale-125' : ''
+                }`}>
                 {totalItems}
               </div>
             </div>
@@ -677,7 +818,7 @@ function MenuPage() {
               <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
               <button
                 onClick={closeProductModal}
-                className="absolute top-4 right-4 bg-white text-text-primary rounded-full p-2 shadow-card"
+                className="absolute top-4 right-4 bg-white text-text-primary rounded-full p-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] hover:bg-gray-50 active:scale-95 transition-all cursor-pointer"
               >
                 <X size={20} strokeWidth={2.5} />
               </button>
@@ -702,29 +843,27 @@ function MenuPage() {
                   </span>
                 </div>
               ) : (
-                <p className="font-body font-black text-[18px] text-text-primary mt-1">{selectedProduct.priceFormatted}</p>
+                <p className="font-body font-black text-[20px] text-brand-gold mt-1.5">{selectedProduct.priceFormatted}</p>
               )}
               <p className="font-body font-medium text-[12px] text-text-secondary mt-3 leading-relaxed">
                 {selectedProduct.description || `Dimsum premium ${selectedProduct.weight}. Tersedia dalam kemasan higienis, diproduksi segar setiap hari.`}
               </p>
             </div>
 
-            {/* Divider */}
-            <div className="h-2 w-full bg-[#F3F4F6]"></div>
+            {/* Separator */}
+            <div className="h-[1px] w-full bg-[#EAEAEA]"></div>
 
             {/* Topping Dimsum Info */}
             <div className="p-4 bg-white pb-6">
               <div className="flex justify-between items-center mb-1">
-                <div className="flex items-center gap-2">
-                  <h2 className="font-body font-black text-[14px] text-text-primary uppercase tracking-wide">Topping Dimsum</h2>
-                </div>
+                <h2 className="font-body font-bold text-[15px] text-text-primary">Topping Dimsum</h2>
               </div>
               <p className="font-body font-medium text-[12px] text-text-secondary mb-3.5">
                 Setiap kemasan sudah berisi kombinasi aneka varian topping lezat berikut:
               </p>
 
-              {/* Toppings Circular Showcase (Matching Homepage Style) */}
-              <div className="bg-[#FAF8F5] border border-[#EFE9DF] rounded-[20px] p-4 shadow-sm">
+              {/* Toppings Informational Showcase (Descriptive, Non-Interactive) */}
+              <div className="bg-[#FAF8F5] border border-[#EFE9DF] rounded-[12px] p-4">
                 <div className="grid grid-cols-3 gap-y-4 gap-x-2">
                   {[
                     { name: 'Wortel', icon: imgWortel },
@@ -733,30 +872,23 @@ function MenuPage() {
                     { name: 'Beef', icon: imgBeef },
                     { name: 'Crabstick', icon: imgCrabstick },
                     { name: 'Keju', icon: imgKeju },
-                  ].map((t, idx) => {
-                    const isActive = activeTopping === t.name;
-                    return (
-                      <div
-                        key={idx}
-                        onClick={() => handleToppingClick(t.name)}
-                        className="flex flex-col items-center gap-1.5 group cursor-pointer select-none active:scale-95 transition-transform"
-                      >
-                        <div className={`w-[56px] h-[56px] rounded-full bg-brand-blue flex items-center justify-center shadow-card overflow-hidden transition-all duration-200 ${isActive ? 'scale-110 shadow-elevated ring-2 ring-brand-gold' : 'group-hover:scale-105'
-                          }`}>
-                          <img
-                            src={t.icon}
-                            alt={t.name}
-                            className={`w-[72%] h-[72%] object-contain transition-transform ${isActive ? 'animate-giggle' : 'group-hover:animate-giggle'
-                              }`}
-                          />
-                        </div>
-                        <span className={`font-body font-bold text-[11px] text-center transition-colors ${isActive ? 'text-brand-gold scale-105 font-black' : 'text-brand-blue group-hover:text-brand-gold'
-                          }`}>
-                          {t.name}
-                        </span>
+                  ].map((t, idx) => (
+                    <div
+                      key={idx}
+                      className="flex flex-col items-center gap-1.5 select-none"
+                    >
+                      <div className="w-[56px] h-[56px] rounded-full bg-[#F5F1EB] border border-[#EAE3D6] flex items-center justify-center overflow-hidden">
+                        <img
+                          src={t.icon}
+                          alt={t.name}
+                          className="w-[72%] h-[72%] object-contain"
+                        />
                       </div>
-                    );
-                  })}
+                      <span className="font-body font-medium text-[11px] text-text-secondary text-center">
+                        {t.name}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -817,7 +949,7 @@ function MenuPage() {
               }}
               className="w-full bg-brand-gold text-white font-body font-black text-[15px] py-3.5 rounded-[16px] shadow-elevated transition-transform active:scale-95"
             >
-              Add Orders - Rp{(Number(selectedProduct.price) * qty).toLocaleString('id-ID')}
+              Tambah Pesanan - Rp{(Number(selectedProduct.price) * qty).toLocaleString('id-ID')}
             </button>
           </div>
         </div>
@@ -845,7 +977,7 @@ function MenuPage() {
             {/* Pickers Content */}
             <div className="flex h-[260px] overflow-hidden relative">
               {/* Left Column: Dates */}
-              <div className="w-[60%] overflow-y-auto hide-scrollbar pt-2 pb-10 border-r border-gray-50">
+              <div className="w-1/2 overflow-y-auto hide-scrollbar pt-2 pb-10 border-r border-gray-100">
                 {availableDates.map(date => (
                   <div
                     key={date}
@@ -853,10 +985,12 @@ function MenuPage() {
                       setSelectedDate(date);
                       const newTimes = getAvailableTimes(date);
                       if (newTimes.length > 0) {
-                        setSelectedTime(newTimes[0]);
+                        setSelectedTime(newTimes.includes(selectedTime) ? selectedTime : newTimes[0]);
+                      } else {
+                        setSelectedTime('');
                       }
                     }}
-                    className={`px-5 py-3.5 cursor-pointer font-body font-bold text-[14px] transition-colors border-y ${selectedDate === date ? 'text-text-primary bg-gray-50/50 border-gray-100' : 'text-[#D1D5DB] border-transparent'}`}
+                    className={`px-4 py-3.5 cursor-pointer font-body font-bold text-[14px] transition-colors border-y ${selectedDate === date ? 'text-text-primary bg-gray-50/50 border-gray-100' : 'text-[#D1D5DB] border-transparent'}`}
                   >
                     {date}
                   </div>
@@ -864,30 +998,82 @@ function MenuPage() {
               </div>
 
               {/* Right Column: Times */}
-              <div className="w-[40%] overflow-y-auto hide-scrollbar pt-2 pb-10">
-                <div className="flex flex-col">
-                  {availableTimes.map(time => (
-                    <div
-                      key={`${selectedDate}-${time}`}
-                      onClick={() => setSelectedTime(time)}
-                      className={`px-5 py-3.5 text-center cursor-pointer font-body font-bold text-[14px] transition-colors border-y ${selectedTime === time ? 'text-text-primary bg-gray-50/50 border-gray-100' : 'text-[#D1D5DB] border-transparent'}`}
+              <div className="w-1/2 overflow-y-auto hide-scrollbar pt-2 pb-10 flex flex-col">
+                {availableTimes.length > 0 ? (
+                  <div className="flex flex-col">
+                    {availableTimes.map(time => (
+                      <div
+                        key={`${selectedDate}-${time}`}
+                        onClick={() => setSelectedTime(time)}
+                        className={`px-4 py-3.5 text-center cursor-pointer font-body font-bold text-[14px] transition-colors border-y ${selectedTime === time ? 'text-text-primary bg-gray-50/50 border-gray-100' : 'text-[#D1D5DB] border-transparent'}`}
+                      >
+                        {time}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center px-3 py-4 text-center select-none my-auto">
+                    {/* Enlarged Icon without background container, animated nengok kanan kiri */}
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="54"
+                      height="54"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.1"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="text-brand-blue mb-3 overflow-visible select-none drop-shadow-xs"
                     >
-                      {time}
-                    </div>
-                  ))}
-                </div>
+                      {/* Head Circle - subtle parallax shift */}
+                      <circle cx="12" cy="12" r="10" className="animate-head-turn" />
+
+                      {/* Facial features - nengok kanan kiri */}
+                      <g className="animate-face-look">
+                        {/* Eyes with Blinking */}
+                        <g className="animate-eye-blink" style={{ transformOrigin: '12px 9.5px' }}>
+                          <path d="M9 10V9" />
+                          <path d="M15 10V9" />
+                        </g>
+
+                        {/* Mouth turning into cemberut / frown */}
+                        <path
+                          d="M9 16a5 5 0 0 1 6 0"
+                          className="animate-mouth-frown"
+                          style={{ transformOrigin: '12px 16px' }}
+                        />
+                      </g>
+                    </svg>
+
+                    <p className="font-body font-bold text-[12.5px] text-brand-blue leading-tight px-1 max-w-[160px]">
+                      Yah, sudah diluar jam operasional
+                    </p>
+                    <span className="font-body font-medium text-[10.5px] text-text-secondary mt-1.5 leading-snug px-1">
+                      Pilih tanggal lain ya
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Bottom Save Button */}
             <div className="p-4 border-t border-gray-100">
               <button
+                disabled={!selectedTime || availableTimes.length === 0}
                 onClick={() => {
+                  if (!selectedTime || availableTimes.length === 0) return;
                   const label = savePickupTime(selectedDate, selectedTime, availableDates);
-                  setConfirmedTime(label);
-                  closeTimeModal();
+                  if (label) {
+                    setConfirmedTime(label);
+                    closeTimeModal();
+                  }
                 }}
-                className="w-full bg-brand-gold text-white font-body font-black text-[15px] py-3.5 rounded-[16px] shadow-elevated"
+                className={`w-full font-body font-black text-[15px] py-3.5 rounded-[16px] transition-all ${
+                  !selectedTime || availableTimes.length === 0
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
+                    : 'bg-brand-gold text-white shadow-elevated active:scale-95 cursor-pointer'
+                }`}
               >
                 Save
               </button>
@@ -991,7 +1177,6 @@ function MenuPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

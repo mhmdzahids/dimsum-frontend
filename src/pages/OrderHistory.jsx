@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { 
-  ArrowLeft, 
-  Clock, 
-  ShoppingBag, 
-  CheckCircle2, 
-  ConciergeBell, 
-  XCircle, 
-  RotateCw, 
-  ArrowRight, 
+import {
+  ArrowLeft,
+  Clock,
+  ShoppingBag,
+  CheckCircle2,
+  ConciergeBell,
+  XCircle,
+  RotateCw,
+  ArrowRight,
   PenLine,
   UtensilsCrossed,
-  Loader2
+  Wallet,
+  PackageOpen,
+  Truck
 } from 'lucide-react';
 import { getOrderHistory, syncOrderHistoryWithServer } from '../utils/orderHistory';
 
@@ -22,8 +24,6 @@ export default function OrderHistory() {
   const [orders, setOrders] = useState(() => getOrderHistory());
   const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState(initialTab); // 'all' | 'pending' | 'processing' | 'delivering' | 'completed'
-  const [reorderToast, setReorderToast] = useState('');
-  const [isReorderLoading, setIsReorderLoading] = useState(false);
 
   useEffect(() => {
     const tabParam = searchParams.get('tab');
@@ -59,7 +59,7 @@ export default function OrderHistory() {
           setOrders(updated);
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => {
         if (isMounted) setIsSyncing(false);
       });
@@ -69,7 +69,7 @@ export default function OrderHistory() {
       try {
         const saved = localStorage.getItem('dimsum_pending_order');
         setPendingOrder(saved ? JSON.parse(saved) : null);
-      } catch {}
+      } catch { }
     };
 
     window.addEventListener('dimsum_order_history_updated', handleUpdate);
@@ -96,27 +96,7 @@ export default function OrderHistory() {
       navigate('/menu');
       return;
     }
-
-    // 1. Show loading screen first
-    setIsReorderLoading(true);
-
-    // 2. Wait for loading screen, then add items to cart and navigate to menu
-    setTimeout(() => {
-      try {
-        const existingCart = JSON.parse(localStorage.getItem('dimsum_cart') || '{}');
-        order.items.forEach(item => {
-          const pId = item.id || item.product_id;
-          if (pId) {
-            existingCart[pId] = (existingCart[pId] || 0) + (item.quantity || 1);
-          }
-        });
-        localStorage.setItem('dimsum_cart', JSON.stringify(existingCart));
-        navigate('/menu');
-      } catch (e) {
-        console.error('Failed to reorder:', e);
-        navigate('/menu');
-      }
-    }, 1200);
+    navigate('/menu', { state: { reorderItems: order.items } });
   };
 
   // Filter orders
@@ -162,8 +142,8 @@ export default function OrderHistory() {
       {/* 1. Sticky Navbar */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-xs border-b border-gray-100">
         <div className="flex items-center justify-between p-4">
-          <button 
-            onClick={() => navigate(-1)} 
+          <button
+            onClick={() => navigate(-1)}
             className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors cursor-pointer"
             aria-label="Kembali"
           >
@@ -186,21 +166,19 @@ export default function OrderHistory() {
         <div className="flex border-t border-gray-100 bg-white px-3 py-2 gap-2 overflow-x-auto hide-scrollbar">
           <button
             onClick={() => setActiveTab('all')}
-            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap text-center shrink-0 ${
-              activeTab === 'all'
-                ? 'bg-brand-blue text-white shadow-xs'
-                : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
-            }`}
+            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap text-center shrink-0 ${activeTab === 'all'
+              ? 'bg-brand-blue text-white shadow-xs'
+              : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
+              }`}
           >
             Semua ({orders.length})
           </button>
           <button
             onClick={() => setActiveTab('pending')}
-            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${
-              activeTab === 'pending'
-                ? 'bg-brand-gold text-white shadow-xs'
-                : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
-            }`}
+            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${activeTab === 'pending'
+              ? 'bg-brand-gold text-white shadow-xs'
+              : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
+              }`}
           >
             <span>Belum Bayar</span>
             {pendingCount > 0 && (
@@ -211,11 +189,10 @@ export default function OrderHistory() {
           </button>
           <button
             onClick={() => setActiveTab('processing')}
-            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${
-              activeTab === 'processing'
-                ? 'bg-brand-blue text-white shadow-xs'
-                : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
-            }`}
+            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${activeTab === 'processing'
+              ? 'bg-brand-blue text-white shadow-xs'
+              : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
+              }`}
           >
             <span>Dikemas</span>
             {processingCount > 0 && (
@@ -226,11 +203,10 @@ export default function OrderHistory() {
           </button>
           <button
             onClick={() => setActiveTab('delivering')}
-            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${
-              activeTab === 'delivering'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
-            }`}
+            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${activeTab === 'delivering'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
+              }`}
           >
             <span>Dikirim</span>
             {deliveringCount > 0 && (
@@ -241,11 +217,10 @@ export default function OrderHistory() {
           </button>
           <button
             onClick={() => setActiveTab('completed')}
-            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${
-              activeTab === 'completed'
-                ? 'bg-brand-blue text-white shadow-xs'
-                : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
-            }`}
+            className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${activeTab === 'completed'
+              ? 'bg-brand-blue text-white shadow-xs'
+              : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
+              }`}
           >
             <span>Selesai</span>
             {completedCount > 0 && (
@@ -257,15 +232,6 @@ export default function OrderHistory() {
         </div>
       </header>
 
-      {/* 2. Reorder Toast */}
-      {reorderToast && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-[380px] animate-toast-in">
-          <div className="bg-emerald-600/95 backdrop-blur-xs text-white px-4 py-3 rounded-[16px] shadow-elevated flex items-center gap-3 border border-emerald-400/40">
-            <CheckCircle2 size={18} className="text-white shrink-0" />
-            <span className="font-body font-bold text-[13px]">{reorderToast}</span>
-          </div>
-        </div>
-      )}
 
       {/* 3. Active Pending Order Notification Card (if present and viewing all/pending) */}
       {pendingOrder && (activeTab === 'all' || activeTab === 'pending') && (
@@ -273,7 +239,7 @@ export default function OrderHistory() {
           <div className="bg-white border-2 border-brand-gold/60 rounded-[20px] p-4 shadow-sm">
             <div className="flex justify-between items-center mb-2">
               <span className="bg-brand-gold text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-xs">
-                <Clock size={12} strokeWidth={2.5} />
+                <Wallet size={12} strokeWidth={2} />
                 <span>Menunggu Pembayaran</span>
               </span>
               <span className="font-body text-[11px] font-bold text-text-secondary">
@@ -310,12 +276,13 @@ export default function OrderHistory() {
           <div className="space-y-3">
             {filteredOrders.map((order) => {
               const isPending = order.status === 'pending_payment';
-              const isPaid = order.status === 'paid' || order.status === 'fulfilling';
+              const isProcessing = order.status === 'processing' || order.status === 'paid' || order.status === 'preparing' || order.status === 'fulfilling';
+              const isDelivering = order.status === 'delivering' || order.status === 'shipped' || order.status === 'ready';
               const isCompleted = order.status === 'completed';
               const isCancelled = order.status === 'cancelled';
 
               return (
-                <div 
+                <div
                   key={order.orderId}
                   className="bg-white border border-gray-100 rounded-[20px] p-4 shadow-sm hover:shadow-md transition-shadow"
                 >
@@ -323,26 +290,32 @@ export default function OrderHistory() {
                   <div className="flex items-center justify-between pb-3 border-b border-gray-100">
                     <div className="flex items-center gap-2">
                       {isPending && (
-                        <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                          <Clock size={11} strokeWidth={2.5} />
+                        <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                          <Wallet size={12} strokeWidth={2} className="text-amber-700" />
                           <span>Menunggu Bayar</span>
                         </span>
                       )}
-                      {isPaid && (
-                        <span className="bg-blue-50 text-brand-blue border border-brand-blue/30 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                          <CheckCircle2 size={11} strokeWidth={2.5} />
-                          <span>Sudah Dibayar</span>
+                      {isProcessing && (
+                        <span className="bg-blue-50 text-brand-blue border border-brand-blue/30 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                          <PackageOpen size={12} strokeWidth={2} className="text-brand-blue" />
+                          <span>Dikemas</span>
+                        </span>
+                      )}
+                      {isDelivering && (
+                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                          <Truck size={12} strokeWidth={2} className="text-emerald-600" />
+                          <span>Dikirim</span>
                         </span>
                       )}
                       {isCompleted && (
-                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                          <CheckCircle2 size={11} strokeWidth={2.5} />
+                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                          <CheckCircle2 size={12} strokeWidth={2} className="text-emerald-700" />
                           <span>Selesai</span>
                         </span>
                       )}
                       {isCancelled && (
-                        <span className="bg-gray-100 text-gray-600 border border-gray-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                          <XCircle size={11} strokeWidth={2.5} />
+                        <span className="bg-gray-100 text-gray-600 border border-gray-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                          <XCircle size={12} strokeWidth={2} />
                           <span>Dibatalkan</span>
                         </span>
                       )}
@@ -422,7 +395,7 @@ export default function OrderHistory() {
                         </button>
                       )}
 
-                      {isPaid && (
+                      {(isProcessing || isDelivering) && (
                         <button
                           onClick={() => navigate('/order-status', { state: { orderId: order.orderId } })}
                           className="py-1.5 px-3.5 bg-brand-blue hover:bg-brand-blue-dark text-white font-body font-bold text-[12px] rounded-[10px] shadow-xs active:scale-95 transition-transform flex items-center gap-1.5 cursor-pointer"
@@ -450,41 +423,42 @@ export default function OrderHistory() {
         ) : (
           /* Empty State */
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-            {/* Visual Graphic Illustration */}
-            <div className="relative w-[180px] h-[160px] flex items-center justify-center mb-5">
-              <svg viewBox="0 0 200 180" className="w-full h-full drop-shadow-sm" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <ellipse cx="100" cy="110" rx="68" ry="42" fill="#FFF9ED" />
-                <circle cx="48" cy="95" r="16" fill="#FDF4E2" opacity="0.6" />
-                <circle cx="152" cy="85" r="15" fill="#FDF4E2" opacity="0.6" />
-                <g transform="translate(10, 5)">
-                  <rect x="45" y="60" width="90" height="52" rx="14" fill="#F5F1EB" stroke="#4E8298" strokeWidth="2.5" />
-                  <rect x="52" y="68" width="76" height="36" rx="8" fill="#FFFFFF" stroke="#4E8298" strokeWidth="1.5" strokeDasharray="3 3" />
-                  <ellipse cx="72" cy="86" rx="10" ry="7" fill="#C9A23D" opacity="0.85" />
-                  <ellipse cx="108" cy="86" rx="10" ry="7" fill="#C9A23D" opacity="0.85" />
-                  <ellipse cx="90" cy="80" rx="11" ry="8" fill="#C9A23D" />
-                  <g transform="rotate(-8 60 40)">
-                    <rect x="42" y="22" width="42" height="55" rx="5" fill="#FFFFFF" stroke="#C9A23D" strokeWidth="2" />
-                    <line x1="50" y1="32" x2="76" y2="32" stroke="#6B7B8D" strokeWidth="2" strokeLinecap="round" />
-                    <line x1="50" y1="40" x2="70" y2="40" stroke="#6B7B8D" strokeWidth="2" strokeLinecap="round" />
-                    <line x1="50" y1="48" x2="65" y2="48" stroke="#6B7B8D" strokeWidth="2" strokeLinecap="round" />
-                    <circle cx="70" cy="58" r="7" fill="#E8F5EE" stroke="#2D8F5E" strokeWidth="1.5" />
-                    <path d="M67.5 58L69.5 60L73 56" stroke="#2D8F5E" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </g>
-                  <path d="M78 46 C75 40, 81 35, 78 28" stroke="#C9A23D" strokeWidth="2" strokeLinecap="round" opacity="0.6" />
-                  <path d="M102 44 C99 38, 105 33, 102 26" stroke="#C9A23D" strokeWidth="2" strokeLinecap="round" opacity="0.6" />
-                </g>
-              </svg>
+            {/* Contextual Empty State Icon (Flat, No Background Container) */}
+            <div className="mb-5 flex items-center justify-center">
+              {activeTab === 'pending' ? (
+                <Wallet size={56} strokeWidth={1.75} className="text-brand-gold" />
+              ) : activeTab === 'processing' ? (
+                <PackageOpen size={56} strokeWidth={1.75} className="text-brand-blue" />
+              ) : activeTab === 'delivering' ? (
+                <Truck size={56} strokeWidth={1.75} className="text-emerald-600" />
+              ) : activeTab === 'completed' ? (
+                <CheckCircle2 size={56} strokeWidth={1.75} className="text-emerald-600" />
+              ) : (
+                <ShoppingBag size={56} strokeWidth={1.75} className="text-brand-gold" />
+              )}
             </div>
 
             <h2 className="font-heading font-black text-[18px] text-text-primary mb-2">
               {activeTab === 'pending'
                 ? 'Tidak ada pesanan menunggu bayar'
-                : activeTab === 'completed'
-                ? 'Belum ada pesanan yang selesai'
-                : 'Kamu belum punya riwayat order'}
+                : activeTab === 'processing'
+                  ? 'Belum ada pesanan yang sedang dikemas'
+                  : activeTab === 'delivering'
+                    ? 'Belum ada pesanan yang sedang dikirim'
+                    : activeTab === 'completed'
+                      ? 'Belum ada pesanan yang selesai'
+                      : 'Kamu belum punya riwayat order'}
             </h2>
             <p className="font-body font-medium text-[13px] text-text-secondary max-w-[280px] leading-relaxed mb-6">
-              Pesanan dimsum hangat dan lezatmu akan tercatat otomatis di sini setelah kamu melakukan transaksi.
+              {activeTab === 'pending'
+                ? 'Pesanan yang belum diselesaikan pembayarannya akan muncul di sini.'
+                : activeTab === 'processing'
+                  ? 'Pesanan yang sedang disiapkan dan dikemas akan muncul di sini.'
+                  : activeTab === 'delivering'
+                    ? 'Pesanan yang sedang dalam proses pengiriman akan muncul di sini.'
+                    : activeTab === 'completed'
+                      ? 'Pesanan yang telah selesai akan tercatat di sini.'
+                      : 'Pesanan dimsum frozenmu akan tercatat otomatis setelah kamu melakukan transaksi.'}
             </p>
 
             <button
@@ -498,34 +472,7 @@ export default function OrderHistory() {
         )}
       </div>
 
-      {/* Reorder Loading Screen */}
-      {isReorderLoading && (
-        <div className="fixed inset-0 z-50 bg-bg-cream/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-200">
-          <div className="bg-white rounded-[28px] p-7 shadow-elevated border border-gray-100/90 flex flex-col items-center max-w-[320px] w-full transform animate-in zoom-in-95 duration-200">
-            {/* Animated Shopping Bag / Steamer Icon */}
-            <div className="relative w-20 h-20 rounded-full bg-brand-gold/10 flex items-center justify-center text-brand-gold mb-4 border border-brand-gold/25">
-              <ShoppingBag size={34} className="text-brand-gold animate-bounce" />
-              <div className="absolute -inset-1 rounded-full border-2 border-brand-gold/40 border-t-transparent animate-spin" />
-            </div>
 
-            <h3 className="font-heading font-black text-[18px] text-text-primary leading-tight mb-2">
-              Menyiapkan Pesanan...
-            </h3>
-            <p className="font-body text-[12.5px] text-text-secondary leading-relaxed mb-4">
-              Menambahkan menu pilihan ke keranjang belanja Anda.
-            </p>
-
-            {/* Spinner and progress bar */}
-            <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
-              <div className="h-full bg-brand-gold rounded-full animate-bar-fill-half w-full"></div>
-            </div>
-            <span className="font-body text-[11px] text-brand-gold font-bold mt-3 inline-flex items-center gap-1.5">
-              <Loader2 size={13} className="animate-spin" />
-              <span>Memproses...</span>
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

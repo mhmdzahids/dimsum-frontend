@@ -318,14 +318,20 @@ export default function OrderStatus() {
                     </div>
 
                     {/* Live Delivery Status Indicator */}
-                    <div className="flex items-center gap-2 py-1.5 px-3.5 rounded-full bg-amber-50 border border-amber-200/80 text-amber-800 text-[11px] font-semibold my-3 shadow-xs">
+                    <div className="flex items-center gap-2 py-1.5 px-3.5 rounded-full bg-amber-50 border border-amber-200/80 text-amber-800 text-[11px] font-semibold my-2.5 shadow-xs">
                       <Bike size={15} className="text-amber-600 animate-pulse shrink-0" />
                       <span>Dapur sedang menyiapkan menu lezatmu...</span>
                     </div>
 
+                    {/* Auto WhatsApp Sent Indicator */}
+                    <div className="flex items-center gap-2 py-1.5 px-3.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-[11px] font-semibold my-1 shadow-2xs">
+                      <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                      <span>Struk pesanan telah dikirim ke WhatsApp</span>
+                    </div>
+
                     <button
                       onClick={handleBackHome}
-                      className="mt-2.5 w-full py-3 bg-brand-gold hover:bg-brand-gold-dark text-white font-body font-bold text-[14px] rounded-[14px] shadow-elevated transition-transform active:scale-95 cursor-pointer"
+                      className="mt-3 w-full py-3 bg-brand-gold hover:bg-brand-gold-dark text-white font-body font-bold text-[14px] rounded-[14px] shadow-elevated transition-transform active:scale-95 cursor-pointer"
                     >
                       Kembali ke Beranda
                     </button>
@@ -371,26 +377,33 @@ export default function OrderStatus() {
                   <div className="flex items-center gap-2 py-1.5 px-3.5 text-amber-800 text-[11px] font-semibold my-3">
                   </div>
 
-                  {/* Action Buttons: Unduh QR & Kembali */}
-                  {qrToken && (
-                    <button
-                      type="button"
-                      onClick={handleDownloadQR}
-                      className="w-full py-3 px-4 bg-brand-blue/10 hover:bg-brand-blue/15 text-brand-blue border border-brand-blue/25 font-body font-bold text-[13px] rounded-[14px] shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      {downloadSuccess ? (
-                        <>
-                          <Check size={16} className="text-green-600" />
-                          <span className="text-green-600">QR Berhasil Diunduh!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Download size={16} strokeWidth={2.2} />
-                          <span>Unduh QR Code ke Galeri</span>
-                        </>
-                      )}
-                    </button>
-                  )}
+                  {/* Auto WhatsApp Sent Indicator & Unduh QR */}
+                  <div className="w-full flex flex-col gap-2.5 mt-2">
+                    <div className="flex items-center justify-center gap-1.5 text-emerald-700 text-[11.5px] font-semibold py-1 px-3 bg-emerald-50/80 border border-emerald-200/60 rounded-full">
+                      <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                      <span>Struk & QR Code otomatis dikirim ke WhatsApp</span>
+                    </div>
+
+                    {qrToken && (
+                      <button
+                        type="button"
+                        onClick={handleDownloadQR}
+                        className="w-full py-3 px-4 bg-brand-blue/10 hover:bg-brand-blue/15 text-brand-blue border border-brand-blue/25 font-body font-bold text-[13px] rounded-[14px] shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        {downloadSuccess ? (
+                          <>
+                            <Check size={16} className="text-green-600" />
+                            <span className="text-green-600">QR Berhasil Diunduh!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download size={16} strokeWidth={2.2} />
+                            <span>Unduh QR Code ke Galeri</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
 
                   <button
                     onClick={handleBackHome}

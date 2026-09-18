@@ -15,7 +15,9 @@ import {
   ShieldAlert,
   Sparkles,
   RefreshCw,
-  Info
+  Info,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import AdminNav from '../components/AdminNav';
 
@@ -41,6 +43,7 @@ export default function AdminVouchers() {
   const [usageLimit, setUsageLimit] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [isPublic, setIsPublic] = useState(true);
   const [isActive, setIsActive] = useState(true);
 
   const [formSubmitting, setFormSubmitting] = useState(false);
@@ -127,6 +130,7 @@ export default function AdminVouchers() {
         usage_limit: usageLimit ? parseInt(usageLimit) : null,
         start_date: startDate ? new Date(startDate).toISOString() : null,
         end_date: endDate ? new Date(endDate).toISOString() : null,
+        is_public: isPublic,
         is_active: isActive
       };
 
@@ -149,6 +153,7 @@ export default function AdminVouchers() {
         setUsageLimit('');
         setStartDate('');
         setEndDate('');
+        setIsPublic(true);
         fetchVouchers();
       } else {
         setFormError(data.error || 'Gagal membuat voucher');
@@ -171,6 +176,24 @@ export default function AdminVouchers() {
         fetchVouchers();
       } else {
         alert(data.error || 'Gagal mengubah status');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Koneksi ke server gagal');
+    }
+  };
+
+  const handleTogglePublic = async (id) => {
+    try {
+      const res = await fetch(`/api/vouchers/${id}/toggle-public`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchVouchers();
+      } else {
+        alert(data.error || 'Gagal mengubah visibilitas');
       }
     } catch (e) {
       console.error(e);
@@ -477,6 +500,46 @@ export default function AdminVouchers() {
                   </div>
                 </div>
 
+                {/* Visibilitas Voucher (Publik vs Tersembunyi) */}
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div>
+                      <span className="text-xs font-bold text-text-primary block">Visibilitas Voucher</span>
+                      <span className="text-[11px] text-text-secondary">
+                        {isPublic ? 'Tampil di Halaman Voucher Pelanggan' : 'Voucher Tersembunyi (Klaim via Kode)'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsPublic(!isPublic)}
+                      className="text-brand-blue hover:text-brand-blue-dark transition-colors"
+                      title={isPublic ? 'Ubah ke Tersembunyi' : 'Ubah ke Publik'}
+                    >
+                      {isPublic ? (
+                        <ToggleRight size={32} className="text-brand-blue" />
+                      ) : (
+                        <ToggleLeft size={32} className="text-gray-400" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-2">
+                    {isPublic ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <Eye size={13} /> Terbuka untuk umum di halaman /vouchers
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                        <EyeOff size={13} /> Rahasia / Khusus promosi manual
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-text-secondary mt-1.5 leading-relaxed">
+                    {isPublic
+                      ? 'Pelanggan dapat melihat promo ini secara publik dan langsung mengkliknya.'
+                      : 'Hanya pelanggan yang mengetahui dan mengetik kode promo ini yang dapat menggunakannya.'}
+                  </p>
+                </div>
+
                 {/* Status Aktif */}
                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200">
                   <div>
@@ -621,8 +684,24 @@ export default function AdminVouchers() {
                               )}
                             </div>
 
+                            {/* Toggle public visibility button */}
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePublic(v.id)}
+                              title={v.is_public !== false ? 'Klik untuk sembunyikan dari daftar publik' : 'Klik untuk tampilkan di daftar publik'}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                                v.is_public !== false
+                                  ? 'bg-blue-50 text-brand-blue border border-blue-200 hover:bg-blue-100'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                              }`}
+                            >
+                              {v.is_public !== false ? <Eye size={13} /> : <EyeOff size={13} />}
+                              <span>{v.is_public !== false ? 'Publik' : 'Tersembunyi'}</span>
+                            </button>
+
                             {/* Toggle active button */}
                             <button
+                              type="button"
                               onClick={() => handleToggle(v.id)}
                               className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
                                 v.is_active

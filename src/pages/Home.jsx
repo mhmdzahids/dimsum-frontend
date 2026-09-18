@@ -22,14 +22,17 @@ import imgKeju from '../assets/icon/keju.webp';
 import logoImg from '../assets/logo.webp';
 import { Squash as Hamburger } from 'hamburger-react';
 import HeaderDropdown from '../components/HeaderDropdown';
+import HomeSkeleton from '../components/HomeSkeleton';
 
 function Home() {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [orderType, setOrderType] = useState('Pick Up');
   const [activeBanner, setActiveBanner] = useState(0);
-  const [banners, setBanners] = useState([1, 2, 3]);
+  const [banners, setBanners] = useState([]);
   const [activeTopping, setActiveTopping] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
 
   const handleToppingClick = (name) => {
     setActiveTopping(name);
@@ -44,15 +47,15 @@ function Home() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (!parsed || typeof parsed !== 'object' || !parsed.orderId) {
-          try { localStorage.removeItem('dimsum_pending_order'); } catch {}
+          try { localStorage.removeItem('dimsum_pending_order'); } catch { }
           return null;
         }
         if (parsed.expiresAt && new Date(parsed.expiresAt).getTime() <= Date.now()) {
-          try { localStorage.removeItem('dimsum_pending_order'); } catch {}
+          try { localStorage.removeItem('dimsum_pending_order'); } catch { }
           return null;
         }
         if (parsed.createdAt && (Date.now() - new Date(parsed.createdAt).getTime() > 60 * 60 * 1000)) {
-          try { localStorage.removeItem('dimsum_pending_order'); } catch {}
+          try { localStorage.removeItem('dimsum_pending_order'); } catch { }
           return null;
         }
         return parsed;
@@ -63,56 +66,112 @@ function Home() {
     }
   });
 
+  // Preload banners, pending order validation, and core assets
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadDataAndAssets = async () => {
+      try {
+        const staticImages = [
+          logoImg,
+          imgWortel,
+          imgSosis,
+          imgJamur,
+          imgBeef,
+          imgCrabstick
+        ];
+
+        // 1. Fetch active banners & pending order validity in parallel
+        const bannersPromise = fetch('/api/banners?active_only=true')
+          .then(res => res.json())
+          .catch(err => {
+            console.error('Error fetching banners:', err);
+            return { success: false, data: [] };
+          });
+
+        let orderPromise = Promise.resolve();
+        if (pendingOrder?.orderId) {
+          const token = pendingOrder.accessToken || localStorage.getItem('dimsum_current_order_token');
+          const headers = {};
+          if (token) headers['X-Order-Token'] = token;
+          orderPromise = fetch(`/api/orders/${pendingOrder.orderId}`, { headers })
+            .then(res => res.json())
+            .then(data => {
+              if (data.success && data.data) {
+                if (data.data.status !== 'pending_payment') {
+                  try { localStorage.removeItem('dimsum_pending_order'); } catch { }
+                  if (isMounted) setPendingOrder(null);
+                }
+              } else if (data.status === 404 || data.error?.includes('tidak ditemukan')) {
+                try { localStorage.removeItem('dimsum_pending_order'); } catch { }
+                if (isMounted) setPendingOrder(null);
+              }
+            })
+            .catch(() => { });
+        }
+
+        const [bannersData] = await Promise.all([bannersPromise, orderPromise]);
+
+        let bannerUrls = [];
+        if (bannersData?.success && Array.isArray(bannersData.data) && bannersData.data.length > 0) {
+          if (isMounted) setBanners(bannersData.data);
+          bannerUrls = bannersData.data.map(b => b.image_url).filter(Boolean);
+        }
+
+        // 2. Preload all images (icons + banners)
+        const allImages = [...staticImages, ...bannerUrls];
+        const imagePromises = allImages.map(src => {
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.src = src;
+            img.onload = resolve;
+            img.onerror = resolve;
+          });
+        });
+
+        // 3. Minimum delay (550ms) for smooth skeleton presentation without abrupt flash
+        const minLoadingTime = new Promise(resolve => setTimeout(resolve, 550));
+
+        await Promise.all([...imagePromises, minLoadingTime]);
+
+        if (isMounted) {
+          setAssetsLoaded(true);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Error initializing homepage:', err);
+        if (isMounted) {
+          setAssetsLoaded(true);
+          setLoading(false);
+        }
+      }
+    };
+
+    loadDataAndAssets();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Periodic check for pending order expiry
   useEffect(() => {
     if (!pendingOrder?.orderId) return;
 
     const checkExpiry = () => {
       if (pendingOrder?.expiresAt && new Date(pendingOrder.expiresAt).getTime() <= Date.now()) {
-        try { localStorage.removeItem('dimsum_pending_order'); } catch {}
+        try { localStorage.removeItem('dimsum_pending_order'); } catch { }
         setPendingOrder(null);
       }
     };
-
-    const token = pendingOrder.accessToken || localStorage.getItem('dimsum_current_order_token');
-    const headers = {};
-    if (token) headers['X-Order-Token'] = token;
-
-    fetch(`/api/orders/${pendingOrder.orderId}`, { headers })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.data) {
-          if (data.data.status !== 'pending_payment') {
-            try { localStorage.removeItem('dimsum_pending_order'); } catch {}
-            setPendingOrder(null);
-          }
-        } else if (data.status === 404 || data.error?.includes('tidak ditemukan')) {
-          try { localStorage.removeItem('dimsum_pending_order'); } catch {}
-          setPendingOrder(null);
-        }
-      })
-      .catch(() => {});
 
     const timer = setInterval(checkExpiry, 3000);
     return () => clearInterval(timer);
   }, [pendingOrder?.orderId]);
 
+  // Rotate carousel banners
   useEffect(() => {
-    const fetchBanners = async () => {
-      try {
-        const res = await fetch('/api/banners?active_only=true');
-        const data = await res.json();
-        if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-          setBanners(data.data);
-        }
-      } catch (err) {
-        console.error('Error fetching banners:', err);
-      }
-    };
-    fetchBanners();
-  }, []);
-
-  useEffect(() => {
-    if (!banners || banners.length === 0) return;
+    if (!banners || banners.length <= 1) return;
     const timer = setInterval(() => {
       setActiveBanner((prev) => (prev + 1) % banners.length);
     }, 3000);
@@ -155,8 +214,13 @@ function Home() {
     },
   ];
 
+  // Render precise 1:1 skeleton loader while data and assets are loading
+  if (loading || !assetsLoaded) {
+    return <HomeSkeleton key="home-skeleton" />;
+  }
+
   return (
-    <div className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-bg-cream">
+    <div key="home-main-content" className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-bg-cream animate-fade-in">
       {/* Header */}
       <header className="bg-brand-blue pt-3 px-6 pb-14 text-left relative z-10 transition-all duration-300">
         <div className="flex items-center justify-between text-white relative">
@@ -233,37 +297,44 @@ function Home() {
         </div>
 
         {/* Carousel */}
-        <div className="px-6 pb-6 mt-4">
-          <div className="overflow-hidden mb-6 rounded-[20px] shadow-card relative">
-            <div
-              className="flex transition-transform duration-500 ease-in-out"
-              style={{ transform: `translateX(-${activeBanner * 100}%)` }}
-            >
-              {banners.map((item, index) => (
-                <div key={item.id || index} className="shrink-0 w-full h-[160px] bg-brand-blue-light flex items-center justify-center text-white font-body font-bold text-[14px] overflow-hidden">
-                  {item.image_url ? (
-                    <img src={item.image_url} alt={`Promo ${index + 1}`} className="w-full h-full object-cover" />
-                  ) : (
-                    `[ Banner Promo ${item} ]`
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="flex justify-center gap-2 mb-8">
-            {banners.map((_, index) => (
+        {banners.length > 0 && (
+          <div className="px-6 pb-6 mt-4">
+            <div className="overflow-hidden mb-6 rounded-[20px] shadow-card relative">
               <div
-                key={index}
-                className={`h-1.5 rounded-full transition-all duration-300 ${activeBanner === index ? 'w-6 bg-brand-gold' : 'w-1.5 bg-bg-cream-dark'
-                  }`}
-              ></div>
-            ))}
+                className="flex transition-transform duration-500 ease-in-out"
+                style={{ transform: `translateX(-${activeBanner * 100}%)` }}
+              >
+                {banners.map((item, index) => (
+                  <div key={item.id || index} className="shrink-0 w-full h-[160px] bg-brand-blue-light flex items-center justify-center text-white font-body font-bold text-[14px] overflow-hidden">
+                    {item.image_url ? (
+                      <img src={item.image_url} alt={`Promo ${index + 1}`} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-white/90">
+                        <span className="font-heading font-black text-[16px]">Dimsum Hangat Premium</span>
+                        <span className="text-[11px] opacity-80 mt-0.5">Rasakan kelezatan setiap gigitan</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {banners.length > 1 && (
+              <div className="flex justify-center gap-2 mb-8">
+                {banners.map((_, index) => (
+                  <div
+                    key={index}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${activeBanner === index ? 'w-6 bg-brand-gold' : 'w-1.5 bg-bg-cream-dark'
+                      }`}
+                  ></div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Categories / Favorites */}
         <div className="px-6 mb-8">
-          <h2 className="font-heading font-black text-[20px] tracking-[0.5px] leading-[1.25] text-brand-blue">Pilihan Topping</h2>
+          <h2 className="font-heading font-black text-[20px] tracking-[0.5px] leading-[1.25] text-brand-blue">Aneka Topping</h2>
           <div className="flex justify-between gap-0.5 overflow-visible pb-4 mt-6 hide-scrollbar">
             {categories.map((cat, index) => {
               const isActive = activeTopping === cat.name;
@@ -273,20 +344,17 @@ function Home() {
                   onClick={() => handleToppingClick(cat.name)}
                   className="flex flex-col items-center gap-1.5 min-w-[48px] max-w-[54px] group cursor-pointer select-none active:scale-95 transition-transform"
                 >
-                  <div className={`w-[56px] h-[56px] rounded-full bg-brand-blue flex items-center justify-center shadow-card shrink-0 overflow-hidden transition-all duration-200 ${
-                    isActive ? 'scale-110 shadow-elevated ring-2 ring-brand-gold' : 'group-hover:scale-105'
-                  }`}>
+                  <div className={`w-[56px] h-[56px] rounded-full bg-brand-blue flex items-center justify-center shadow-card shrink-0 overflow-hidden transition-all duration-200 ${isActive ? 'scale-110 shadow-elevated ring-2 ring-brand-gold' : 'group-hover:scale-105'
+                    }`}>
                     <img
                       src={cat.icon}
                       alt={cat.name}
-                      className={`w-[70%] h-[70%] object-contain transition-transform ${
-                        isActive ? 'animate-giggle' : 'group-hover:animate-giggle'
-                      }`}
+                      className={`w-[70%] h-[70%] object-contain transition-transform ${isActive ? 'animate-giggle' : 'group-hover:animate-giggle'
+                        }`}
                     />
                   </div>
-                  <span className={`font-body font-bold text-[9px] leading-[1.2] text-center break-words w-full transition-colors ${
-                    isActive ? 'text-brand-gold scale-105 font-black' : 'text-brand-blue group-hover:text-brand-gold'
-                  }`}>
+                  <span className={`font-body font-bold text-[9px] leading-[1.2] text-center break-words w-full transition-colors ${isActive ? 'text-brand-gold scale-105 font-black' : 'text-brand-blue group-hover:text-brand-gold'
+                    }`}>
                     {cat.name}
                   </span>
                 </div>
@@ -343,11 +411,10 @@ function Home() {
       </footer>
 
       {/* Floating Action Button "Ada Keluhan?" (Always floating on top, z-[70]) */}
-      <button 
+      <button
         onClick={() => window.open('https://wa.me/6281234567890?text=Halo%20Admin%20Makan%20Dimsum,%20saya%20butuh%20bantuan/ada%20keluhan%20pesanan...', '_blank')}
-        className={`fixed ${
-          pendingOrder && pendingOrder.orderId ? 'bottom-24' : 'bottom-6'
-        } right-5 md:right-[calc(50%-240px+20px)] bg-brand-gold hover:bg-brand-gold-dark text-white border-none rounded-full py-3.5 px-5 flex items-center gap-2 shadow-elevated font-body font-bold text-[13px] cursor-pointer z-[70] hover:scale-105 active:scale-95 transition-all duration-200`}
+        className={`fixed ${pendingOrder && pendingOrder.orderId ? 'bottom-24' : 'bottom-6'
+          } right-5 md:right-[calc(50%-240px+20px)] bg-brand-gold hover:bg-brand-gold-dark text-white border-none rounded-full py-3.5 px-5 flex items-center gap-2 shadow-elevated font-body font-bold text-[13px] cursor-pointer z-[70] hover:scale-105 active:scale-95 transition-all duration-200`}
         title="Hubungi Layanan Pelanggan"
       >
         <Headset size={19} strokeWidth={2.2} />

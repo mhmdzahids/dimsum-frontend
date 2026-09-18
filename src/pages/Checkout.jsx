@@ -63,7 +63,7 @@ export default function Checkout() {
   }, []);
 
   const generateDates = () => {
-    const dates = ['Pick up Hari ini'];
+    const dates = ['Hari ini'];
     for (let i = 1; i <= 6; i++) {
       const d = new Date();
       d.setDate(d.getDate() + i);
@@ -187,40 +187,70 @@ export default function Checkout() {
     };
   }, [isTimeModalOpen, isNotesModalOpen]);
 
-  const availableTimes = React.useMemo(() => {
+  const getAvailableTimes = React.useCallback((dateToCheck) => {
     const times = [];
-    const isToday = selectedDate === availableDates[0];
+    const isToday = dateToCheck === availableDates[0];
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
 
-    for (let h = 8; h <= 22; h++) {
+    for (let h = 9; h <= 21; h++) {
       const hourStr = h.toString().padStart(2, '0');
 
       if (!isToday || (h > currentHour) || (h === currentHour && currentMinute <= 0)) {
         times.push(`${hourStr} : 00`);
       }
 
-      if (h !== 22) {
+      if (h !== 21) {
         if (!isToday || (h > currentHour) || (h === currentHour && currentMinute <= 30)) {
           times.push(`${hourStr} : 30`);
         }
       }
     }
     return times;
-  }, [selectedDate, availableDates]);
+  }, [availableDates]);
 
-  const [selectedTime, setSelectedTime] = useState(availableTimes[0]);
+  const availableTimes = React.useMemo(() => getAvailableTimes(selectedDate), [getAvailableTimes, selectedDate]);
 
-  useEffect(() => {
-    if (availableTimes.length > 0 && !availableTimes.includes(selectedTime)) {
-      setSelectedTime(availableTimes[0]);
-    }
-  }, [availableTimes, selectedTime]);
+  const [selectedTime, setSelectedTime] = useState(() => {
+    const times = getAvailableTimes(availableDates[0]);
+    return times.length > 0 ? times[0] : '';
+  });
 
   const [confirmedTime, setConfirmedTime] = useState(() => {
-    return getValidPickupTime() || 'Pilih Waktu Pickup';
+    return location.state?.confirmedTime || getValidPickupTime() || 'Pilih Waktu Pickup';
   });
+
+  const openTimeModal = () => {
+    if (confirmedTime && confirmedTime !== 'Pilih Waktu Pickup') {
+      const parts = confirmedTime.split(',').map(s => s.trim());
+      const cDate = parts[0];
+      const cTime = parts[1];
+      if (cDate && availableDates.includes(cDate)) {
+        setSelectedDate(cDate);
+        const times = getAvailableTimes(cDate);
+        if (times.includes(cTime)) {
+          setSelectedTime(cTime);
+        } else if (times.length > 0) {
+          setSelectedTime(times[0]);
+        } else {
+          setSelectedTime('');
+        }
+        setIsTimeModalOpen(true);
+        return;
+      }
+    }
+
+    const curTimes = getAvailableTimes(selectedDate);
+    if (curTimes.length > 0) {
+      if (!curTimes.includes(selectedTime)) {
+        setSelectedTime(curTimes[0]);
+      }
+    } else {
+      setSelectedTime('');
+    }
+    setIsTimeModalOpen(true);
+  };
 
   // Auto-reset if time expires while on checkout page
   useEffect(() => {
@@ -481,7 +511,7 @@ export default function Checkout() {
               </div>
               <button
                 type="button"
-                onClick={() => setIsTimeModalOpen(true)}
+                onClick={openTimeModal}
                 className="border border-brand-gold/40 text-brand-gold rounded-[8px] px-3 py-1.5 font-body font-semibold text-[12px] hover:bg-brand-gold hover:text-white transition-colors cursor-pointer"
               >
                 Pilih Waktu
@@ -842,7 +872,7 @@ export default function Checkout() {
           <div className={`relative bg-white w-full max-w-[480px] mx-auto rounded-t-[24px] shadow-2xl flex flex-col overscroll-contain ${isTimeModalClosing ? 'animate-slide-down' : 'animate-slide-up'}`}>
             {/* Header */}
             <div className="p-5 flex justify-between items-center border-b border-gray-100">
-              <h2 className="font-body font-black text-[16px] text-text-primary">Pilih Waktu Pick Up</h2>
+              <h2 className="font-body font-black text-[16px] text-text-primary">Pilih waktu Pick Up</h2>
               <button
                 onClick={closeTimeModal}
                 className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-text-primary"
@@ -854,12 +884,20 @@ export default function Checkout() {
             {/* Pickers Content */}
             <div className="flex h-[260px] overflow-hidden relative">
               {/* Left Column: Dates */}
-              <div className="w-[60%] overflow-y-auto hide-scrollbar pt-2 pb-10 border-r border-gray-50">
+              <div className="w-1/2 overflow-y-auto hide-scrollbar pt-2 pb-10 border-r border-gray-100">
                 {availableDates.map(date => (
                   <div
                     key={date}
-                    onClick={() => setSelectedDate(date)}
-                    className={`px-5 py-3.5 cursor-pointer font-body font-bold text-[14px] transition-colors ${selectedDate === date ? 'text-text-primary' : 'text-[#D1D5DB]'}`}
+                    onClick={() => {
+                      setSelectedDate(date);
+                      const newTimes = getAvailableTimes(date);
+                      if (newTimes.length > 0) {
+                        setSelectedTime(newTimes.includes(selectedTime) ? selectedTime : newTimes[0]);
+                      } else {
+                        setSelectedTime('');
+                      }
+                    }}
+                    className={`px-4 py-3.5 cursor-pointer font-body font-bold text-[14px] transition-colors border-y ${selectedDate === date ? 'text-text-primary bg-gray-50/50 border-gray-100' : 'text-[#D1D5DB] border-transparent'}`}
                   >
                     {date}
                   </div>
@@ -867,35 +905,84 @@ export default function Checkout() {
               </div>
 
               {/* Right Column: Times */}
-              <div className="w-[40%] overflow-y-auto hide-scrollbar pt-2 pb-10">
-                <div className="flex flex-col">
-                  {availableTimes.map(time => (
-                    <div
-                      key={time}
-                      onClick={() => setSelectedTime(time)}
-                      className={`px-5 py-3.5 text-center cursor-pointer font-body font-bold text-[14px] transition-colors ${selectedTime === time ? 'text-text-primary' : 'text-[#D1D5DB]'}`}
+              <div className="w-1/2 overflow-y-auto hide-scrollbar pt-2 pb-10 flex flex-col">
+                {availableTimes.length > 0 ? (
+                  <div className="flex flex-col">
+                    {availableTimes.map(time => (
+                      <div
+                        key={`${selectedDate}-${time}`}
+                        onClick={() => setSelectedTime(time)}
+                        className={`px-4 py-3.5 text-center cursor-pointer font-body font-bold text-[14px] transition-colors border-y ${selectedTime === time ? 'text-text-primary bg-gray-50/50 border-gray-100' : 'text-[#D1D5DB] border-transparent'}`}
+                      >
+                        {time}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center px-3 py-4 text-center select-none my-auto">
+                    {/* Enlarged Icon without background container, animated nengok kanan kiri */}
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="54"
+                      height="54"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.1"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="text-brand-blue mb-3 overflow-visible select-none drop-shadow-xs"
                     >
-                      {time}
-                    </div>
-                  ))}
-                </div>
-              </div>
+                      {/* Head Circle - subtle parallax shift */}
+                      <circle cx="12" cy="12" r="10" className="animate-head-turn" />
 
-              {/* Selection Highlight Overlay (Optional for aesthetics) */}
-              <div className="absolute top-[52px] left-0 right-0 h-[48px] border-y border-gray-100 pointer-events-none z-[-1] bg-gray-50/30"></div>
+                      {/* Facial features - nengok kanan kiri */}
+                      <g className="animate-face-look">
+                        {/* Eyes with Blinking */}
+                        <g className="animate-eye-blink" style={{ transformOrigin: '12px 9.5px' }}>
+                          <path d="M9 10V9" />
+                          <path d="M15 10V9" />
+                        </g>
+
+                        {/* Mouth turning into cemberut / frown */}
+                        <path
+                          d="M9 16a5 5 0 0 1 6 0"
+                          className="animate-mouth-frown"
+                          style={{ transformOrigin: '12px 16px' }}
+                        />
+                      </g>
+                    </svg>
+
+                    <p className="font-body font-bold text-[12.5px] text-brand-blue leading-tight px-1 max-w-[160px]">
+                      Yah, sudah diluar jam operasional
+                    </p>
+                    <span className="font-body font-medium text-[10.5px] text-text-secondary mt-1.5 leading-snug px-1">
+                      Pilih tanggal lain ya
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Bottom Save Button */}
             <div className="p-4 border-t border-gray-100">
               <button
+                disabled={!selectedTime || availableTimes.length === 0}
                 onClick={() => {
+                  if (!selectedTime || availableTimes.length === 0) return;
                   const label = savePickupTime(selectedDate, selectedTime, availableDates);
-                  setConfirmedTime(label);
-                  closeTimeModal();
+                  if (label) {
+                    setConfirmedTime(label);
+                    closeTimeModal();
+                  }
                 }}
-                className="w-full bg-brand-gold text-white font-body font-black text-[15px] py-3.5 rounded-[12px] shadow-elevated"
+                className={`w-full font-body font-black text-[15px] py-3.5 rounded-[16px] transition-all ${
+                  !selectedTime || availableTimes.length === 0
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
+                    : 'bg-brand-gold text-white shadow-elevated active:scale-95 cursor-pointer'
+                }`}
               >
-                Simpan
+                Save
               </button>
             </div>
           </div>

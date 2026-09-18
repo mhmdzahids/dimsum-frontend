@@ -96,11 +96,18 @@ export function savePickupTime(selectedDate, selectedTime, availableDates = []) 
   let targetDate;
   if (isToday) {
     targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, min, 0);
+    // Explicit Guard: Reject times that have already passed today
+    if (targetDate.getTime() <= now.getTime()) {
+      return null;
+    }
   } else {
     // Find index in availableDates if possible
     const dayIndex = availableDates.indexOf(selectedDate);
     const offsetDays = dayIndex > 0 ? dayIndex : 1;
     targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offsetDays, hour, min, 0);
+    if (targetDate.getTime() <= now.getTime()) {
+      return null;
+    }
   }
 
   const label = `${selectedDate}, ${selectedTime}`;
