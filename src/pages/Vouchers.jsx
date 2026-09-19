@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Ticket, CheckCircle2, Check, AlertCircle, Tag, Clock, Sparkles } from 'lucide-react';
+import { ArrowLeft, Ticket, CheckCircle2, Check, AlertCircle, Tag, Clock, Sparkles, Loader2 } from 'lucide-react';
 
 /**
  * Reusable Voucher Card Component with 30% / 70% Layout
@@ -21,32 +21,28 @@ function VoucherCard({
   return (
     <div
       onClick={onToggle}
-      className={`relative rounded-2xl border transition-all cursor-pointer flex items-stretch shadow-2xs group select-none ${
-        isActive
-          ? 'border-brand-gold ring-1 ring-brand-gold/30 bg-white shadow-xs'
-          : 'border-gray-200 hover:border-brand-gold/40 bg-white'
-      }`}
+      className={`relative rounded-2xl border transition-all cursor-pointer flex items-stretch shadow-2xs group select-none ${isActive
+        ? 'border-brand-gold ring-1 ring-brand-gold/30 bg-white shadow-xs'
+        : 'border-gray-200 hover:border-brand-gold/40 bg-white'
+        }`}
     >
       {/* Semi-circular ticket notches on top & bottom of the 30% dividing seam */}
       <div
-        className={`absolute -top-2 left-[30%] -translate-x-1/2 w-4 h-4 rounded-full border-b z-10 ${bgNotch} ${
-          isActive ? 'border-brand-gold' : 'border-gray-200'
-        }`}
+        className={`absolute -top-2 left-[30%] -translate-x-1/2 w-4 h-4 rounded-full border-b z-10 ${bgNotch} ${isActive ? 'border-brand-gold' : 'border-gray-200'
+          }`}
       />
       <div
-        className={`absolute -bottom-2 left-[30%] -translate-x-1/2 w-4 h-4 rounded-full border-t z-10 ${bgNotch} ${
-          isActive ? 'border-brand-gold' : 'border-gray-200'
-        }`}
+        className={`absolute -bottom-2 left-[30%] -translate-x-1/2 w-4 h-4 rounded-full border-t z-10 ${bgNotch} ${isActive ? 'border-brand-gold' : 'border-gray-200'
+          }`}
       />
 
       {/* Grid 1: 30% - Gold background with Coupon Icon */}
       <div className="w-[30%] shrink-0 bg-[#FDF6E3] flex flex-col items-center justify-center p-3 relative border-r border-dashed border-[#EAE0CA] rounded-l-2xl">
         <div
-          className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
-            isActive
-              ? 'bg-brand-gold text-white shadow-2xs'
-              : 'bg-brand-gold/20 text-brand-gold'
-          }`}
+          className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${isActive
+            ? 'bg-brand-gold text-white shadow-2xs'
+            : 'bg-brand-gold/20 text-brand-gold'
+            }`}
         >
           <Ticket size={22} strokeWidth={2.2} />
         </div>
@@ -79,11 +75,10 @@ function VoucherCard({
             aria-label={isActive ? 'Copot voucher' : 'Gunakan voucher'}
           >
             <div
-              className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                isActive
-                  ? 'bg-brand-gold text-white border-2 border-brand-gold shadow-2xs'
-                  : 'bg-white border-2 border-gray-300 group-hover:border-brand-gold/60'
-              }`}
+              className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${isActive
+                ? 'bg-brand-gold text-white border-2 border-brand-gold shadow-2xs'
+                : 'bg-white border-2 border-gray-300 group-hover:border-brand-gold/60'
+                }`}
             >
               {isActive && <Check size={14} strokeWidth={3} />}
             </div>
@@ -153,6 +148,7 @@ export default function Vouchers() {
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isSwitchingVoucher, setIsSwitchingVoucher] = useState(false);
 
   // Fetch public vouchers on component mount
   useEffect(() => {
@@ -179,10 +175,14 @@ export default function Vouchers() {
     };
   }, []);
 
-  // Toggle circular checkbox on the active voucher card
-  const handleToggleVoucher = () => {
+  // Toggle circular checkbox on the active voucher card (copot atau aktifkan kembali)
+  const handleToggleVoucher = async () => {
+    if (isSwitchingVoucher) return;
+    setIsSwitchingVoucher(true);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
     if (isVoucherChecked) {
-      // Uncheck: remove promo
+      // Uncheck: remove promo (copot)
       setIsVoucherChecked(false);
       localStorage.removeItem('dimsum_applied_voucher');
       setSuccessMessage('');
@@ -198,12 +198,13 @@ export default function Vouchers() {
         setTimeout(() => setSuccessMessage(''), 3000);
       }
     }
+    setIsSwitchingVoucher(false);
   };
 
   // Helper to validate and apply any promo code (manual input or public button click)
   const applyVoucherCode = async (rawCode) => {
     const code = rawCode.trim().toUpperCase();
-    if (!code) return;
+    if (!code || isSwitchingVoucher) return;
 
     // Calculate subtotal accurately from navigation state or checkout items
     let currentSubtotal = Number(location.state?.totalPrice || 0);
@@ -222,18 +223,24 @@ export default function Vouchers() {
     }
 
     setIsLoading(true);
+    setIsSwitchingVoucher(true);
     setErrorMessage('');
     setSuccessMessage('');
 
+    const minDelay = new Promise((resolve) => setTimeout(resolve, 450));
+
     try {
-      const res = await fetch('/api/vouchers/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: code,
-          subtotal: currentSubtotal
-        })
-      });
+      const [res] = await Promise.all([
+        fetch('/api/vouchers/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: code,
+            subtotal: currentSubtotal
+          })
+        }),
+        minDelay
+      ]);
 
       const data = await res.json();
 
@@ -266,6 +273,7 @@ export default function Vouchers() {
       setSuccessMessage('');
     } finally {
       setIsLoading(false);
+      setIsSwitchingVoucher(false);
     }
   };
 
@@ -476,6 +484,15 @@ export default function Vouchers() {
           >
             Gunakan Voucher & Kembali
           </button>
+        </div>
+      )}
+
+      {/* 6. Floating Medium Loading Overlay (Gold spinner with translucent rounded box) */}
+      {isSwitchingVoucher && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-auto select-none">
+          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-[20px] bg-black/60 flex items-center justify-center shadow-2xl border border-white/10 animate-fade-in">
+            <Loader2 size={38} className="text-brand-gold animate-spin" strokeWidth={2.5} />
+          </div>
         </div>
       )}
     </div>

@@ -16,8 +16,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Hash,
-  PenLine,
-  Sparkles
+  PenLine
 } from 'lucide-react';
 import {
   getCustomerUser,
@@ -336,7 +335,7 @@ export default function AddressNew() {
           {/* Field: Nama Lengkap */}
           <div>
             <label className="font-body font-bold text-[12px] text-text-primary block mb-1">
-              Nama Lengkap <span className="text-brand-red">*</span>
+              Nama Lengkap
             </label>
             <input
               type="text"
@@ -351,46 +350,53 @@ export default function AddressNew() {
           {/* Field: No Telp */}
           <div>
             <label className="font-body font-bold text-[12px] text-text-primary block mb-1">
-              Nomor Telepon <span className="text-brand-red">*</span>
+              Nomor Telepon
             </label>
-            <div className="relative flex items-center">
-              <div className="absolute left-3.5 text-text-secondary">
-                <Phone size={15} />
-              </div>
+            <div>
               <input
                 type="tel"
                 required
                 value={recipientPhone}
                 onFocus={() => setIsPhoneFocused(true)}
+                onBlur={() => setTimeout(() => setIsPhoneFocused(false), 200)}
                 onChange={(e) => setRecipientPhone(e.target.value)}
                 placeholder="Contoh: 081234567890"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/60 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all"
+                className="w-full px-3.5 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/60 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all"
               />
             </div>
 
-            {/* Smart Suggestion Card dari No. Telp Profil */}
-            {profilePhone && !recipientPhone && (
-              <div className="mt-2 p-2.5 rounded-[12px] bg-brand-gold/10 border border-brand-gold/25 flex items-center justify-between gap-2 animate-fade-in">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Sparkles size={14} className="text-brand-gold shrink-0" />
-                  <div className="min-w-0">
-                    <span className="font-body text-[10.5px] text-text-secondary block leading-tight">
-                      Nomor dari profil Anda:
-                    </span>
-                    <span className="font-body font-bold text-[12px] text-text-primary truncate block leading-tight">
-                      {profilePhone}
-                    </span>
-                  </div>
-                </div>
+            {/* Smart Suggestion Card dari No. Telp Profil (Animasi buka-tutup halus saat input fokus) */}
+            <div
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${isPhoneFocused && profilePhone && !recipientPhone
+                ? 'max-h-16 opacity-100 mt-2 translate-y-0 pointer-events-auto'
+                : 'max-h-0 opacity-0 mt-0 -translate-y-1.5 pointer-events-none'
+                }`}
+            >
+              <div
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setRecipientPhone(profilePhone);
+                  setIsPhoneFocused(false);
+                }}
+                className="p-2.5 rounded-[12px] bg-brand-gold/10 border border-brand-gold/25 flex items-center justify-between gap-2 shadow-2xs hover:bg-brand-gold/15 active:scale-[0.99] transition-all cursor-pointer"
+              >
+                <span className="font-body text-[12.5px] text-text-primary truncate">
+                  Gunakan: <strong className="font-bold text-brand-gold-dark">{profilePhone}</strong>
+                </span>
                 <button
                   type="button"
-                  onClick={() => setRecipientPhone(profilePhone)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRecipientPhone(profilePhone);
+                    setIsPhoneFocused(false);
+                  }}
                   className="px-3 py-1 bg-brand-gold hover:bg-brand-gold-dark text-white rounded-[8px] font-body font-bold text-[11.5px] shadow-2xs active:scale-95 transition-all cursor-pointer shrink-0"
                 >
                   Gunakan
                 </button>
               </div>
-            )}
+            </div>
           </div>
         </div>
 
@@ -406,7 +412,7 @@ export default function AddressNew() {
           {/* Field: Wilayah (Provinsi, Kota, Kecamatan, Kode Pos) via Wheel Picker */}
           <div>
             <label className="font-body font-bold text-[12px] text-text-primary block mb-1">
-              Provinsi, Kota, Kecamatan, Kode Pos <span className="text-brand-red">*</span>
+              Provinsi, Kota, Kecamatan, Kode Pos
             </label>
             <div
               onClick={() => setIsRegionModalOpen(true)}
@@ -427,19 +433,19 @@ export default function AddressNew() {
           {/* Field: Nama Jalan, Gedung, No. Rumah */}
           <div>
             <label className="font-body font-bold text-[12px] text-text-primary block mb-1">
-              Nama Jalan, Gedung, No. Rumah <span className="text-brand-red">*</span>
+              Nama Jalan, Gedung, No. Rumah
             </label>
-            <div className="relative flex items-center">
-              <div className="absolute left-3.5 top-3 text-text-secondary">
+            <div>
+              {/* <div className="absolute left-3.5 top-3 text-text-secondary">
                 <Hash size={15} />
-              </div>
+              </div> */}
               <textarea
                 rows={2}
                 required
                 value={street}
                 onChange={(e) => setStreet(e.target.value)}
                 placeholder="Contoh: Jl. Anggrek Raya No. 12B, RT 03/RW 05, Kel. Rangkapan Jaya"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/60 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all resize-none leading-relaxed"
+                className="w-full px-3.5 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/60 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all resize-none"
               />
             </div>
           </div>
@@ -449,16 +455,13 @@ export default function AddressNew() {
             <label className="font-body font-bold text-[12px] text-text-primary block mb-1">
               Detail Lainnya / Patokan Kurir <span className="font-normal text-text-secondary">(Opsional)</span>
             </label>
-            <div className="relative flex items-center">
-              <div className="absolute left-3.5 text-text-secondary">
-                <PenLine size={15} />
-              </div>
+            <div>
               <input
                 type="text"
                 value={detail}
                 onChange={(e) => setDetail(e.target.value)}
                 placeholder="Contoh: Pagar hitam samping warung Madura, ada bel"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/60 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all"
+                className="w-full px-3.5 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/60 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all"
               />
             </div>
           </div>

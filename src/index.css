@@ -521,48 +521,81 @@
   --animate-icon-sway: icon-float-sway 3s ease-in-out infinite;
   --animate-icon-wallet: icon-wallet-breathe 2.8s ease-in-out infinite;
   --animate-icon-package: icon-package-bob 2.4s ease-in-out infinite;
-  --animate-icon-truck: icon-truck-drive 2s ease-in-out infinite;
   --animate-icon-check: icon-check-pulse 2.5s ease-in-out infinite;
 
   @keyframes icon-float-sway {
-    0%, 100% {
+
+    0%,
+    100% {
       transform: translateY(0) rotate(0deg);
     }
+
     50% {
       transform: translateY(-5px) rotate(2.5deg);
     }
   }
 
   @keyframes icon-wallet-breathe {
-    0%, 100% {
+
+    0%,
+    100% {
       transform: translateY(0) rotate(0deg) scale(1);
     }
+
     50% {
       transform: translateY(-4px) rotate(-2deg) scale(1.03);
     }
   }
 
   @keyframes icon-package-bob {
-    0%, 100% {
+
+    0%,
+    100% {
       transform: translateY(0) scale(1);
     }
+
     50% {
       transform: translateY(-5px) scale(1.02);
     }
   }
 
-  @keyframes icon-truck-drive {
-    0%, 100% {
-      transform: translateX(0) translateY(0);
+  @keyframes icon-truck-body {
+
+    0%,
+    100% {
+      transform: translateY(0);
     }
+
     25% {
-      transform: translateX(3px) translateY(-1px);
+      transform: translateY(-0.8px);
     }
+
     50% {
-      transform: translateX(0px) translateY(0);
+      transform: translateY(0.15px);
     }
+
     75% {
-      transform: translateX(-2px) translateY(-1.5px);
+      transform: translateY(-0.4px);
+    }
+  }
+
+  @keyframes roadside-scroll {
+    0% {
+      transform: translateX(95px);
+      opacity: 0;
+    }
+
+    10% {
+      opacity: 1;
+    }
+
+    90% {
+      opacity: 1;
+    }
+
+    100% {
+      transform: translateX(-105px);
+      opacity: 0;
     }
   }
 
@@ -572,16 +605,22 @@
     0% {
       transform: rotate(20deg) scale(0.94);
     }
+
     14% {
       transform: rotate(-3deg) scale(1.04);
     }
+
     22% {
       transform: rotate(1deg) scale(0.99);
     }
-    30%, 86% {
+
+    30%,
+    86% {
       transform: rotate(0deg) scale(1);
     }
-    94%, 100% {
+
+    94%,
+    100% {
       transform: rotate(20deg) scale(0.94);
     }
   }
@@ -591,26 +630,36 @@
       stroke-dashoffset: 12;
       opacity: 0.3;
     }
-    12%, 86% {
+
+    12%,
+    86% {
       stroke-dashoffset: 0;
       opacity: 1;
     }
-    94%, 100% {
+
+    94%,
+    100% {
       stroke-dashoffset: 12;
       opacity: 0.3;
     }
   }
 
   @keyframes cross-slash-2 {
-    0%, 4% {
+
+    0%,
+    4% {
       stroke-dashoffset: 12;
       opacity: 0.3;
     }
-    18%, 86% {
+
+    18%,
+    86% {
       stroke-dashoffset: 0;
       opacity: 1;
     }
-    94%, 100% {
+
+    94%,
+    100% {
       stroke-dashoffset: 12;
       opacity: 0.3;
     }
@@ -630,8 +679,16 @@
     animation: icon-package-bob 2.4s ease-in-out infinite;
   }
 
-  .animate-icon-truck {
-    animation: icon-truck-drive 2s ease-in-out infinite;
+  .animate-truck-body {
+    animation: icon-truck-body 1.4s ease-in-out infinite;
+  }
+
+  .animate-truck-ground {
+    animation: icon-truck-ground 0.7s linear infinite;
+  }
+
+  .animate-roadside-scroll {
+    animation: roadside-scroll 2.4s linear infinite;
   }
 
   .animate-icon-cross {
@@ -650,6 +707,7 @@
     stroke-dashoffset: 12;
     animation: cross-slash-2 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
   }
+
   .animate-bar-fill-half {
     animation: bar-fill-half 1.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
