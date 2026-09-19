@@ -17,14 +17,14 @@ import api from '../api/client';
 export default function ProfileEdit() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, isLoggedIn } = useAuth();
 
-  // Redirect if not logged in
+  // Redirect if not logged in (defensive fallback in addition to ProtectedRoute)
   useEffect(() => {
-    if (!isCustomerLoggedIn()) {
-      navigate('/auth?redirect=/profile/edit', { replace: true });
+    if (!isLoggedIn) {
+      navigate('/auth', { replace: true, state: { from: location } });
     }
-  }, [navigate]);
+  }, [isLoggedIn, navigate, location]);
 
   // Initial user baseline
   const initialName = user?.full_name || '';
@@ -51,6 +51,15 @@ export default function ProfileEdit() {
     phone !== initialPhone ||
     Boolean(currentPassword || newPassword || confirmPassword)
   );
+
+  // Sync state if user data loads asynchronously
+  useEffect(() => {
+    if (user && !isDirty) {
+      setFullName(user.full_name || '');
+      setEmail(user.email?.includes('@') ? user.email : '');
+      setPhone(user.phone || (user.email && !user.email.includes('@') ? user.email : ''));
+    }
+  }, [user]);
 
   // Unsaved Confirmation Modal State
   const [isConfirmDiscardOpen, setIsConfirmDiscardOpen] = useState(false);
