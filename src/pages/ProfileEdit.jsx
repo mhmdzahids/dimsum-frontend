@@ -194,7 +194,7 @@ export default function ProfileEdit() {
   return (
     <div className="w-full max-w-[480px] mx-auto min-h-screen bg-bg-cream flex flex-col shadow-2xl overflow-x-clip relative font-body">
       {/* 1. Header: Samakan persis dengan header Profil (warna #4E8298, pola Anyaman Bambu 8%, tinggi, tombol kembali). Judul "Detail Akun" memakai Poppins bold */}
-      <header className="w-full bg-brand-blue text-white relative pt-3 pb-8 px-4 sm:px-5 overflow-hidden transition-all">
+      <header className="w-full bg-brand-blue text-white relative pt-3 pb-8 px-5 overflow-hidden transition-all">
         {/* Motif Anyaman Bambu SVG (Opacity 8%) */}
         <svg
           className="absolute inset-0 w-full h-full opacity-[0.08] pointer-events-none"
@@ -228,8 +228,8 @@ export default function ProfileEdit() {
 
       {/* Form Container */}
       <form onSubmit={handleSubmit} className="w-full flex-1 flex flex-col">
-        {/* 2. Main Sheet: Latar Cream, Radius Atas 24px menimpa Header */}
-        <main className="w-full bg-bg-cream rounded-t-sheet -mt-5 relative z-20 px-4 sm:px-5 pt-5 pb-32 flex-1 flex flex-col gap-5">
+        {/* 2. Main Sheet: Latar Cream, Radius Atas 24px menimpa Header (px-5 sama persis dengan Profile.jsx) */}
+        <main className="w-full bg-bg-cream rounded-t-sheet -mt-5 relative z-20 px-5 pt-5 pb-32 flex-1 flex flex-col gap-5">
           {/* Feedback Alerts */}
           {errorMessage && (
             <div className="bg-red-50 border border-brand-red/30 rounded-[12px] p-3.5 flex items-start gap-2.5 text-brand-red animate-in fade-in duration-200">
@@ -253,7 +253,7 @@ export default function ProfileEdit() {
           <section aria-labelledby="personal-info-heading">
             <h2
               id="personal-info-heading"
-              className="font-body font-semibold text-[15px] text-[#4E8298] mb-2.5"
+              className="font-heading font-bold text-[15px] text-[#4E8298] mb-3"
             >
               Informasi Pribadi
             </h2>
@@ -435,8 +435,8 @@ export default function ProfileEdit() {
             type="submit"
             disabled={!isDirty || isLoading}
             className={`w-full min-h-[48px] py-3 px-4 font-body font-bold text-[15px] rounded-btn transition-all flex items-center justify-center gap-2 ${!isDirty || isLoading
-                ? 'bg-[#D1D5DB] text-white cursor-not-allowed border-none shadow-none'
-                : 'bg-[#C9A23D] hover:bg-[#A8862E] text-white shadow-xs active:scale-[0.99] cursor-pointer'
+              ? 'bg-[#D1D5DB] text-white cursor-not-allowed border-none shadow-none'
+              : 'bg-[#C9A23D] hover:bg-[#A8862E] text-white shadow-xs active:scale-[0.99] cursor-pointer'
               }`}
           >
             {isLoading ? (
