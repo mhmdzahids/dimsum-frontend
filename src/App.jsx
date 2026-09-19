@@ -1,23 +1,33 @@
-import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import React, { useEffect, Suspense, lazy } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
+import PageLoader from './components/PageLoader';
+
+// Core Customer Funnel (Eagerly Loaded for Instant Navigation)
 import Home from './pages/Home';
 import Menu from './pages/Menu';
 import Checkout from './pages/Checkout';
 import Payment from './pages/Payment';
 import OrderStatus from './pages/OrderStatus';
-import AdminProducts from './pages/AdminProducts';
-import AdminBanners from './pages/AdminBanners';
-import AdminVouchers from './pages/AdminVouchers';
-import AdminScanQR from './pages/AdminScanQR';
 import OutletInfo from './pages/OutletInfo';
 import Vouchers from './pages/Vouchers';
 import Auth from './pages/Auth';
-import OrderHistory from './pages/OrderHistory';
-import PrivacyPolicy from './pages/PrivacyPolicy';
 import Profile from './pages/Profile';
 import ProfileEdit from './pages/ProfileEdit';
-import AddressNew from './pages/AddressNew';
+
+// Secondary Customer Pages (Lazy Loaded on Demand)
+const AddressNew = lazy(() => import('./pages/AddressNew'));
+const OrderHistory = lazy(() => import('./pages/OrderHistory'));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+
+// Admin Pages & Guards (Lazy Loaded - Customers Never Download Admin Code)
+const AdminLogin = lazy(() => import('./pages/AdminLogin'));
+const AdminRoute = lazy(() => import('./components/guards/AdminRoute'));
+const AdminLayout = lazy(() => import('./components/layouts/AdminLayout'));
+const AdminProducts = lazy(() => import('./pages/AdminProducts'));
+const AdminBanners = lazy(() => import('./pages/AdminBanners'));
+const AdminVouchers = lazy(() => import('./pages/AdminVouchers'));
+const AdminScanQR = lazy(() => import('./pages/AdminScanQR'));
 
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
@@ -39,26 +49,35 @@ function App() {
       <ErrorBoundary>
         <Router>
           <ScrollToTop />
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/menu" element={<Menu />} />
-            <Route path="/checkout" element={<Checkout />} />
-            <Route path="/payment" element={<Payment />} />
-            <Route path="/order-status" element={<OrderStatus />} />
-            <Route path="/outlet" element={<OutletInfo />} />
-            <Route path="/vouchers" element={<Vouchers />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/profile/edit" element={<ProfileEdit />} />
-            <Route path="/address/new" element={<AddressNew />} />
-            <Route path="/order-history" element={<OrderHistory />} />
-            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            <Route path="/admin" element={<AdminProducts />} />
-            <Route path="/admin/products" element={<AdminProducts />} />
-            <Route path="/admin/banners" element={<AdminBanners />} />
-            <Route path="/admin/vouchers" element={<AdminVouchers />} />
-            <Route path="/admin/scan-qr" element={<AdminScanQR />} />
-          </Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/menu" element={<Menu />} />
+              <Route path="/checkout" element={<Checkout />} />
+              <Route path="/payment" element={<Payment />} />
+              <Route path="/order-status" element={<OrderStatus />} />
+              <Route path="/outlet" element={<OutletInfo />} />
+              <Route path="/vouchers" element={<Vouchers />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/profile/edit" element={<ProfileEdit />} />
+              <Route path="/address/new" element={<AddressNew />} />
+              <Route path="/order-history" element={<OrderHistory />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+
+              {/* Admin Portal */}
+              <Route path="/admin/login" element={<AdminLogin />} />
+              <Route element={<AdminRoute />}>
+                <Route element={<AdminLayout />}>
+                  <Route path="/admin" element={<Navigate to="/admin/products" replace />} />
+                  <Route path="/admin/products" element={<AdminProducts />} />
+                  <Route path="/admin/banners" element={<AdminBanners />} />
+                  <Route path="/admin/vouchers" element={<AdminVouchers />} />
+                  <Route path="/admin/scan-qr" element={<AdminScanQR />} />
+                </Route>
+              </Route>
+            </Routes>
+          </Suspense>
         </Router>
       </ErrorBoundary>
     </GoogleOAuthProvider>

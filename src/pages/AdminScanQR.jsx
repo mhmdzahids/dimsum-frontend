@@ -27,15 +27,9 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import jsQR from 'jsqr';
-import AdminNav from '../components/AdminNav';
+import api from '../api/client';
 
 export default function AdminScanQR() {
-  const [token, setToken] = useState(localStorage.getItem('adminToken') || '');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [loginError, setLoginError] = useState('');
-
   // Products & Stock Monitor State
   const [products, setProducts] = useState([]);
   const [stockLoading, setStockLoading] = useState(false);
@@ -77,39 +71,14 @@ export default function AdminScanQR() {
 
   const [copiedToken, setCopiedToken] = useState('');
 
-  const login = async (e) => {
-    e.preventDefault();
-    setLoginLoading(true);
-    setLoginError('');
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-      if (data.success && data.data?.token) {
-        setToken(data.data.token);
-        localStorage.setItem('adminToken', data.data.token);
-      } else {
-        setLoginError(data.error || 'Login gagal.');
-      }
-    } catch {
-      setLoginError('Koneksi ke server gagal.');
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
   const fetchProducts = async () => {
     setStockLoading(true);
     try {
-      const res = await fetch('/api/products');
-      const data = await res.json();
-      if (data.success) {
-        setProducts(data.data || []);
-        if (data.data && data.data.length > 0 && !simProduct) {
-          setSimProduct(data.data[0].id);
+      const res = await api.get('/api/products');
+      if (res.success && Array.isArray(res.data)) {
+        setProducts(res.data || []);
+        if (res.data && res.data.length > 0 && !simProduct) {
+          setSimProduct(res.data[0].id);
         }
       }
     } catch (e) {
@@ -120,15 +89,11 @@ export default function AdminScanQR() {
   };
 
   const fetchOrders = async () => {
-    if (!token) return;
     setOrdersLoading(true);
     try {
-      const res = await fetch('/api/orders', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setOrders(data.data || []);
+      const res = await api.get('/api/orders', { auth: 'admin' });
+      if (res.success && Array.isArray(res.data)) {
+        setOrders(res.data || []);
       }
     } catch (e) {
       console.error(e);
@@ -138,11 +103,9 @@ export default function AdminScanQR() {
   };
 
   useEffect(() => {
-    if (token) {
-      fetchProducts();
-      fetchOrders();
-    }
-  }, [token]);
+    fetchProducts();
+    fetchOrders();
+  }, []);
 
   // Handle Simulation Order Creation
   const handleSimulateOrder = async (e) => {
@@ -153,26 +116,19 @@ export default function AdminScanQR() {
     setSimResult(null);
 
     try {
-      const res = await fetch('/api/orders/simulate-test', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          product_id: simProduct,
-          quantity: parseInt(simQty),
-          customer_name: simCustomer
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSimResult(data.data);
-        setQrTokenInput(data.data.order.qr_token);
+      const res = await api.post('/api/orders/simulate-test', {
+        product_id: simProduct,
+        quantity: parseInt(simQty),
+        customer_name: simCustomer
+      }, { auth: 'admin' });
+
+      if (res.success && res.data) {
+        setSimResult(res.data);
+        setQrTokenInput(res.data.order.qr_token);
         fetchProducts();
         fetchOrders();
       } else {
-        setSimError(data.error || 'Gagal membuat pesanan simulasi');
+        setSimError(res.error || 'Gagal membuat pesanan simulasi');
       }
     } catch {
       setSimError('Terjadi kesalahan koneksi server');
@@ -194,14 +150,11 @@ export default function AdminScanQR() {
     setVerifyError('');
 
     try {
-      const res = await fetch(`/api/orders/check-qr/${encodeURIComponent(rawToken.trim())}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setPreviewOrder(data.data);
+      const res = await api.get(`/api/orders/check-qr/${encodeURIComponent(rawToken.trim())}`, { auth: 'admin' });
+      if (res.success && res.data) {
+        setPreviewOrder(res.data);
       } else {
-        setPreviewError(data.error || 'Pesanan dengan QR tersebut tidak ditemukan');
+        setPreviewError(res.error || 'Pesanan dengan QR tersebut tidak ditemukan');
         setPreviewOrder(null);
       }
     } catch {
@@ -223,22 +176,14 @@ export default function AdminScanQR() {
     setVerifyLoading(true);
     setVerifyError('');
     try {
-      const res = await fetch('/api/orders/verify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ qr_token: targetToken })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setVerifySuccess(data);
-        setPreviewOrder(data.data);
+      const res = await api.post('/api/orders/verify', { qr_token: targetToken }, { auth: 'admin' });
+      if (res.success) {
+        setVerifySuccess(res.data || res);
+        setPreviewOrder(res.data);
         fetchProducts();
         fetchOrders();
       } else {
-        setVerifyError(data.error || 'Gagal memverifikasi pengambilan');
+        setVerifyError(res.error || 'Gagal memverifikasi pengambilan');
       }
     } catch {
       setVerifyError('Terjadi kesalahan jaringan saat verifikasi');
@@ -446,68 +391,8 @@ export default function AdminScanQR() {
     return o.status === statusFilter;
   });
 
-  if (!token) {
-    return (
-      <div className="min-h-screen bg-bg-cream flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-elevated border border-gray-100">
-          <div className="text-center mb-6">
-            <div className="w-14 h-14 bg-brand-blue/10 text-brand-blue rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <QrCode size={28} />
-            </div>
-            <h1 className="text-2xl font-bold font-heading text-text-primary">Admin Kasir QR</h1>
-            <p className="text-xs text-text-secondary font-body mt-1">
-              Silakan login untuk mengakses scanner QR kasir dan pemantau stok
-            </p>
-          </div>
-
-          {loginError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
-              <AlertCircle size={16} />
-              <span>{loginError}</span>
-            </div>
-          )}
-
-          <form onSubmit={login} className="space-y-4 font-body">
-            <div>
-              <label className="block text-xs font-semibold text-text-secondary mb-1">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@dimsum.id"
-                required
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-text-secondary mb-1">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loginLoading}
-              className="w-full py-3 bg-brand-blue text-white rounded-xl font-semibold text-sm hover:bg-brand-blue-dark transition-colors shadow-xs disabled:opacity-50"
-            >
-              {loginLoading ? 'Memproses Masuk...' : 'Masuk Portal Kasir'}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-bg-cream/40 pb-20 font-body">
-      <AdminNav activeTab="scan-qr" />
-
-      <main className="max-w-6xl mx-auto px-4 sm:px-6">
+    <main className="max-w-6xl mx-auto px-4 sm:px-6">
         {/* Title Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
@@ -1239,6 +1124,5 @@ export default function AdminScanQR() {
           )}
         </section>
       </main>
-    </div>
   );
 }

@@ -1,60 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import AdminNav from '../components/AdminNav';
+import api from '../api/client';
 
 export default function AdminBanners() {
-  const [token, setToken] = useState(localStorage.getItem('adminToken') || '');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  
   const [banners, setBanners] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const fileInputRef = useRef(null);
 
-  const handleLogout = async () => {
-    try {
-      if (token) {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-      }
-    } catch (e) {
-      console.error("Logout error", e);
-    } finally {
-      setToken('');
-      localStorage.removeItem('adminToken');
-    }
-  };
-
-  const login = async (e) => {
-    e.preventDefault();
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (data.success) {
-      setToken(data.data.token);
-      localStorage.setItem('adminToken', data.data.token);
-      fetchBanners();
-    } else {
-      alert(data.error);
-    }
-  };
-
   const fetchBanners = async () => {
-    const res = await fetch('/api/banners');
-    const data = await res.json();
-    if (data.success) {
-      setBanners(data.data);
+    const res = await api.get('/api/banners', { auth: 'admin' });
+    if (res.success && Array.isArray(res.data)) {
+      setBanners(res.data);
     }
   };
 
   useEffect(() => {
-    if (token) fetchBanners();
-  }, [token]);
+    fetchBanners();
+  }, []);
 
   const addBanner = async (e) => {
     e.preventDefault();
@@ -66,55 +27,28 @@ export default function AdminBanners() {
     const formData = new FormData();
     formData.append('image', selectedFile);
 
-    const res = await fetch('/api/banners', {
-      method: 'POST',
-      headers: { 
-        'Authorization': `Bearer ${token}`
-      },
-      body: formData
-    });
-    const data = await res.json();
-    if (data.success) {
+    const res = await api.upload('/api/banners', formData, { auth: 'admin' });
+    if (res.success) {
       fetchBanners();
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } else {
-      alert(data.error);
+      alert(res.error || 'Gagal menambahkan banner.');
     }
   };
 
   const deleteBanner = async (id) => {
     if (!window.confirm('Delete this banner?')) return;
-    const res = await fetch(`/api/banners/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (data.success) {
+    const res = await api.delete(`/api/banners/${id}`, { auth: 'admin' });
+    if (res.success) {
       fetchBanners();
     } else {
-      alert(data.error);
+      alert(res.error || 'Gagal menghapus banner.');
     }
   };
 
-  if (!token) {
-    return (
-      <div className="p-8 max-w-md mx-auto">
-        <h1 className="text-2xl font-bold mb-4">Admin Login</h1>
-        <form onSubmit={login} className="flex flex-col gap-3">
-          <input className="border p-2" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" />
-          <input className="border p-2" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" />
-          <button className="bg-blue-600 text-white p-2" type="submit">Login</button>
-        </form>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-bg-cream/40 pb-16">
-      <AdminNav activeTab="banners" />
-      <div className="max-w-4xl mx-auto px-4 sm:px-6">
-
+    <div className="max-w-4xl mx-auto px-4 sm:px-6">
       <div className="bg-gray-100 p-4 rounded mb-8">
         <h2 className="font-bold mb-3">Add Banner (webp, png, jpg)</h2>
         <form onSubmit={addBanner} className="flex gap-2">
@@ -144,7 +78,6 @@ export default function AdminBanners() {
         ))}
         {banners.length === 0 && <p className="text-gray-500 italic">No banners uploaded yet.</p>}
       </div>
-    </div>
     </div>
   );
 }

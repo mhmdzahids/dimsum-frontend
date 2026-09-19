@@ -11,15 +11,11 @@ import {
   Image as ImageIcon, 
   AlertCircle, 
   ArrowRight,
-  LogOut,
   Plus
 } from 'lucide-react';
-import AdminNav from '../components/AdminNav';
+import api from '../api/client';
 
 export default function AdminProducts() {
-  const [token, setToken] = useState(localStorage.getItem('adminToken') || '');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   
   const [products, setProducts] = useState([]);
   
@@ -43,61 +39,24 @@ export default function AdminProducts() {
   const [discountError, setDiscountError] = useState('');
   const [discountSuccessMsg, setDiscountSuccessMsg] = useState('');
 
-  const handleLogout = async () => {
-    try {
-      if (token) {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-      }
-    } catch (e) {
-      console.error("Logout error", e);
-    } finally {
-      setToken('');
-      localStorage.removeItem('adminToken');
-    }
-  };
-
-  const login = async (e) => {
-    e.preventDefault();
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (data.success) {
-      setToken(data.data.token);
-      localStorage.setItem('adminToken', data.data.token);
-      fetchProducts();
-    } else {
-      alert(data.error);
-    }
-  };
-
   const fetchProducts = async () => {
-    const res = await fetch('/api/products');
-    const data = await res.json();
-    if (data.success) {
-      setProducts(data.data);
+    const res = await api.get('/api/products');
+    if (res.success && Array.isArray(res.data)) {
+      setProducts(res.data);
     }
   };
 
   useEffect(() => {
-    if (token) {
-      fetchProducts();
-      fetchOrderLimit();
-    }
-  }, [token]);
+    fetchProducts();
+    fetchOrderLimit();
+  }, []);
 
   const fetchOrderLimit = async () => {
     try {
-      const res = await fetch('/api/settings/order-limit');
-      const data = await res.json();
-      if (data.success) {
-        setOrderLimit(data.data.order_item_limit);
-        setOrderLimitInput(String(data.data.order_item_limit));
+      const res = await api.get('/api/settings/order-limit');
+      if (res.success && res.data) {
+        setOrderLimit(res.data.order_item_limit);
+        setOrderLimitInput(String(res.data.order_item_limit));
       }
     } catch (e) {
       console.error('Failed to fetch order limit', e);
@@ -112,21 +71,13 @@ export default function AdminProducts() {
       return;
     }
     try {
-      const res = await fetch('/api/settings/order-limit', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ order_item_limit: val })
-      });
-      const data = await res.json();
-      if (data.success) {
+      const res = await api.put('/api/settings/order-limit', { order_item_limit: val }, { auth: 'admin' });
+      if (res.success) {
         setOrderLimit(val);
-        setLimitMsg({ text: 'Berhasil disimpan', type: 'success' });
+        setLimitMsg({ text: 'Limit berhasil diupdate!', type: 'success' });
         setTimeout(() => setLimitMsg({ text: '', type: 'success' }), 3000);
       } else {
-        setLimitMsg({ text: data.error || 'Gagal menyimpan', type: 'error' });
+        setLimitMsg({ text: res.error || 'Gagal update limit', type: 'error' });
       }
     } catch (e) {
       setLimitMsg({ text: 'Network error', type: 'error' });
@@ -135,36 +86,31 @@ export default function AdminProducts() {
 
   const addProduct = async (e) => {
     e.preventDefault();
-    const res = await fetch('/api/products', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ name, price, sku, stock_qty: stock, is_active: true, category: 'Dimsum' })
-    });
-    const data = await res.json();
-    if (data.success) {
+    const res = await api.post('/api/products', {
+      name,
+      price,
+      sku,
+      stock_qty: stock,
+      is_active: true,
+      category: 'Dimsum'
+    }, { auth: 'admin' });
+    if (res.success) {
       fetchProducts();
       setName('');
       setPrice('');
       setSku('');
     } else {
-      alert(data.error);
+      alert(res.error || 'Gagal menambahkan produk');
     }
   };
 
   const deleteProduct = async (id) => {
     if (!window.confirm('Hapus produk ini?')) return;
-    const res = await fetch(`/api/products/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (data.success) {
+    const res = await api.delete(`/api/products/${id}`, { auth: 'admin' });
+    if (res.success) {
       fetchProducts();
     } else {
-      alert(data.error);
+      alert(res.error || 'Gagal menghapus produk');
     }
   };
 
@@ -173,19 +119,11 @@ export default function AdminProducts() {
     const formData = new FormData();
     formData.append('image', file);
     
-    const res = await fetch(`/api/products/${id}/image`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      },
-      body: formData
-    });
-    
-    const data = await res.json();
-    if (data.success) {
+    const res = await api.upload(`/api/products/${id}/image`, formData, { auth: 'admin' });
+    if (res.success) {
       fetchProducts();
     } else {
-      alert(data.error);
+      alert(res.error || 'Gagal mengunggah gambar');
     }
   };
 
@@ -257,23 +195,15 @@ export default function AdminProducts() {
             discount_percent: 0
           };
 
-      const res = await fetch(`/api/products/${selectedProductForDiscount.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (data.success) {
+      const res = await api.put(`/api/products/${selectedProductForDiscount.id}`, payload, { auth: 'admin' });
+      if (res.success) {
         setDiscountSuccessMsg('Pengaturan diskon berhasil diperbarui!');
         await fetchProducts();
         setTimeout(() => {
           closeDiscountModal();
         }, 800);
       } else {
-        setDiscountError(data.error || 'Gagal menyimpan pengaturan diskon');
+        setDiscountError(res.error || 'Gagal menyimpan pengaturan diskon');
       }
     } catch (err) {
       setDiscountError('Terjadi kesalahan jaringan saat menyimpan diskon');
@@ -282,23 +212,8 @@ export default function AdminProducts() {
     }
   };
 
-  if (!token) {
-    return (
-      <div className="p-8 max-w-md mx-auto">
-        <h1 className="text-2xl font-bold mb-4">Admin Login</h1>
-        <form onSubmit={login} className="flex flex-col gap-3">
-          <input className="border p-2 rounded" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" />
-          <input className="border p-2 rounded" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" />
-          <button className="bg-blue-600 text-white p-2 rounded font-medium hover:bg-blue-700 transition-colors" type="submit">Login</button>
-        </form>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-bg-cream/40 pb-16">
-      <AdminNav activeTab="products" />
-      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6">
 
       {/* Order Limit Settings */}
       <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6 shadow-xs">
@@ -690,7 +605,6 @@ export default function AdminProducts() {
           </div>
         </div>
       )}
-    </div>
     </div>
   );
 }

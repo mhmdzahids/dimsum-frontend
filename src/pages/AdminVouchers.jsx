@@ -19,15 +19,9 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
-import AdminNav from '../components/AdminNav';
+import api from '../api/client';
 
 export default function AdminVouchers() {
-  const [token, setToken] = useState(localStorage.getItem('adminToken') || '');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [loginError, setLoginError] = useState('');
-
   // Vouchers state
   const [vouchers, setVouchers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -50,43 +44,12 @@ export default function AdminVouchers() {
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
 
-  const login = async (e) => {
-    e.preventDefault();
-    setLoginLoading(true);
-    setLoginError('');
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-      if (data.success && data.data?.token) {
-        setToken(data.data.token);
-        localStorage.setItem('adminToken', data.data.token);
-      } else {
-        setLoginError(data.error || 'Login gagal. Periksa kembali email dan password.');
-      }
-    } catch {
-      setLoginError('Koneksi ke server gagal.');
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
   const fetchVouchers = async () => {
-    if (!token) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/vouchers', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setVouchers(data.data || []);
-      } else if (res.status === 401 || res.status === 403) {
-        setToken('');
-        localStorage.removeItem('adminToken');
+      const res = await api.get('/api/vouchers', { auth: 'admin' });
+      if (res.success && Array.isArray(res.data)) {
+        setVouchers(res.data || []);
       }
     } catch (e) {
       console.error("Error fetching vouchers", e);
@@ -96,10 +59,8 @@ export default function AdminVouchers() {
   };
 
   useEffect(() => {
-    if (token) {
-      fetchVouchers();
-    }
-  }, [token]);
+    fetchVouchers();
+  }, []);
 
   const handleCreateVoucher = async (e) => {
     e.preventDefault();
@@ -134,18 +95,10 @@ export default function AdminVouchers() {
         is_active: isActive
       };
 
-      const res = await fetch('/api/vouchers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
+      const res = await api.post('/api/vouchers', payload, { auth: 'admin' });
 
-      const data = await res.json();
-      if (data.success) {
-        setFormSuccess(`Voucher ${data.data.code} berhasil dibuat!`);
+      if (res.success && res.data) {
+        setFormSuccess(`Voucher ${res.data.code} berhasil dibuat!`);
         setCode('');
         setDiscountValue('');
         setMinSpend('0');
@@ -156,7 +109,7 @@ export default function AdminVouchers() {
         setIsPublic(true);
         fetchVouchers();
       } else {
-        setFormError(data.error || 'Gagal membuat voucher');
+        setFormError(res.error || 'Gagal membuat voucher');
       }
     } catch {
       setFormError('Terjadi kesalahan jaringan saat membuat voucher');
@@ -167,15 +120,11 @@ export default function AdminVouchers() {
 
   const handleToggle = async (id) => {
     try {
-      const res = await fetch(`/api/vouchers/${id}/toggle`, {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
+      const res = await api.patch(`/api/vouchers/${id}/toggle`, {}, { auth: 'admin' });
+      if (res.success) {
         fetchVouchers();
       } else {
-        alert(data.error || 'Gagal mengubah status');
+        alert(res.error || 'Gagal mengubah status');
       }
     } catch (e) {
       console.error(e);
@@ -185,15 +134,11 @@ export default function AdminVouchers() {
 
   const handleTogglePublic = async (id) => {
     try {
-      const res = await fetch(`/api/vouchers/${id}/toggle-public`, {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
+      const res = await api.patch(`/api/vouchers/${id}/toggle-public`, {}, { auth: 'admin' });
+      if (res.success) {
         fetchVouchers();
       } else {
-        alert(data.error || 'Gagal mengubah visibilitas');
+        alert(res.error || 'Gagal mengubah visibilitas');
       }
     } catch (e) {
       console.error(e);
@@ -204,15 +149,11 @@ export default function AdminVouchers() {
   const handleDelete = async (id, voucherCode) => {
     if (!window.confirm(`Yakin ingin menghapus voucher ${voucherCode}?`)) return;
     try {
-      const res = await fetch(`/api/vouchers/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
+      const res = await api.delete(`/api/vouchers/${id}`, { auth: 'admin' });
+      if (res.success) {
         fetchVouchers();
       } else {
-        alert(data.error || 'Gagal menghapus voucher');
+        alert(res.error || 'Gagal menghapus voucher');
       }
     } catch (e) {
       console.error(e);
@@ -234,69 +175,8 @@ export default function AdminVouchers() {
     v.code.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Login view
-  if (!token) {
-    return (
-      <div className="min-h-screen bg-bg-cream flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-elevated border border-gray-100">
-          <div className="text-center mb-6">
-            <div className="w-14 h-14 bg-brand-blue/10 text-brand-blue rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <Ticket size={28} />
-            </div>
-            <h1 className="text-2xl font-bold font-heading text-text-primary">Admin Vouchers</h1>
-            <p className="text-xs text-text-secondary font-body mt-1">
-              Silakan masuk dengan akun admin untuk mengelola voucher promo
-            </p>
-          </div>
-
-          {loginError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
-              <AlertCircle size={16} />
-              <span>{loginError}</span>
-            </div>
-          )}
-
-          <form onSubmit={login} className="space-y-4 font-body">
-            <div>
-              <label className="block text-xs font-semibold text-text-secondary mb-1">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@dimsum.id"
-                required
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-text-secondary mb-1">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loginLoading}
-              className="w-full py-3 bg-brand-blue text-white rounded-xl font-semibold text-sm hover:bg-brand-blue-dark transition-colors shadow-xs disabled:opacity-50"
-            >
-              {loginLoading ? 'Memproses Masuk...' : 'Masuk Portal Admin'}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-bg-cream/40 pb-16 font-body">
-      <AdminNav activeTab="vouchers" />
-
-      <main className="max-w-6xl mx-auto px-4 sm:px-6">
+    <main className="max-w-6xl mx-auto px-4 sm:px-6">
         {/* Header Title Section */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
@@ -731,6 +611,5 @@ export default function AdminVouchers() {
           </div>
         </div>
       </main>
-    </div>
   );
 }

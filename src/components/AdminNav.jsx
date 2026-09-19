@@ -1,33 +1,36 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Package, 
   Ticket, 
   QrCode, 
   Image as ImageIcon, 
   ExternalLink, 
-  LogOut,
+  LogOut, 
   ShieldCheck
 } from 'lucide-react';
+import api from '../api/client';
 
 export default function AdminNav({ activeTab }) {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const currentTab = activeTab || (() => {
+    const path = location.pathname;
+    if (path.startsWith('/admin/vouchers')) return 'vouchers';
+    if (path.startsWith('/admin/scan-qr')) return 'scan-qr';
+    if (path.startsWith('/admin/banners')) return 'banners';
+    return 'products';
+  })();
 
   const handleLogout = async () => {
-    const token = localStorage.getItem('adminToken');
     try {
-      if (token) {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-      }
+      await api.post('/api/auth/logout', {}, { auth: 'admin' });
     } catch (e) {
       console.error("Logout error", e);
     } finally {
       localStorage.removeItem('adminToken');
-      navigate('/admin/products');
-      window.location.reload();
+      navigate('/admin/login', { replace: true });
     }
   };
 
@@ -61,7 +64,7 @@ export default function AdminNav({ activeTab }) {
           <nav className="hidden md:flex items-center gap-1 bg-gray-50 p-1.5 rounded-2xl border border-gray-200">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = activeTab === item.id;
+              const isActive = currentTab === item.id;
               return (
                 <Link
                   key={item.id}
@@ -105,7 +108,7 @@ export default function AdminNav({ activeTab }) {
         <div className="md:hidden flex items-center justify-start gap-1 py-2 overflow-x-auto no-scrollbar border-t border-gray-100">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activeTab === item.id;
+            const isActive = currentTab === item.id;
             return (
               <Link
                 key={item.id}
