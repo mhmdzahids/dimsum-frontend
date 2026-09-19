@@ -2,10 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
-  User,
-  Mail,
-  Phone,
-  Lock,
   Eye,
   EyeOff,
   CheckCircle2,
@@ -13,7 +9,7 @@ import {
   AlertTriangle,
   Loader2,
   Save,
-  ShieldCheck
+  ChevronRight
 } from 'lucide-react';
 import {
   getCustomerToken,
@@ -49,6 +45,9 @@ export default function ProfileEdit() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Accordion state for Ubah Kata Sandi
+  const [isPasswordOpen, setIsPasswordOpen] = useState(false);
 
   // Dirty State Tracker ("mengubah walaupun satu huruf saja")
   const isDirty = (
@@ -198,240 +197,253 @@ export default function ProfileEdit() {
     }
   };
 
-  const initialLetter = (fullName.trim() || user?.full_name || 'U').charAt(0).toUpperCase();
-
   return (
-    <div className="max-w-[480px] mx-auto min-h-screen bg-bg-cream flex flex-col shadow-2xl overflow-x-clip relative pb-12">
-      {/* 1. Header Navbar */}
-      <nav className="sticky top-0 z-50 bg-brand-blue/95 backdrop-blur-md px-5 py-3 text-white flex items-center justify-between border-b border-brand-blue-dark shadow-sm">
-        <button
-          type="button"
-          onClick={handleAttemptBack}
-          className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 transition-all flex items-center justify-center text-white cursor-pointer"
-          aria-label="Kembali"
+    <div className="w-full max-w-[480px] mx-auto min-h-screen bg-bg-cream flex flex-col shadow-2xl overflow-x-clip relative font-body">
+      {/* 1. Header: Samakan persis dengan header Profil (warna #4E8298, pola Anyaman Bambu 8%, tinggi, tombol kembali). Judul "Detail Akun" memakai Poppins bold */}
+      <header className="w-full bg-brand-blue text-white relative pt-3 pb-8 px-4 sm:px-5 overflow-hidden transition-all">
+        {/* Motif Anyaman Bambu SVG (Opacity 8%) */}
+        <svg
+          className="absolute inset-0 w-full h-full opacity-[0.08] pointer-events-none"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          <ArrowLeft size={20} strokeWidth={2.2} />
-        </button>
-        <span className="font-heading font-black text-[16px] tracking-wide text-white">
-          Detail Akun Pengguna
-        </span>
-        <div className="w-10" />
-      </nav>
+          <defs>
+            <pattern id="bamboo-weave-profile-edit" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M0 10 L10 0 L20 10 L10 20 Z" fill="none" stroke="#FFFFFF" strokeWidth="1.2" />
+              <path d="M10 10 L0 20 M20 0 L10 10" fill="none" stroke="#FFFFFF" strokeWidth="1" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#bamboo-weave-profile-edit)" />
+        </svg>
 
-      <main className="px-4 py-5 flex flex-col gap-4">
-        {/* Avatar Preview Card */}
-        <div className="bg-white rounded-[22px] p-5 shadow-card border border-gray-100/90 flex items-center gap-4">
-          <div className="relative shrink-0">
-            <div className="w-16 h-16 rounded-full bg-white p-[2px] shadow-elevated">
-              <div className="w-full h-full rounded-full bg-[#3079af] flex items-center justify-center text-white font-heading font-black text-[24px]">
-                {initialLetter}
-              </div>
-            </div>
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="font-heading font-black text-[16px] text-text-primary truncate">
-              {fullName.trim() || 'Nama Pelanggan'}
-            </h2>
-            <p className="font-body text-[12px] text-text-secondary truncate mt-0.5">
-              {phone.trim() || email.trim() || 'Belum ada kontak'}
-            </p>
-            <div className="mt-1.5 inline-flex items-center gap-1.5 bg-brand-gold/15 text-brand-gold px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
-              <ShieldCheck size={12} />
-              <span>Pelanggan Terdaftar</span>
-            </div>
-          </div>
+        {/* Top Bar: Tombol Kembali, Judul Detail Akun */}
+        <div className="relative z-10 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={handleAttemptBack}
+            className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 transition-all flex items-center justify-center text-white cursor-pointer"
+            aria-label="Kembali"
+          >
+            <ArrowLeft size={19} strokeWidth={2.2} />
+          </button>
+          <h1 className="font-body font-bold text-[18px] text-white tracking-wide">
+            Detail Akun
+          </h1>
+          <div className="w-10" />
         </div>
+      </header>
 
-        {/* Feedback Alerts */}
-        {errorMessage && (
-          <div className="bg-red-50 border border-brand-red/30 rounded-[14px] p-3.5 flex items-start gap-2.5 text-brand-red animate-in fade-in duration-200">
-            <AlertCircle size={18} className="shrink-0 mt-0.5" />
-            <span className="font-body text-[12.5px] font-medium leading-snug">
-              {errorMessage}
-            </span>
-          </div>
-        )}
-
-        {successMessage && (
-          <div className="bg-emerald-50 border border-emerald-300 rounded-[14px] p-3.5 flex items-start gap-2.5 text-emerald-800 animate-in fade-in duration-200">
-            <CheckCircle2 size={18} className="shrink-0 mt-0.5 text-emerald-600" />
-            <span className="font-body text-[12.5px] font-semibold leading-snug">
-              {successMessage}
-            </span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {/* CARD 1: Data Diri */}
-          <div className="bg-white rounded-[22px] p-5 shadow-card border border-gray-100/90 flex flex-col gap-4">
-            <div className="pb-2 border-b border-gray-100 flex items-center gap-2">
-              <User size={18} className="text-brand-blue" />
-              <h3 className="font-heading font-black text-[15px] text-text-primary">
-                Informasi Pribadi
-              </h3>
+      {/* Form Container */}
+      <form onSubmit={handleSubmit} className="w-full flex-1 flex flex-col">
+        {/* 2. Main Sheet: Latar Cream, Radius Atas 24px menimpa Header */}
+        <main className="w-full bg-bg-cream rounded-t-sheet -mt-5 relative z-20 px-4 sm:px-5 pt-5 pb-32 flex-1 flex flex-col gap-5">
+          {/* Feedback Alerts */}
+          {errorMessage && (
+            <div className="bg-red-50 border border-brand-red/30 rounded-[12px] p-3.5 flex items-start gap-2.5 text-brand-red animate-in fade-in duration-200">
+              <AlertCircle size={18} className="shrink-0 mt-0.5" />
+              <span className="font-body text-[13px] font-medium leading-snug">
+                {errorMessage}
+              </span>
             </div>
+          )}
 
-            {/* Nama Lengkap */}
-            <div className="flex flex-col gap-1.5">
-              <label className="font-body font-bold text-[12px] text-text-primary">
-                Nama Lengkap <span className="text-brand-red">*</span>
-              </label>
-              <div className="relative flex items-center">
-                <div className="absolute left-3 text-text-secondary">
-                  <User size={16} />
-                </div>
+          {successMessage && (
+            <div className="bg-emerald-50 border border-emerald-300 rounded-[12px] p-3.5 flex items-start gap-2.5 text-emerald-800 animate-in fade-in duration-200">
+              <CheckCircle2 size={18} className="shrink-0 mt-0.5 text-emerald-600" />
+              <span className="font-body text-[13px] font-semibold leading-snug">
+                {successMessage}
+              </span>
+            </div>
+          )}
+
+          {/* Section 1: Informasi Pribadi (Judul biru #4E8298 Poppins semibold, tanpa ikon dan tanpa garis) */}
+          <section aria-labelledby="personal-info-heading">
+            <h2
+              id="personal-info-heading"
+              className="font-body font-semibold text-[15px] text-[#4E8298] mb-2.5"
+            >
+              Informasi Pribadi
+            </h2>
+            <div className="card-surface p-4 flex flex-col gap-4">
+              {/* Field: Nama Lengkap */}
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="full-name-input"
+                  className="font-body font-medium text-[13px] text-text-primary"
+                >
+                  Nama Lengkap <span className="text-brand-red">*</span>
+                </label>
                 <input
+                  id="full-name-input"
                   type="text"
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Masukkan nama lengkap"
-                  className="w-full pl-9.5 pr-4 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/50 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all"
+                  className="w-full min-h-[48px] px-3.5 py-2.5 rounded-input border border-[#D1D5DB] bg-white font-body text-[15px] text-text-primary placeholder:text-gray-400 focus:outline-none focus:border-2 focus:border-[#4E8298] transition-all"
                 />
               </div>
-            </div>
 
-            {/* Email */}
-            <div className="flex flex-col gap-1.5">
-              <label className="font-body font-bold text-[12px] text-text-primary">
-                Alamat Email
-              </label>
-              <div className="relative flex items-center">
-                <div className="absolute left-3 text-text-secondary">
-                  <Mail size={16} />
-                </div>
+              {/* Field: Alamat Email (opsional) */}
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="email-input"
+                  className="font-body font-medium text-[13px] text-text-primary"
+                >
+                  Alamat Email (opsional)
+                </label>
                 <input
+                  id="email-input"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="contoh@email.com"
-                  className="w-full pl-9.5 pr-4 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/50 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all"
+                  className="w-full min-h-[48px] px-3.5 py-2.5 rounded-input border border-[#D1D5DB] bg-white font-body text-[15px] text-text-primary placeholder:text-gray-400 focus:outline-none focus:border-2 focus:border-[#4E8298] transition-all"
                 />
               </div>
-            </div>
 
-            {/* Nomor WhatsApp */}
-            <div className="flex flex-col gap-1.5">
-              <label className="font-body font-bold text-[12px] text-text-primary">
-                Nomor WhatsApp / Telepon
-              </label>
-              <div className="relative flex items-center">
-                <div className="absolute left-3 text-text-secondary">
-                  <Phone size={16} />
-                </div>
+              {/* Field: Nomor WhatsApp / Telepon */}
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="phone-input"
+                  className="font-body font-medium text-[13px] text-text-primary"
+                >
+                  Nomor WhatsApp / Telepon
+                </label>
                 <input
+                  id="phone-input"
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="08123456789"
-                  className="w-full pl-9.5 pr-4 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/50 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all"
+                  className="w-full min-h-[48px] px-3.5 py-2.5 rounded-input border border-[#D1D5DB] bg-white font-body text-[15px] text-text-primary placeholder:text-gray-400 focus:outline-none focus:border-2 focus:border-[#4E8298] transition-all"
                 />
+                <span className="text-[13px] text-text-secondary font-body mt-0.5">
+                  Nomor WhatsApp digunakan untuk konfirmasi pesanan dan pengiriman invoice.
+                </span>
               </div>
-              <span className="text-[11px] text-text-secondary font-body mt-0.5">
-                Nomor WhatsApp digunakan untuk konfirmasi pesanan dan pengiriman invoice.
-              </span>
             </div>
-          </div>
+          </section>
 
-          {/* CARD 2: Ganti Kata Sandi */}
-          <div className="bg-white rounded-[22px] p-5 shadow-card border border-gray-100/90 flex flex-col gap-4">
-            <div className="pb-2 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Lock size={18} className="text-brand-blue" />
-                <h3 className="font-heading font-black text-[15px] text-text-primary">
+          {/* Section 2: Ubah Kata Sandi (Tampil sebagai satu baris yang bisa diketuk: teks + chevron) */}
+          <section aria-labelledby="password-heading">
+            <div className="card-surface overflow-hidden">
+              <button
+                type="button"
+                id="password-heading"
+                onClick={() => setIsPasswordOpen((prev) => !prev)}
+                className="w-full min-h-[48px] px-4 py-3.5 flex items-center justify-between cursor-pointer transition-colors hover:bg-gray-50/50"
+                aria-expanded={isPasswordOpen}
+              >
+                <span className="font-body font-semibold text-[15px] text-[#4E8298]">
                   Ubah Kata Sandi
-                </h3>
-              </div>
-            </div>
-
-            <p className="text-[11.5px] text-text-secondary font-body bg-amber-50/70 border border-amber-200/60 p-2.5 rounded-[10px]">
-              Kosongkan bagian ini jika Anda tidak ingin mengubah kata sandi akun Anda.
-            </p>
-
-            {/* Kata Sandi Saat Ini */}
-            <div className="flex flex-col gap-1.5">
-              <label className="font-body font-bold text-[12px] text-text-primary">
-                Kata Sandi Saat Ini
-              </label>
-              <div className="relative flex items-center">
-                <div className="absolute left-3 text-text-secondary">
-                  <Lock size={16} />
-                </div>
-                <input
-                  type={showCurrentPw ? 'text' : 'password'}
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="Masukkan kata sandi lama"
-                  className="w-full pl-9.5 pr-10 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/50 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all"
+                </span>
+                <ChevronRight
+                  size={18}
+                  className={`text-[#4E8298] transition-transform duration-200 ${isPasswordOpen ? 'rotate-90' : ''
+                    }`}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowCurrentPw(!showCurrentPw)}
-                  className="absolute right-3 text-text-secondary hover:text-text-primary cursor-pointer p-1"
-                >
-                  {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
+              </button>
 
-            {/* Kata Sandi Baru */}
-            <div className="flex flex-col gap-1.5">
-              <label className="font-body font-bold text-[12px] text-text-primary">
-                Kata Sandi Baru
-              </label>
-              <div className="relative flex items-center">
-                <div className="absolute left-3 text-text-secondary">
-                  <Lock size={16} />
+              {isPasswordOpen && (
+                <div className="px-4 pb-4 pt-2 flex flex-col gap-4 border-t border-gray-100">
+                  {/* Kata Sandi Saat Ini */}
+                  <div className="flex flex-col gap-1.5">
+                    <label
+                      htmlFor="current-pw-input"
+                      className="font-body font-medium text-[13px] text-text-primary"
+                    >
+                      Kata Sandi Saat Ini
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        id="current-pw-input"
+                        type={showCurrentPw ? 'text' : 'password'}
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="Masukkan kata sandi lama"
+                        className="w-full min-h-[48px] pl-3.5 pr-11 py-2.5 rounded-input border border-[#D1D5DB] bg-white font-body text-[15px] text-text-primary placeholder:text-gray-400 focus:outline-none focus:border-2 focus:border-[#4E8298] transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCurrentPw(!showCurrentPw)}
+                        className="absolute right-3.5 text-text-secondary hover:text-text-primary cursor-pointer p-1"
+                        aria-label={showCurrentPw ? 'Sembunyikan kata sandi saat ini' : 'Lihat kata sandi saat ini'}
+                      >
+                        {showCurrentPw ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Kata Sandi Baru */}
+                  <div className="flex flex-col gap-1.5">
+                    <label
+                      htmlFor="new-pw-input"
+                      className="font-body font-medium text-[13px] text-text-primary"
+                    >
+                      Kata Sandi Baru
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        id="new-pw-input"
+                        type={showNewPw ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Minimal 6 karakter"
+                        className="w-full min-h-[48px] pl-3.5 pr-11 py-2.5 rounded-input border border-[#D1D5DB] bg-white font-body text-[15px] text-text-primary placeholder:text-gray-400 focus:outline-none focus:border-2 focus:border-[#4E8298] transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPw(!showNewPw)}
+                        className="absolute right-3.5 text-text-secondary hover:text-text-primary cursor-pointer p-1"
+                        aria-label={showNewPw ? 'Sembunyikan kata sandi baru' : 'Lihat kata sandi baru'}
+                      >
+                        {showNewPw ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Konfirmasi Kata Sandi Baru */}
+                  <div className="flex flex-col gap-1.5">
+                    <label
+                      htmlFor="confirm-pw-input"
+                      className="font-body font-medium text-[13px] text-text-primary"
+                    >
+                      Konfirmasi Kata Sandi Baru
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        id="confirm-pw-input"
+                        type={showConfirmPw ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Ketik ulang kata sandi baru"
+                        className="w-full min-h-[48px] pl-3.5 pr-11 py-2.5 rounded-input border border-[#D1D5DB] bg-white font-body text-[15px] text-text-primary placeholder:text-gray-400 focus:outline-none focus:border-2 focus:border-[#4E8298] transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPw(!showConfirmPw)}
+                        className="absolute right-3.5 text-text-secondary hover:text-text-primary cursor-pointer p-1"
+                        aria-label={showConfirmPw ? 'Sembunyikan konfirmasi kata sandi' : 'Lihat konfirmasi kata sandi'}
+                      >
+                        {showConfirmPw ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <input
-                  type={showNewPw ? 'text' : 'password'}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Minimal 6 karakter"
-                  className="w-full pl-9.5 pr-10 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/50 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNewPw(!showNewPw)}
-                  className="absolute right-3 text-text-secondary hover:text-text-primary cursor-pointer p-1"
-                >
-                  {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
+              )}
             </div>
+          </section>
+        </main>
 
-            {/* Konfirmasi Kata Sandi Baru */}
-            <div className="flex flex-col gap-1.5">
-              <label className="font-body font-bold text-[12px] text-text-primary">
-                Konfirmasi Kata Sandi Baru
-              </label>
-              <div className="relative flex items-center">
-                <div className="absolute left-3 text-text-secondary">
-                  <Lock size={16} />
-                </div>
-                <input
-                  type={showConfirmPw ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Ketik ulang kata sandi baru"
-                  className="w-full pl-9.5 pr-10 py-2.5 rounded-[12px] border border-gray-200 bg-gray-50/50 font-body text-[13px] text-text-primary focus:outline-none focus:border-brand-gold focus:bg-white transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPw(!showConfirmPw)}
-                  className="absolute right-3 text-text-secondary hover:text-text-primary cursor-pointer p-1"
-                >
-                  {showConfirmPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Button */}
+        {/* 3. Sticky Bottom Bar: Tombol "Simpan Perubahan" (gold #C9A23D, radius 12px, nonaktif #D1D5DB sampai ada perubahan, lengket di bawah layar dengan padding aman untuk iOS) */}
+        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white/95 backdrop-blur-md border-t border-[#EAEAEA] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] z-40 px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <button
             type="submit"
-            disabled={isLoading}
-            className="w-full py-3.5 bg-brand-gold hover:bg-brand-gold-dark text-white font-body font-bold text-[14px] rounded-[14px] shadow-sm active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+            disabled={!isDirty || isLoading}
+            className={`w-full min-h-[48px] py-3 px-4 font-body font-bold text-[15px] rounded-btn transition-all flex items-center justify-center gap-2 ${!isDirty || isLoading
+                ? 'bg-[#D1D5DB] text-white cursor-not-allowed border-none shadow-none'
+                : 'bg-[#C9A23D] hover:bg-[#A8862E] text-white shadow-xs active:scale-[0.99] cursor-pointer'
+              }`}
           >
             {isLoading ? (
               <>
@@ -445,8 +457,8 @@ export default function ProfileEdit() {
               </>
             )}
           </button>
-        </form>
-      </main>
+        </div>
+      </form>
 
       {/* Confirmation Modal on Discarding Unsaved Changes */}
       {isConfirmDiscardOpen && (
@@ -455,17 +467,17 @@ export default function ProfileEdit() {
             <div className="w-14 h-14 rounded-full bg-amber-500/10 text-brand-gold flex items-center justify-center mx-auto mb-3.5 border border-brand-gold/30">
               <AlertTriangle size={28} />
             </div>
-            <h3 className="font-heading font-black text-[17px] text-text-primary leading-snug mb-1.5">
+            <h3 className="font-body font-bold text-[17px] text-text-primary leading-snug mb-1.5">
               Perubahan Belum Disimpan
             </h3>
-            <p className="font-body text-[12.5px] text-text-secondary leading-relaxed mb-6">
+            <p className="font-body text-[15px] text-text-secondary leading-relaxed mb-6">
               Anda telah mengubah data profil. Apakah Anda ingin tetap lanjut mengedit atau membuang perubahan ini?
             </p>
             <div className="flex flex-col gap-2.5">
               <button
                 type="button"
                 onClick={() => setIsConfirmDiscardOpen(false)}
-                className="w-full py-3 bg-brand-gold hover:bg-brand-gold-dark text-white font-body font-bold text-[13.5px] rounded-[14px] shadow-sm active:scale-[0.99] transition-all cursor-pointer"
+                className="w-full min-h-[44px] py-2.5 bg-[#C9A23D] hover:bg-[#A8862E] text-white font-body font-bold text-[15px] rounded-[12px] shadow-sm active:scale-[0.99] transition-all cursor-pointer"
               >
                 Lanjut Mengedit
               </button>
@@ -475,7 +487,7 @@ export default function ProfileEdit() {
                   setIsConfirmDiscardOpen(false);
                   doGoBack();
                 }}
-                className="w-full py-2.5 bg-transparent hover:bg-red-50 text-brand-red font-body font-semibold text-[13px] rounded-[12px] transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:underline"
+                className="w-full min-h-[44px] py-2 bg-transparent hover:bg-red-50 text-brand-red font-body font-medium text-[15px] rounded-[12px] transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:underline"
               >
                 Buang Perubahan
               </button>
@@ -486,4 +498,3 @@ export default function ProfileEdit() {
     </div>
   );
 }
-

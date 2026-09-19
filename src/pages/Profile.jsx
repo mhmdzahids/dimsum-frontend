@@ -1,41 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
-  User,
-  Phone,
-  Mail,
+  Settings,
+  ShoppingBag,
   CreditCard,
   Package,
   Truck,
-  ShoppingBag,
   MapPin,
   Headset,
-  ChevronRight,
   ShieldCheck,
   LogOut,
-  Sparkles,
-  Settings,
-  X,
-  Navigation,
-  Home,
-  Briefcase,
-  Tag
+  ChevronRight,
+  Plus,
+  CheckCircle2,
+  Clock,
+  Phone,
+  Mail,
+  User,
+  ExternalLink,
+  Camera,
+  Video,
+  MessageCircle,
+  Wallet,
+  Receipt
 } from 'lucide-react';
 import logoImg from '../assets/logo.webp';
-import profileBannerImg from '../assets/user-profile-banner.webp';
+import imgWortel from '../assets/icon/wortel.webp';
+import imgBeef from '../assets/icon/beef.webp';
+import imgKeju from '../assets/icon/keju.webp';
+import imgJamur from '../assets/icon/jamur.webp';
+import imgCrabstick from '../assets/icon/crabstick.webp';
+import imgSosis from '../assets/icon/sosis.webp';
+
 import {
   isCustomerLoggedIn,
   getCustomerUser,
   logoutCustomer,
-  updateCustomerUser,
   subscribeCustomerAuth
 } from '../utils/customerAuth';
 import { getOrderHistory, syncOrderHistoryWithServer } from '../utils/orderHistory';
-import LocationPickerModal, {
-  calculateHaversineDistance,
-  OUTLET_COORDS
-} from '../components/LocationPickerModal';
+
+// Token konsisten kartu: radius 20px (radius.lg), shadow elevation.sm, tanpa border
+const CARD_SURFACE_TOKEN = 'card-surface';
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -43,25 +50,12 @@ export default function Profile() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => isCustomerLoggedIn());
   const [user, setUser] = useState(() => getCustomerUser());
   const [orders, setOrders] = useState(() => getOrderHistory());
+  const [toastMessage, setToastMessage] = useState('');
+
   const [savedAddress, setSavedAddress] = useState(() => {
     const u = getCustomerUser();
     return u?.address || localStorage.getItem('dimsum_delivery_address') || '';
   });
-  const [savedNotes, setSavedNotes] = useState(() => {
-    return localStorage.getItem('dimsum_delivery_notes') || '';
-  });
-  const [savedLabel, setSavedLabel] = useState(() => {
-    return localStorage.getItem('dimsum_delivery_label') || 'Rumah';
-  });
-  const [savedCoords, setSavedCoords] = useState(() => {
-    try {
-      const saved = localStorage.getItem('dimsum_delivery_coords');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
 
   const handleBack = () => {
     const from = location.state?.from;
@@ -79,16 +73,9 @@ export default function Profile() {
     } else {
       setSavedAddress(localStorage.getItem('dimsum_delivery_address') || '');
     }
-    setSavedNotes(localStorage.getItem('dimsum_delivery_notes') || '');
-    setSavedLabel(localStorage.getItem('dimsum_delivery_label') || 'Rumah');
-    try {
-      const saved = localStorage.getItem('dimsum_delivery_coords');
-      if (saved) setSavedCoords(JSON.parse(saved));
-    } catch { }
   }, [location.key]);
 
   useEffect(() => {
-    // Auth subscriber
     const unsub = subscribeCustomerAuth(() => {
       const logged = isCustomerLoggedIn();
       setIsLoggedIn(logged);
@@ -99,23 +86,15 @@ export default function Profile() {
       } else {
         setSavedAddress(localStorage.getItem('dimsum_delivery_address') || '');
       }
-      setSavedNotes(localStorage.getItem('dimsum_delivery_notes') || '');
-      setSavedLabel(localStorage.getItem('dimsum_delivery_label') || 'Rumah');
-      try {
-        const saved = localStorage.getItem('dimsum_delivery_coords');
-        if (saved) setSavedCoords(JSON.parse(saved));
-      } catch { }
       if (!logged) {
         navigate('/auth?redirect=/profile', { replace: true });
       }
     });
 
-    // If not logged in, redirect to auth
     if (!isCustomerLoggedIn()) {
       navigate('/auth?redirect=/profile', { replace: true });
     }
 
-    // Sync order history
     syncOrderHistoryWithServer()
       .then((updated) => {
         if (Array.isArray(updated)) {
@@ -127,25 +106,92 @@ export default function Profile() {
     return unsub;
   }, [navigate]);
 
-  // Jarak ke outlet Makan Dimsum
-  const distanceKm = savedCoords
-    ? calculateHaversineDistance(
-        OUTLET_COORDS.latitude,
-        OUTLET_COORDS.longitude,
-        savedCoords.latitude,
-        savedCoords.longitude
-      )
-    : null;
+  // Status counts for badges
+  const pendingPaymentCount = orders.filter(
+    (o) => o.status === 'pending_payment' || o.status === 'pending'
+  ).length;
 
-  // Order counts
-  const pendingPaymentCount = orders.filter((o) => o.status === 'pending_payment').length;
   const processingCount = orders.filter(
     (o) => o.status === 'processing' || o.status === 'paid' || o.status === 'preparing'
   ).length;
-  const deliveringCount = orders.filter(
-    (o) => o.status === 'delivering' || o.status === 'shipped' || o.status === 'ready'
-  ).length;
-  const totalOrdersCount = orders.length;
+
+  // Active latest order
+  const activeOrder = useMemo(() => {
+    return orders.find((o) =>
+      [
+        'pending',
+        'pending_payment',
+        'paid',
+        'preparing',
+        'processing',
+        'delivering',
+        'shipped',
+        'ready',
+        'ready_for_pickup'
+      ].includes(o.status)
+    );
+  }, [orders]);
+
+  // Set of product IDs/names currently in active order (so they won't appear in Re-Order)
+  const activeProductKeys = useMemo(() => {
+    if (!activeOrder || !Array.isArray(activeOrder.items)) return new Set();
+    return new Set(
+      activeOrder.items.map((it) => String(it.id || it.product_id || it.name).toLowerCase())
+    );
+  }, [activeOrder]);
+
+  // Helper to resolve product image
+  const getProductImage = (item) => {
+    if (item?.image) return item.image;
+    if (item?.image_url) return item.image_url;
+    const name = (item?.name || item?.product_name || '').toLowerCase();
+    if (name.includes('beef') || name.includes('sapi')) return imgBeef;
+    if (name.includes('keju') || name.includes('cheese')) return imgKeju;
+    if (name.includes('jamur') || name.includes('mushroom')) return imgJamur;
+    if (name.includes('crab') || name.includes('kepiting')) return imgCrabstick;
+    if (name.includes('sosis') || name.includes('sausage')) return imgSosis;
+    return imgWortel;
+  };
+
+  // Re-order products: only show if at least 2 distinct products not in active order
+  const reorderProducts = useMemo(() => {
+    if (!orders || orders.length === 0) return [];
+    const map = new Map();
+    orders.forEach((order) => {
+      if (Array.isArray(order.items)) {
+        order.items.forEach((it) => {
+          const key = String(it.id || it.product_id || it.name).toLowerCase();
+          // Exclude products currently in the active order
+          if (!activeProductKeys.has(key) && !map.has(key)) {
+            map.set(key, {
+              id: it.id || it.product_id || key,
+              name: it.name || it.product_name || 'Dimsum Spesial',
+              price: it.price || it.unit_price || 20000,
+              image: getProductImage(it)
+            });
+          }
+        });
+      }
+    });
+    const list = Array.from(map.values());
+    // Only display if at least 2 distinct products
+    return list.length >= 2 ? list.slice(0, 6) : [];
+  }, [orders, activeProductKeys]);
+
+  const handleQuickAddToCart = (e, product) => {
+    e.stopPropagation();
+    try {
+      const saved = localStorage.getItem('dimsum_cart');
+      const cart = saved ? JSON.parse(saved) : {};
+      const pid = String(product.id || product.name);
+      cart[pid] = (cart[pid] || 0) + 1;
+      localStorage.setItem('dimsum_cart', JSON.stringify(cart));
+      setToastMessage(`"${product.name}" ditambahkan ke keranjang`);
+      setTimeout(() => setToastMessage(''), 2500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const handleLogout = () => {
     if (window.confirm('Apakah Anda yakin ingin keluar dari akun?')) {
@@ -166,20 +212,20 @@ export default function Profile() {
 
   if (!isLoggedIn) {
     return (
-      <div className="max-w-[480px] mx-auto min-h-screen bg-bg-cream flex items-center justify-center p-6">
+      <div className="max-w-[480px] mx-auto min-h-screen bg-bg-cream flex items-center justify-center p-6 font-body">
         <div className="bg-white rounded-[24px] p-6 text-center shadow-card w-full max-w-[340px]">
           <div className="w-14 h-14 rounded-full bg-brand-blue/10 text-brand-blue flex items-center justify-center mx-auto mb-3">
             <User size={28} />
           </div>
-          <h2 className="font-heading font-black text-[18px] text-text-primary mb-1">
+          <h2 className="font-heading font-black text-[18px] text-brand-blue mb-1">
             Belum Masuk Akun
           </h2>
-          <p className="font-body text-[12px] text-text-secondary mb-5">
-            Silakan masuk atau daftar akun untuk melihat informasi profil dan pesanan Anda.
+          <p className="font-body text-[13px] text-text-secondary mb-5 leading-relaxed">
+            Silakan masuk atau daftar akun untuk melihat profil dan pesanan Anda.
           </p>
           <button
             onClick={() => navigate('/auth?redirect=/profile')}
-            className="w-full py-2.5 bg-brand-gold hover:bg-brand-gold-dark text-white font-body font-bold text-[13px] rounded-[12px] shadow-sm active:scale-95 transition-all cursor-pointer"
+            className="w-full min-h-[44px] py-2.5 bg-brand-gold hover:bg-brand-gold-dark text-white font-body font-bold text-[13px] rounded-full shadow-sm active:scale-95 transition-all cursor-pointer"
           >
             Masuk / Daftar
           </button>
@@ -189,309 +235,496 @@ export default function Profile() {
   }
 
   return (
-    <div className="max-w-[480px] mx-auto min-h-screen bg-bg-cream flex flex-col shadow-2xl overflow-x-clip relative pb-14">
-      {/* 1. Header Navbar */}
-      <nav className="sticky top-0 z-50 bg-brand-blue/95 backdrop-blur-md px-5 py-3 text-white flex items-center justify-between border-b border-brand-blue-dark shadow-sm">
-        <button
-          onClick={handleBack}
-          className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 transition-all flex items-center justify-center text-white cursor-pointer"
-          aria-label="Kembali"
+    <div className="max-w-[480px] mx-auto min-h-screen bg-bg-cream flex flex-col shadow-2xl overflow-x-clip relative font-body">
+      {/* 1. Header Biru: Tinggi diperkecil ~20%, Logo sama dengan homepage, Motif Anyaman Bambu SVG 8% */}
+      <header className="bg-brand-blue text-white relative pt-3 pb-8 px-5 overflow-hidden transition-all">
+        {/* Motif Anyaman Bambu SVG (Opacity 8%) */}
+        <svg
+          className="absolute inset-0 w-full h-full opacity-[0.08] pointer-events-none"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          <ArrowLeft size={20} strokeWidth={2.2} />
-        </button>
-        <span className="font-heading font-black text-[16px] tracking-wide text-white">
-          Profil Saya
-        </span>
-        <div className="w-10" />
-      </nav>
+          <defs>
+            <pattern id="bamboo-weave-profile" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M0 10 L10 0 L20 10 L10 20 Z" fill="none" stroke="#FFFFFF" strokeWidth="1.2" />
+              <path d="M10 10 L0 20 M20 0 L10 10" fill="none" stroke="#FFFFFF" strokeWidth="1" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#bamboo-weave-profile)" />
+        </svg>
 
-      {/* 2. Top Profile Hero Card with Banner Pattern */}
-      <div className="relative px-5 pt-4 pb-12 text-white overflow-hidden bg-brand-blue">
-        {/* Banner Pattern Background */}
-        <div
-          className="absolute inset-0 bg-cover bg-center pointer-events-none opacity-90 scale-105"
-          style={{ backgroundImage: `url(${profileBannerImg})` }}
-        />
-        {/* Subtle Gradient Overlay for depth and text legibility */}
-        <div className="absolute inset-0 bg-gradient-to-b from-brand-blue/30 via-transparent to-brand-blue/50 pointer-events-none" />
+        {/* Top Bar: Tombol Kembali, Logo Asli Homepage, Tombol Pengaturan */}
+        <div className="relative z-10 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 transition-all flex items-center justify-center text-white cursor-pointer"
+            aria-label="Kembali"
+          >
+            <ArrowLeft size={19} strokeWidth={2.2} />
+          </button>
 
-        {/* Gear Settings Button (Top Right of Banner) */}
-        <button
-          type="button"
-          onClick={() => navigate('/profile/edit', { state: { from: location.state?.from || '/menu' } })}
-          className="absolute top-3.5 right-4 z-20 w-9 h-9 rounded-full bg-white text-brand-blue flex items-center justify-center shadow-md hover:bg-gray-50 active:scale-95 transition-all cursor-pointer group"
-          title="Ubah Profil & Detail Akun"
-          aria-label="Pengaturan Profil"
-        >
-          <Settings size={18} className="text-brand-blue group-hover:rotate-45 transition-transform duration-300" />
-        </button>
-
-        <div className="relative z-10 flex items-center gap-4">
-          {/* Avatar with Ring */}
-          <div className="relative shrink-0">
-            <div className="w-16 h-16 rounded-full bg-white p-[2px] shadow-elevated">
-              <div className="w-full h-full rounded-full bg-[#3079af] flex items-center justify-center text-white font-heading font-black text-[22px]">
-                {(user?.full_name || 'U').charAt(0).toUpperCase()}
-              </div>
-            </div>
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-brand-gold text-white flex items-center justify-center shadow-xs border-2 border-white">
-              <Sparkles size={12} className="fill-white" />
-            </div>
+          {/* Logo Sama dengan Homepage (Logo Asli Berwarna dengan Drop-Shadow) */}
+          <div className="h-10 flex items-center">
+            <img
+              src={logoImg}
+              alt="Makan Dimsum Indonesia"
+              className="h-full object-contain drop-shadow-md"
+            />
           </div>
 
-          {/* User Details */}
+          <button
+            type="button"
+            onClick={() =>
+              navigate('/profile/edit', { state: { from: location.state?.from || '/menu' } })
+            }
+            className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 transition-all flex items-center justify-center text-white cursor-pointer"
+            title="Pengaturan Profil"
+            aria-label="Pengaturan Profil"
+          >
+            <Settings size={18} strokeWidth={2} />
+          </button>
+        </div>
+
+        {/* Hero Identitas Pengguna: Baris "Halo, Zahid" dihapus, langsung nama */}
+        <div className="relative z-10 flex items-center gap-3.5 mt-3.5">
+          {/* Avatar Inisial */}
+          <div className="w-14 h-14 rounded-full bg-white/20 border-2 border-white shadow-md flex items-center justify-center text-white font-heading font-black text-[22px] shrink-0">
+            {(user?.full_name || 'U').charAt(0).toUpperCase()}
+          </div>
+
           <div className="flex-1 min-w-0">
-            <h1 className="font-display font-black text-[18px] leading-tight text-white truncate">
+            <h1 className="font-heading font-black text-[18px] text-white leading-tight truncate">
               {user?.full_name || 'Pelanggan Setia'}
             </h1>
-            <div className="flex items-center gap-1.5 mt-1 text-white/85 text-[12px] font-body">
-              {user?.email?.includes('@') ? <Mail size={13} /> : <Phone size={13} />}
-              <span className="truncate">{user?.email || 'Nomor WhatsApp'}</span>
-            </div>
-            <div className="mt-2 inline-flex items-center gap-1.5 bg-brand-gold text-white px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-xs">
-              <ShieldCheck size={12} className="text-white" />
-              <span>Pelanggan Terdaftar</span>
+            <div className="flex items-center gap-1.5 mt-1 text-white/85 text-[12px]">
+              {user?.phone ? (
+                <>
+                  <Phone size={12} className="shrink-0" />
+                  <span className="truncate">{user.phone}</span>
+                </>
+              ) : (
+                <>
+                  <Mail size={12} className="shrink-0" />
+                  <span className="truncate">{user?.email || 'Nomor telepon belum diatur'}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* 3. Main Content Sheet (Bottom-sheet reveal overlap) */}
-      <main className="bg-bg-cream rounded-t-[28px] -mt-6 relative z-10 px-4 pt-6 pb-12 flex-1 flex flex-col gap-4 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
-        {/* CARD 1: Pesanan Saya */}
-        <div className="bg-white rounded-[22px] p-4.5 shadow-card border border-gray-100/90">
-          <div className="flex items-center pb-3.5 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <ShoppingBag size={18} className="text-brand-blue" />
-              <h2 className="font-heading font-black text-[15px] text-text-primary">
-                Pesanan Saya
-              </h2>
+      {/* 2. Main Sheet: Latar Cream, Hanya Pesanan Berjalan yang Berupa Kartu */}
+      <main className="bg-bg-cream rounded-t-sheet -mt-5 relative z-20 px-5 pt-5 pb-10 flex-1 flex flex-col">
+        
+        {/* SECTION 1: PESANAN BERJALAN (Satu-satunya yang Berupa Kartu) */}
+        <section aria-labelledby="active-order-heading">
+          {activeOrder ? (
+            /* Order Status Card Sesuai PRD 5.2 (Putih, Strip Kiri Emas 4px) */
+            <div className={`${CARD_SURFACE_TOKEN} border-l-4! border-l-solid! border-l-brand-gold! p-4 transition-all`}>
+              <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <span className="font-heading font-bold text-[14px] text-brand-blue">
+                    Pesanan Berjalan
+                  </span>
+                  {/* Status Pill */}
+                  {['pending_payment', 'pending'].includes(activeOrder.status) ? (
+                    <span className="bg-brand-gold/15 text-brand-gold-dark text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                      Menunggu Bayar
+                    </span>
+                  ) : ['paid', 'preparing', 'processing'].includes(activeOrder.status) ? (
+                    <span className="bg-brand-blue/15 text-brand-blue-dark text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                      Sedang Dikemas
+                    </span>
+                  ) : ['delivering', 'shipped'].includes(activeOrder.status) ? (
+                    <span className="bg-brand-blue/15 text-brand-blue-dark text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                      Sedang Dikirim
+                    </span>
+                  ) : (
+                    <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                      Siap Diambil
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Item Summary dengan Foto Produk Utama */}
+              <div className="flex items-center gap-3 py-3">
+                <img
+                  src={getProductImage(activeOrder.items?.[0])}
+                  alt="Dimsum"
+                  className="w-14 h-14 rounded-[12px] object-cover bg-bg-cream shrink-0 border border-gray-100 shadow-2xs"
+                />
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-body font-bold text-[13px] text-text-primary truncate">
+                    {activeOrder.items?.[0]?.name || activeOrder.items?.[0]?.product_name || 'Dimsum Spesial'}
+                  </h3>
+                  <p className="font-body text-[12px] text-text-secondary mt-0.5">
+                    {activeOrder.items?.length > 1
+                      ? `${activeOrder.items[0]?.quantity || 1}x (+${activeOrder.items.length - 1} menu lainnya)`
+                      : `${activeOrder.items?.[0]?.quantity || 1} porsi`}
+                  </p>
+                  <p className="font-body text-[11px] text-text-secondary flex items-center gap-1 mt-1">
+                    <Clock size={12} className="text-brand-blue" />
+                    <span>Pick-up: <strong>{activeOrder.confirmedTime || 'Segera'}</strong></span>
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="font-body font-bold text-[14px] text-brand-gold">
+                    Rp{Number(activeOrder.totalAmount || 0).toLocaleString('id-ID')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
+                {['pending_payment', 'pending'].includes(activeOrder.status) ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/payment', { state: { resumePending: true } })}
+                    className="min-h-[40px] px-4 py-2 bg-brand-gold hover:bg-brand-gold-dark text-white font-body font-bold text-[12px] rounded-full shadow-xs active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>Bayar Sekarang</span>
+                    <ChevronRight size={14} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate('/order-status', { state: { orderId: activeOrder.orderId } })
+                    }
+                    className="min-h-[40px] px-4 py-2 bg-brand-blue hover:bg-brand-blue-dark text-white font-body font-bold text-[12px] rounded-full shadow-xs active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>Lihat QR & Lacak</span>
+                    <ChevronRight size={14} />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Empty State Ringkas bila Tidak Ada Pesanan Berjalan (Tersusun Vertikal di Mobile) */
+            <div className={`${CARD_SURFACE_TOKEN} p-4 flex flex-col gap-3.5`}>
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0 mt-0.5">
+                  <ShoppingBag size={20} strokeWidth={2} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-heading font-bold text-[14px] text-text-primary whitespace-nowrap leading-snug">
+                    Tidak ada pesanan aktif
+                  </h3>
+                  <p className="font-body text-[12px] text-text-secondary mt-0.5 leading-relaxed">
+                    Siap santap dimsum hangat hari ini?
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/menu')}
+                className="w-full min-h-[42px] py-2.5 px-4 bg-brand-gold hover:bg-brand-gold-dark text-white font-body font-bold text-[13px] rounded-full shadow-xs active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center"
+              >
+                Pesan Sekarang
+              </button>
+            </div>
+          )}
 
-          {/* 4 Status Action Columns (Unified color.brand.blue) */}
-          <div className="grid grid-cols-4 gap-2 pt-4">
+        </section>
+
+        {/* SECTION PINTASAN: PESANAN SAYA */}
+        <section aria-labelledby="my-orders-heading" className="mt-5">
+          <h2
+            id="my-orders-heading"
+            className="font-heading font-bold text-[14px] text-[#4E8298] mb-3"
+          >
+            Pesanan Saya
+          </h2>
+
+          {/* Satu wadah putih (#FFFFFF), radius 12px, shadow elevation.sm, tanpa border */}
+          <div className={`${CARD_SURFACE_TOKEN} py-4 px-2 flex items-center overflow-hidden`}>
             {/* 1. Belum Bayar */}
             <button
+              type="button"
               onClick={() => navigate('/order-history?tab=pending')}
-              className="flex flex-col items-center gap-1.5 group cursor-pointer active:scale-95 transition-all text-center"
+              className="flex-1 min-w-0 min-h-[80px] px-1 py-1 flex flex-col items-center justify-center gap-2 transition-colors cursor-pointer active:bg-[#F5F1EB] focus-visible:outline-2 focus-visible:outline-[#4E8298] focus-visible:outline-offset-[-2px]"
+              aria-label="Pesanan Belum Bayar"
             >
-              <div className="relative w-12 h-12 rounded-[16px] bg-brand-blue/10 group-hover:bg-brand-blue/15 text-brand-blue flex items-center justify-center transition-colors shadow-2xs border border-brand-blue/20">
-                <CreditCard size={20} strokeWidth={2} />
+              <div className="relative inline-flex items-center justify-center">
+                <Wallet size={24} strokeWidth={1.75} className="text-[#4E8298]" />
                 {pendingPaymentCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-red text-white font-body font-black text-[10px] flex items-center justify-center shadow-xs">
+                  <span className="absolute -top-1.5 -right-2.5 min-w-[17px] h-[17px] px-1 rounded-full bg-[#C9A23D] text-white text-[11px] font-bold flex items-center justify-center leading-none">
                     {pendingPaymentCount}
                   </span>
                 )}
               </div>
-              <span className="font-body font-bold text-[11px] text-text-primary group-hover:text-brand-blue leading-tight">
+              <span className="font-body font-medium text-[12px] leading-[1.3] text-[#2C3E50] text-center line-clamp-2 w-full">
                 Belum Bayar
               </span>
             </button>
 
+            {/* Garis pemisah vertikal 1px, tinggi 50% (40px / 80px), tidak menyentuh teks */}
+            <div className="w-[1px] h-[40px] bg-[#E5DFD3] shrink-0 self-center" aria-hidden="true" />
+
             {/* 2. Dikemas */}
             <button
+              type="button"
               onClick={() => navigate('/order-history?tab=processing')}
-              className="flex flex-col items-center gap-1.5 group cursor-pointer active:scale-95 transition-all text-center"
+              className="flex-1 min-w-0 min-h-[80px] px-1 py-1 flex flex-col items-center justify-center gap-2 transition-colors cursor-pointer active:bg-[#F5F1EB] focus-visible:outline-2 focus-visible:outline-[#4E8298] focus-visible:outline-offset-[-2px]"
+              aria-label="Pesanan Dikemas"
             >
-              <div className="relative w-12 h-12 rounded-[16px] bg-brand-blue/10 group-hover:bg-brand-blue/15 text-brand-blue flex items-center justify-center transition-colors shadow-2xs border border-brand-blue/20">
-                <Package size={20} strokeWidth={2} />
+              <div className="relative inline-flex items-center justify-center">
+                <Package size={24} strokeWidth={1.75} className="text-[#4E8298]" />
                 {processingCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-blue text-white font-body font-black text-[10px] flex items-center justify-center shadow-xs">
+                  <span className="absolute -top-1.5 -right-2.5 min-w-[17px] h-[17px] px-1 rounded-full bg-[#C9A23D] text-white text-[11px] font-bold flex items-center justify-center leading-none">
                     {processingCount}
                   </span>
                 )}
               </div>
-              <span className="font-body font-bold text-[11px] text-text-primary group-hover:text-brand-blue leading-tight">
+              <span className="font-body font-medium text-[12px] leading-[1.3] text-[#2C3E50] text-center line-clamp-2 w-full">
                 Dikemas
               </span>
             </button>
 
+            {/* Garis pemisah vertikal 1px, tinggi 50% */}
+            <div className="w-[1px] h-[40px] bg-[#E5DFD3] shrink-0 self-center" aria-hidden="true" />
+
             {/* 3. Dikirim */}
             <button
+              type="button"
               onClick={() => navigate('/order-history?tab=delivering')}
-              className="flex flex-col items-center gap-1.5 group cursor-pointer active:scale-95 transition-all text-center"
+              className="flex-1 min-w-0 min-h-[80px] px-1 py-1 flex flex-col items-center justify-center gap-2 transition-colors cursor-pointer active:bg-[#F5F1EB] focus-visible:outline-2 focus-visible:outline-[#4E8298] focus-visible:outline-offset-[-2px]"
+              aria-label="Pesanan Dikirim"
             >
-              <div className="relative w-12 h-12 rounded-[16px] bg-brand-blue/10 group-hover:bg-brand-blue/15 text-brand-blue flex items-center justify-center transition-colors shadow-2xs border border-brand-blue/20">
-                <Truck size={20} strokeWidth={2} />
-                {deliveringCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-blue text-white font-body font-black text-[10px] flex items-center justify-center shadow-xs">
-                    {deliveringCount}
-                  </span>
-                )}
+              <div className="relative inline-flex items-center justify-center">
+                <Truck size={24} strokeWidth={1.75} className="text-[#4E8298]" />
               </div>
-              <span className="font-body font-bold text-[11px] text-text-primary group-hover:text-brand-blue leading-tight">
+              <span className="font-body font-medium text-[12px] leading-[1.3] text-[#2C3E50] text-center line-clamp-2 w-full">
                 Dikirim
               </span>
             </button>
 
-            {/* 4. Riwayat Transaksi */}
+            {/* Garis pemisah vertikal 1px, tinggi 50% */}
+            <div className="w-[1px] h-[40px] bg-[#E5DFD3] shrink-0 self-center" aria-hidden="true" />
+
+            {/* 4. Riwayat */}
             <button
+              type="button"
               onClick={() => navigate('/order-history?tab=all')}
-              className="flex flex-col items-center gap-1.5 group cursor-pointer active:scale-95 transition-all text-center"
+              className="flex-1 min-w-0 min-h-[80px] px-1 py-1 flex flex-col items-center justify-center gap-2 transition-colors cursor-pointer active:bg-[#F5F1EB] focus-visible:outline-2 focus-visible:outline-[#4E8298] focus-visible:outline-offset-[-2px]"
+              aria-label="Riwayat Pesanan"
             >
-              <div className="relative w-12 h-12 rounded-[16px] bg-brand-blue/10 group-hover:bg-brand-blue/15 text-brand-blue flex items-center justify-center transition-colors shadow-2xs border border-brand-blue/20">
-                <ShoppingBag size={20} strokeWidth={2} />
-                {totalOrdersCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-blue text-white font-body font-black text-[10px] flex items-center justify-center shadow-xs">
-                    {totalOrdersCount}
-                  </span>
-                )}
+              <div className="relative inline-flex items-center justify-center">
+                <Receipt size={24} strokeWidth={1.75} className="text-[#4E8298]" />
               </div>
-              <span className="font-body font-bold text-[11px] text-text-primary group-hover:text-brand-blue leading-tight">
+              <span className="font-body font-medium text-[12px] leading-[1.3] text-[#2C3E50] text-center line-clamp-2 w-full">
                 Riwayat
               </span>
             </button>
           </div>
-        </div>
+        </section>
 
-        {/* CARD 2: Alamat Pengiriman & Titik Peta */}
-        <div className="bg-white rounded-[22px] p-4.5 shadow-card border border-gray-100/90 flex flex-col gap-3">
-          <div className="flex items-center justify-between pb-3.5 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-brand-blue/10 text-brand-blue flex items-center justify-center">
-                <MapPin size={15} />
+        {/* SECTION 2: PESAN ULANG (Hanya jika minimal 2 produk berbeda di luar pesanan berjalan, tanpa kartu, tanpa bayangan) */}
+        {reorderProducts.length >= 2 && (
+          <>
+            {/* Garis Pemisah Tipis 1px (#E5DFD3) dan Jarak 32px */}
+            <div className="h-[1px] w-full bg-[#E5DFD3] my-8" />
+
+            <section aria-labelledby="reorder-heading">
+              <div className="flex items-center justify-between mb-3 px-0.5">
+                <h2
+                  id="reorder-heading"
+                  className="font-heading font-bold text-[14px] text-brand-blue"
+                >
+                  Pesan Ulang Favoritmu
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => navigate('/menu')}
+                  className="text-[11px] font-body font-semibold text-brand-blue hover:underline cursor-pointer"
+                >
+                  Lihat Menu
+                </button>
               </div>
-              <h2 className="font-heading font-black text-[15px] text-text-primary">
-                Alamat Pengiriman
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={handleOpenAddressModal}
-              className="text-[12px] font-body font-bold text-brand-gold hover:text-brand-gold-dark hover:underline cursor-pointer"
+
+              {/* Horizontal Scroll Carousel: Flat tanpa kartu pembungkus dan tanpa bayangan */}
+              <div className="flex gap-3 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar scroll-smooth">
+                {reorderProducts.map((p, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => navigate('/menu')}
+                    className="w-[130px] shrink-0 flex flex-col justify-between cursor-pointer active:scale-98 group"
+                  >
+                    <img
+                      src={p.image}
+                      alt={p.name}
+                      className="w-full h-20 rounded-[12px] object-cover bg-white/70 border border-[#E5DFD3]"
+                    />
+                    <div className="mt-2 flex flex-col justify-between flex-1">
+                      {/* Nama Produk Tampil Penuh Maksimal 2 Baris */}
+                      <p className="font-body font-bold text-[12px] text-text-primary line-clamp-2 leading-snug h-8">
+                        {p.name}
+                      </p>
+                      <div className="flex items-center justify-between mt-1.5 pt-1">
+                        <span className="font-body font-bold text-[11px] text-brand-gold">
+                          Rp{Number(p.price).toLocaleString('id-ID')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => handleQuickAddToCart(e, p)}
+                          className="w-6 h-6 rounded-full bg-brand-gold hover:bg-brand-gold-dark text-white flex items-center justify-center active:scale-90 transition-transform cursor-pointer"
+                          title="Tambah ke Keranjang"
+                          aria-label={`Tambah ${p.name}`}
+                        >
+                          <Plus size={14} strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* Garis Pemisah Tipis 1px (#E5DFD3) dan Jarak 32px */}
+        <div className="h-[1px] w-full bg-[#E5DFD3] my-8" />
+
+        {/* SECTION 3: ALAMAT PENGIRIMAN (Tanpa Kartu & Tanpa Bayangan: Judul + 1 Kalimat + 1 Tombol Secondary) */}
+        <section aria-labelledby="shipping-address-heading">
+          <div className="flex flex-col gap-2">
+            <h2
+              id="shipping-address-heading"
+              className="font-heading font-bold text-[14px] text-brand-blue"
             >
-              {savedAddress ? 'Ubah Lokasi' : '+ Atur Titik Peta'}
-            </button>
-          </div>
+              Alamat Pengiriman
+            </h2>
 
-          {/* Alamat Pengiriman Detail Card */}
-          <div
-            onClick={handleOpenAddressModal}
-            className="w-full p-3.5 rounded-[16px] bg-gray-50/80 hover:bg-gray-100/80 border border-gray-200/60 flex flex-col gap-2.5 text-left group active:scale-[0.99] transition-all cursor-pointer shadow-2xs"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-body font-bold text-[13px] text-text-primary group-hover:text-brand-blue flex items-center gap-1.5">
-                  {savedLabel === 'Rumah' && <Home size={14} className="text-brand-blue" />}
-                  {savedLabel === 'Kantor' && <Briefcase size={14} className="text-brand-blue" />}
-                  {savedLabel !== 'Rumah' && savedLabel !== 'Kantor' && <Tag size={14} className="text-brand-blue" />}
-                  {savedLabel || 'Alamat Utama'}
-                </span>
-                <span className="text-[10px] bg-brand-gold/10 text-brand-gold-dark font-bold px-2 py-0.5 rounded-full border border-brand-gold/20">
-                  Default
-                </span>
-              </div>
-              <div className="flex items-center gap-1 text-text-secondary group-hover:text-brand-blue shrink-0 text-[11px] font-body font-semibold">
-                <span>Atur di Peta</span>
-                <ChevronRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-              </div>
-            </div>
-
-            <p className="font-body text-[12px] text-text-primary/90 leading-relaxed">
-              {savedAddress || 'Belum ada titik alamat. Ketuk untuk membuka peta dan pilih pin lokasi Anda.'}
+            <p className="font-body text-[12px] text-text-secondary leading-relaxed">
+              {savedAddress
+                ? savedAddress
+                : 'Belum ada alamat pengiriman. Saat ini layanan Pesan & Ambil di outlet.'}
             </p>
 
-            {savedNotes && (
-              <div className="bg-amber-50/60 border border-amber-200/60 rounded-[10px] px-2.5 py-1.5 text-[11px] font-body text-amber-900 flex items-start gap-1.5">
-                <span className="font-bold shrink-0">Patokan:</span>
-                <span className="line-clamp-2">{savedNotes}</span>
-              </div>
-            )}
-
-            {savedCoords ? (
-              <div className="pt-2 border-t border-gray-200/60 flex items-center justify-between text-[11px] font-body">
-                <span className="text-emerald-700 font-bold flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Titik Pin GPS Terpasang
-                </span>
-                {distanceKm !== null && (
-                  <span className="text-text-secondary font-medium">
-                    ~{distanceKm} km dari outlet
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="pt-1.5 border-t border-gray-200/60 flex items-center gap-1 text-[11px] font-body text-brand-red">
-                <Navigation size={12} />
-                <span>Belum ada titik GPS presisi (Buka peta untuk pasang pin)</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* CARD 3: Bantuan & Layanan (Neutral card, WhatsApp green on icon only) */}
-        <div className="bg-white rounded-[22px] p-4.5 shadow-card border border-gray-100/90 flex flex-col gap-3">
-          <div className="pb-2 border-b border-gray-100">
-            <h2 className="font-heading font-black text-[15px] text-text-primary">
-              Bantuan
-            </h2>
-          </div>
-
-          {/* Customer Service WhatsApp */}
-          <button
-            type="button"
-            onClick={handleContactCS}
-            className="w-full p-3.5 rounded-[16px] bg-gray-50/80 hover:bg-gray-100/80 border border-gray-200/60 flex items-center justify-between text-left group active:scale-[0.99] transition-all cursor-pointer shadow-2xs"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-full bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0">
-                <Headset size={20} />
-              </div>
-              <div className="min-w-0">
-                <span className="font-body font-bold text-[13px] text-text-primary group-hover:text-brand-blue block">
-                  Customer Service (WhatsApp)
-                </span>
-                <p className="font-body text-[11px] text-text-secondary mt-0.5 truncate">
-                  Hubungi admin untuk bantuan & pertanyaan pesanan
-                </p>
-              </div>
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={handleOpenAddressModal}
+                className="min-h-[38px] px-4 py-1.5 border border-brand-blue text-brand-blue hover:bg-brand-blue/5 rounded-full font-body font-semibold text-[12px] transition-all cursor-pointer inline-flex items-center justify-center"
+              >
+                Atur di Peta
+              </button>
             </div>
-            <ChevronRight size={18} className="text-text-secondary shrink-0 ml-2 group-hover:translate-x-0.5 transition-transform" />
-          </button>
+          </div>
+        </section>
 
-          {/* Kebijakan Privasi Link */}
-          <button
-            type="button"
-            onClick={() => navigate('/privacy-policy')}
-            className="w-full p-3.5 rounded-[16px] bg-gray-50/80 hover:bg-gray-100/80 border border-gray-200/60 flex items-center justify-between text-left group active:scale-[0.99] transition-all cursor-pointer shadow-2xs"
+        {/* Garis Pemisah Tipis 1px (#E5DFD3) dan Jarak 32px */}
+        <div className="h-[1px] w-full bg-[#E5DFD3] my-8" />
+
+        {/* SECTION 4: BANTUAN (Tanpa Kartu & Tanpa Bayangan: Langsung di Atas Latar Cream, Pemisah Garis Tipis) */}
+        <section aria-labelledby="help-heading">
+          <h2
+            id="help-heading"
+            className="font-heading font-bold text-[14px] text-brand-blue mb-1"
           >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-full bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0">
-                <ShieldCheck size={18} />
+            Bantuan
+          </h2>
+
+          <div className="divide-y divide-[#E5DFD3]">
+            {/* Baris 1: Chat CS (WhatsApp) */}
+            <button
+              type="button"
+              onClick={handleContactCS}
+              className="w-full py-3 flex items-center justify-between text-left group transition-colors cursor-pointer min-h-[44px]"
+            >
+              <div className="flex items-center gap-2.5">
+                <Headset size={18} strokeWidth={1.8} className="text-brand-blue shrink-0" />
+                <span className="font-body font-semibold text-[13px] text-text-primary group-hover:text-brand-blue transition-colors">
+                  Chat CS (WhatsApp)
+                </span>
               </div>
-              <div className="min-w-0">
-                <span className="font-body font-bold text-[13px] text-text-primary group-hover:text-brand-blue block">
+              <ExternalLink size={15} className="text-text-secondary/70 shrink-0" />
+            </button>
+
+            {/* Baris 2: Kebijakan Privasi */}
+            <button
+              type="button"
+              onClick={() => navigate('/privacy-policy')}
+              className="w-full py-3 flex items-center justify-between text-left group transition-colors cursor-pointer min-h-[44px]"
+            >
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck size={18} strokeWidth={1.8} className="text-brand-blue shrink-0" />
+                <span className="font-body font-semibold text-[13px] text-text-primary group-hover:text-brand-blue transition-colors">
                   Kebijakan Privasi
                 </span>
-                <p className="font-body text-[11px] text-text-secondary mt-0.5 truncate">
-                  Informasi keamanan data & ketentuan layanan
-                </p>
               </div>
-            </div>
-            <ChevronRight size={18} className="text-text-secondary shrink-0 ml-2 group-hover:translate-x-0.5 transition-transform" />
+              <ChevronRight size={16} className="text-text-secondary/70 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          </div>
+        </section>
+
+        {/* Garis Pemisah Tipis 1px (#E5DFD3) dan Jarak 32px */}
+        <div className="h-[1px] w-full bg-[#E5DFD3] my-8" />
+
+        {/* SECTION 5: KELUAR DARI AKUN (Tombol Ghost Teks Biru) */}
+        <div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full min-h-[44px] py-2 bg-transparent hover:bg-brand-blue/5 text-brand-blue font-body font-semibold text-[13px] rounded-full transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            <LogOut size={16} strokeWidth={2} />
+            <span>Keluar dari Akun</span>
           </button>
-        </div>
-
-        {/* LOGOUT BUTTON (Clean ghost / text button in brand red without heavy card wrapper) */}
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="w-full py-2.5 bg-transparent hover:bg-red-50/60 text-brand-red font-body font-semibold text-[13px] rounded-[12px] transition-all cursor-pointer flex items-center justify-center gap-2 mt-1 hover:underline"
-        >
-          <LogOut size={16} />
-          <span>Keluar dari Akun</span>
-        </button>
-
-        {/* Footer Brand watermark */}
-        <div className="mt-4 flex flex-col items-center justify-center gap-1 text-center">
-          <img src={logoImg} alt="Makan Dimsum" className="h-7 w-auto opacity-40 grayscale" />
-          <span className="font-body font-medium text-[10px] text-text-secondary/70">
-            Makan Dimsum Indonesia • v1.0
-          </span>
         </div>
       </main>
 
+      {/* 3. Footer Homepage (Band Biru, Logo, Alamat, Sosial Media, dan Versi v1.0) */}
+      <footer className="bg-brand-blue pt-10 px-6 pb-12 text-white flex justify-between items-start min-h-[230px]">
+        <div className="flex flex-col gap-3 text-[12px] opacity-90 max-w-[55%]">
+          <div className="h-12 flex items-center mb-1">
+            <img src={logoImg} alt="Makan Dimsum Indonesia" className="h-full object-contain drop-shadow-md" />
+          </div>
+          <p className="leading-relaxed">
+            Jl. Insinyur H. Juanda No.194,<br />
+            RT.03/RW.01, Duren Jaya, <br />
+            Kec. Bekasi Tim., Kota Bks,<br />
+            Jawa Barat 17111
+          </p>
+          <p className="mt-4 text-[11px] opacity-80">
+            Copyright 2026. All Rights Reserved.
+            <span className="opacity-60 text-[10px] block mt-0.5">v1.0</span>
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-4 items-end">
+          <div className="text-[13px] font-bold">Follow Us Here!</div>
+          <div className="flex flex-col gap-2 items-end">
+            <div className="flex items-center gap-2 text-[12px]">
+              <span>@makandimsum</span>
+              <div className="w-6 h-6 rounded-full bg-white text-brand-blue flex items-center justify-center">
+                <Camera size={13} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-[12px]">
+              <span>@makandimsum_id</span>
+              <div className="w-6 h-6 rounded-full bg-white text-brand-blue flex items-center justify-center">
+                <Video size={13} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-[12px]">
+              <span>@makandimsum</span>
+              <div className="w-6 h-6 rounded-full bg-white text-brand-blue flex items-center justify-center">
+                <MessageCircle size={13} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </footer>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-black/85 backdrop-blur-md text-white px-4 py-2.5 rounded-full shadow-lg text-[12px] font-body font-semibold flex items-center gap-2 animate-fade-in pointer-events-none">
+          <CheckCircle2 size={16} className="text-brand-gold shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 }

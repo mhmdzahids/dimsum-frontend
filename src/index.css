@@ -20,6 +20,14 @@
   --font-heading: 'Fredoka', sans-serif;
   --font-body: 'Poppins', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 
+  --radius-md: 12px;
+  --radius-card: 20px;
+  --radius-tile: 24px;
+  --radius-banner: 20px;
+  --radius-input: 8px;
+  --radius-sheet: 24px;
+  --radius-btn: 20px;
+  --shadow-elevation-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-card: 0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1);
   --shadow-elevated: 0px 10px 15px -3px rgba(0, 0, 0, 0.1), 0px 4px 6px -4px rgba(0, 0, 0, 0.1);
 
@@ -790,6 +798,14 @@
   .hide-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  /* Card Surface Token: radius 20px (radius.card), shadow elevation.sm, tanpa border */
+  .card-surface {
+    background-color: #ffffff;
+    border-radius: var(--radius-card, 20px);
+    box-shadow: var(--shadow-elevation-sm, 0 1px 3px rgba(0, 0, 0, 0.08));
+    border: none;
   }
 }
 

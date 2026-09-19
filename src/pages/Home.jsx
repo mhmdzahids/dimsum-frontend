@@ -257,7 +257,7 @@ function Home() {
       </header>
 
       {/* Sheet Content (overlaps header with visible rounded corners) */}
-      <div className="bg-bg-cream rounded-t-[32px] -mt-6 relative z-20 pt-10 pb-16 shadow-[0_-4px_24px_rgba(0,0,0,0.05)]">
+      <div className="bg-bg-cream rounded-t-sheet -mt-6 relative z-20 pt-10 pb-16 shadow-[0_-4px_24px_rgba(0,0,0,0.05)]">
 
         {/* Segmented Control */}
         <div className="flex justify-center gap-4 px-6 mb-8">
@@ -268,7 +268,7 @@ function Home() {
               <button
                 key={type}
                 disabled={isDisabled}
-                className={`flex-1 flex flex-col items-center justify-center gap-3 py-6 px-4 rounded-[24px] font-body font-bold text-[12px] transition-all duration-200 relative ${isActive
+                className={`flex-1 flex flex-col items-center justify-center gap-3 py-6 px-4 rounded-tile font-body font-bold text-[12px] transition-all duration-200 relative ${isActive
                   ? 'bg-brand-gold text-white shadow-elevated'
                   : isDisabled
                     ? 'bg-[#EAEBEF] text-text-disabled cursor-not-allowed shadow-card opacity-70'
@@ -299,7 +299,7 @@ function Home() {
         {/* Carousel */}
         {banners.length > 0 && (
           <div className="px-6 pb-6 mt-4">
-            <div className="overflow-hidden mb-6 rounded-[20px] shadow-card relative">
+            <div className="overflow-hidden mb-6 rounded-banner shadow-card relative">
               <div
                 className="flex transition-transform duration-500 ease-in-out"
                 style={{ transform: `translateX(-${activeBanner * 100}%)` }}
@@ -426,7 +426,7 @@ function Home() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[448px] h-[64px] z-[100]">
           <div
             onClick={() => navigate('/payment', { state: { resumePending: true } })}
-            className="w-full h-full bg-brand-gold rounded-[20px] shadow-elevated flex items-center justify-between overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+            className="w-full h-full bg-brand-gold rounded-btn shadow-elevated flex items-center justify-between overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
           >
             {/* Clock Icon with Ticking Urgency Animation */}
             <div className="bg-white/20 h-full self-stretch px-4 flex items-center justify-center relative shrink-0">
