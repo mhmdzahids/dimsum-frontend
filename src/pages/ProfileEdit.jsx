@@ -11,19 +11,13 @@ import {
   Save,
   ChevronRight
 } from 'lucide-react';
-import {
-  getCustomerToken,
-  getCustomerUser,
-  isCustomerLoggedIn,
-  updateCustomerUser
-} from '../utils/customerAuth';
+import useAuth from '../hooks/useAuth';
 import api from '../api/client';
 
 export default function ProfileEdit() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser] = useState(() => getCustomerUser());
-  const token = getCustomerToken();
+  const { user, updateUser } = useAuth();
 
   // Redirect if not logged in
   useEffect(() => {
@@ -167,10 +161,9 @@ export default function ProfileEdit() {
         throw new Error(res.error || res.message || 'Gagal memperbarui profil.');
       }
 
-      // Update local storage and dispatch subscriber event
+      // Update context and persistent storage
       if (res.data) {
-        updateCustomerUser(res.data);
-        setUser(res.data);
+        updateUser(res.data);
       }
 
       setSuccessMessage('Profil dan detail akun Anda berhasil diperbarui!');

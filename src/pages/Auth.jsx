@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, User, Phone, Mail, Lock, Eye, EyeOff, CheckCircle2, Shield, Loader2 } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
 import logoImg from '../assets/logo.webp';
-import { loginCustomer, isCustomerLoggedIn } from '../utils/customerAuth';
+import useAuth from '../hooks/useAuth';
 import api from '../api/client';
 
 export default function Auth() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
-  const redirectTo = searchParams.get('redirect') || '/menu';
+  const { login, isLoggedIn } = useAuth();
+  const redirectTo = location.state?.from?.pathname || searchParams.get('redirect') || '/menu';
 
   const [activeTab, setActiveTab] = useState('login'); // 'login' | 'register'
 
@@ -34,10 +36,10 @@ export default function Auth() {
   const [successType, setSuccessType] = useState('login'); // 'login' | 'register'
 
   useEffect(() => {
-    if (isCustomerLoggedIn()) {
+    if (isLoggedIn) {
       navigate(redirectTo, { replace: true });
     }
-  }, [navigate, redirectTo]);
+  }, [isLoggedIn, navigate, redirectTo]);
 
   const triggerToast = (msg) => {
     setToastMessage(msg);
@@ -54,7 +56,7 @@ export default function Auth() {
     try {
       const res = await api.post('/api/auth/google', { credential: credentialResponse.credential });
       if (res.success && res.data?.token) {
-        loginCustomer(res.data.token, res.data.user);
+        login(res.data.token, res.data.user);
         setSuccessUser(res.data.user);
         setSuccessType('login');
         setIsSuccessRedirecting(true);
@@ -89,7 +91,7 @@ export default function Auth() {
         password: loginPassword
       });
       if (res.success && res.data) {
-        loginCustomer(res.data.token, res.data.user);
+        login(res.data.token, res.data.user);
         setSuccessUser(res.data.user);
         setSuccessType('login');
         setIsSuccessRedirecting(true);
@@ -130,7 +132,7 @@ export default function Auth() {
         password: regPassword
       });
       if (res.success && res.data) {
-        loginCustomer(res.data.token, res.data.user, 1500);
+        login(res.data.token, res.data.user, 1500);
         setSuccessUser(res.data.user);
         setSuccessType('register');
         setIsSuccessRedirecting(true);

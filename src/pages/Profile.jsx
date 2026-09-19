@@ -33,12 +33,7 @@ import imgJamur from '../assets/icon/jamur.webp';
 import imgCrabstick from '../assets/icon/crabstick.webp';
 import imgSosis from '../assets/icon/sosis.webp';
 
-import {
-  isCustomerLoggedIn,
-  getCustomerUser,
-  logoutCustomer,
-  subscribeCustomerAuth
-} from '../utils/customerAuth';
+import useAuth from '../hooks/useAuth';
 import { getOrderHistory, syncOrderHistoryWithServer } from '../utils/orderHistory';
 
 // Token konsisten kartu: radius 20px (radius.lg), shadow elevation.sm, tanpa border
@@ -47,14 +42,12 @@ const CARD_SURFACE_TOKEN = 'card-surface';
 export default function Profile() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isLoggedIn, setIsLoggedIn] = useState(() => isCustomerLoggedIn());
-  const [user, setUser] = useState(() => getCustomerUser());
+  const { user, isLoggedIn, logout } = useAuth();
   const [orders, setOrders] = useState(() => getOrderHistory());
   const [toastMessage, setToastMessage] = useState('');
 
   const [savedAddress, setSavedAddress] = useState(() => {
-    const u = getCustomerUser();
-    return u?.address || localStorage.getItem('dimsum_delivery_address') || '';
+    return user?.address || localStorage.getItem('dimsum_delivery_address') || '';
   });
 
   const handleBack = () => {
@@ -67,34 +60,14 @@ export default function Profile() {
   };
 
   useEffect(() => {
-    const u = getCustomerUser();
-    if (u?.address) {
-      setSavedAddress(u.address);
+    if (user?.address) {
+      setSavedAddress(user.address);
     } else {
       setSavedAddress(localStorage.getItem('dimsum_delivery_address') || '');
     }
-  }, [location.key]);
+  }, [user, location.key]);
 
   useEffect(() => {
-    const unsub = subscribeCustomerAuth(() => {
-      const logged = isCustomerLoggedIn();
-      setIsLoggedIn(logged);
-      const currentUser = getCustomerUser();
-      setUser(currentUser);
-      if (currentUser?.address) {
-        setSavedAddress(currentUser.address);
-      } else {
-        setSavedAddress(localStorage.getItem('dimsum_delivery_address') || '');
-      }
-      if (!logged) {
-        navigate('/auth?redirect=/profile', { replace: true });
-      }
-    });
-
-    if (!isCustomerLoggedIn()) {
-      navigate('/auth?redirect=/profile', { replace: true });
-    }
-
     syncOrderHistoryWithServer()
       .then((updated) => {
         if (Array.isArray(updated)) {
@@ -102,9 +75,7 @@ export default function Profile() {
         }
       })
       .catch(() => { });
-
-    return unsub;
-  }, [navigate]);
+  }, []);
 
   // Status counts for badges
   const pendingPaymentCount = orders.filter(
@@ -195,7 +166,7 @@ export default function Profile() {
 
   const handleLogout = () => {
     if (window.confirm('Apakah Anda yakin ingin keluar dari akun?')) {
-      logoutCustomer();
+      logout();
       navigate('/menu');
     }
   };

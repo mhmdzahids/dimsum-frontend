@@ -2,6 +2,8 @@ import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import PageLoader from './components/PageLoader';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/guards/ProtectedRoute';
 
 // Core Customer Funnel (Eagerly Loaded for Instant Navigation)
 import Home from './pages/Home';
@@ -47,38 +49,44 @@ function App() {
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <ErrorBoundary>
-        <Router>
-          <ScrollToTop />
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/menu" element={<Menu />} />
-              <Route path="/checkout" element={<Checkout />} />
-              <Route path="/payment" element={<Payment />} />
-              <Route path="/order-status" element={<OrderStatus />} />
-              <Route path="/outlet" element={<OutletInfo />} />
-              <Route path="/vouchers" element={<Vouchers />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/profile/edit" element={<ProfileEdit />} />
-              <Route path="/address/new" element={<AddressNew />} />
-              <Route path="/order-history" element={<OrderHistory />} />
-              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <AuthProvider>
+          <Router>
+            <ScrollToTop />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/menu" element={<Menu />} />
+                <Route path="/checkout" element={<Checkout />} />
+                <Route path="/payment" element={<Payment />} />
+                <Route path="/order-status" element={<OrderStatus />} />
+                <Route path="/outlet" element={<OutletInfo />} />
+                <Route path="/vouchers" element={<Vouchers />} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
 
-              {/* Admin Portal */}
-              <Route path="/admin/login" element={<AdminLogin />} />
-              <Route element={<AdminRoute />}>
-                <Route element={<AdminLayout />}>
-                  <Route path="/admin" element={<Navigate to="/admin/products" replace />} />
-                  <Route path="/admin/products" element={<AdminProducts />} />
-                  <Route path="/admin/banners" element={<AdminBanners />} />
-                  <Route path="/admin/vouchers" element={<AdminVouchers />} />
-                  <Route path="/admin/scan-qr" element={<AdminScanQR />} />
+                {/* Customer Account (Protected) */}
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/profile/edit" element={<ProfileEdit />} />
+                  <Route path="/address/new" element={<AddressNew />} />
+                  <Route path="/order-history" element={<OrderHistory />} />
                 </Route>
-              </Route>
-            </Routes>
-          </Suspense>
-        </Router>
+
+                {/* Admin Portal */}
+                <Route path="/admin/login" element={<AdminLogin />} />
+                <Route element={<AdminRoute />}>
+                  <Route element={<AdminLayout />}>
+                    <Route path="/admin" element={<Navigate to="/admin/products" replace />} />
+                    <Route path="/admin/products" element={<AdminProducts />} />
+                    <Route path="/admin/banners" element={<AdminBanners />} />
+                    <Route path="/admin/vouchers" element={<AdminVouchers />} />
+                    <Route path="/admin/scan-qr" element={<AdminScanQR />} />
+                  </Route>
+                </Route>
+              </Routes>
+            </Suspense>
+          </Router>
+        </AuthProvider>
       </ErrorBoundary>
     </GoogleOAuthProvider>
   );
