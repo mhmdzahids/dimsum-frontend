@@ -14,7 +14,8 @@ import {
   Ticket,
   Truck,
   MapPin,
-  Coins
+  Coins,
+  AlertCircle
 } from 'lucide-react';
 import { getValidPickupTime, savePickupTime } from '../utils/pickupTime';
 import {
@@ -22,6 +23,10 @@ import {
   getCustomerUser,
   subscribeCustomerAuth
 } from '../utils/customerAuth';
+import LocationPickerModal, {
+  calculateHaversineDistance,
+  OUTLET_COORDS
+} from '../components/LocationPickerModal';
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -133,8 +138,40 @@ export default function Checkout() {
   const [deliveryNotes, setDeliveryNotes] = useState(() => {
     return localStorage.getItem('dimsum_delivery_notes') || '';
   });
+  const [deliveryLabel, setDeliveryLabel] = useState(() => {
+    return localStorage.getItem('dimsum_delivery_label') || 'Rumah';
+  });
+  const [deliveryCoords, setDeliveryCoords] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dimsum_delivery_coords');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isDeliveryAuthModalOpen, setIsDeliveryAuthModalOpen] = useState(false);
   const [deliveryToast, setDeliveryToast] = useState('');
+
+  const deliveryDistanceKm = deliveryCoords
+    ? calculateHaversineDistance(
+        OUTLET_COORDS.latitude,
+        OUTLET_COORDS.longitude,
+        deliveryCoords.latitude,
+        deliveryCoords.longitude
+      )
+    : null;
+
+  // Refresh delivery info on navigation
+  useEffect(() => {
+    setDeliveryAddress(localStorage.getItem('dimsum_delivery_address') || '');
+    setDeliveryNotes(localStorage.getItem('dimsum_delivery_notes') || '');
+    setDeliveryLabel(localStorage.getItem('dimsum_delivery_label') || 'Rumah');
+    try {
+      const saved = localStorage.getItem('dimsum_delivery_coords');
+      if (saved) setDeliveryCoords(JSON.parse(saved));
+    } catch { }
+  }, [location.key]);
 
   const showDeliveryToast = (msg) => {
     setDeliveryToast(msg);
@@ -149,10 +186,27 @@ export default function Checkout() {
       }
       setOrderType('delivery');
       localStorage.setItem('dimsum_order_type', 'delivery');
+      if (!deliveryAddress) {
+        navigate('/address/new', { state: { returnTo: '/checkout' } });
+      }
     } else {
       setOrderType('pickup');
       localStorage.setItem('dimsum_order_type', 'pickup');
     }
+  };
+
+  const handleNavigateToAddressNew = () => {
+    navigate('/address/new', { state: { returnTo: '/checkout' } });
+  };
+
+  const handleLocationSavedFromCheckout = (locationData) => {
+    setDeliveryAddress(locationData.full_address);
+    setDeliveryNotes(locationData.notes);
+    setDeliveryLabel(locationData.label);
+    setDeliveryCoords({
+      latitude: locationData.latitude,
+      longitude: locationData.longitude
+    });
   };
 
   const handleAddressChange = (e) => {
@@ -174,7 +228,7 @@ export default function Checkout() {
 
   // Lock background scroll when any modal or bottom sheet is open
   useEffect(() => {
-    if (isTimeModalOpen || isNotesModalOpen) {
+    if (isTimeModalOpen || isNotesModalOpen || isLocationModalOpen) {
       document.body.style.overflow = 'hidden';
       document.documentElement.style.overflow = 'hidden';
     } else {
@@ -185,7 +239,7 @@ export default function Checkout() {
       document.body.style.overflow = '';
       document.documentElement.style.overflow = '';
     };
-  }, [isTimeModalOpen, isNotesModalOpen]);
+  }, [isTimeModalOpen, isNotesModalOpen, isLocationModalOpen]);
 
   const getAvailableTimes = React.useCallback((dateToCheck) => {
     const times = [];
@@ -518,49 +572,93 @@ export default function Checkout() {
               </button>
             </div>
           ) : (
-            /* If Delivery: show address & courier notes inputs */
+            /* If Delivery: Shopee/Gojek-style interactive address & pinpoint card */
             <div className="flex flex-col gap-3 animate-fade-in">
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="font-body font-bold text-[12px] text-text-primary flex items-center gap-1.5">
-                    <MapPin size={14} className="text-brand-gold" />
-                    Alamat Pengiriman Lengkap
-                  </label>
-                  <span className="font-body text-[10px] text-text-secondary">Wajib diisi</span>
+              {/* Address Card with Pinpoint Status */}
+              <div
+                onClick={handleNavigateToAddressNew}
+                className="w-full p-3.5 rounded-[14px] bg-gray-50/90 hover:bg-gray-100/90 border border-gray-200/70 flex flex-col gap-2.5 text-left group active:scale-[0.99] transition-all cursor-pointer shadow-2xs"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-brand-gold/15 text-brand-gold-dark flex items-center justify-center shrink-0">
+                      <MapPin size={15} />
+                    </div>
+                    <span className="font-body font-bold text-[13px] text-text-primary group-hover:text-brand-gold-dark flex items-center gap-1.5">
+                      {deliveryLabel || 'Alamat Pengiriman'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-brand-gold hover:text-brand-gold-dark font-body font-bold text-[12px]">
+                    <span>{deliveryAddress ? 'Ubah Titik' : '+ Pilih Titik'}</span>
+                    <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+                  </div>
                 </div>
-                <textarea
-                  rows={2}
-                  required
-                  value={deliveryAddress}
-                  onChange={handleAddressChange}
-                  placeholder="Nama jalan, nomor rumah/kos, RT/RW, kelurahan, kecamatan..."
-                  className="w-full px-3 py-2 text-[12px] font-body bg-gray-50 border border-gray-200 rounded-[10px] focus:outline-none focus:border-brand-blue focus:bg-white text-text-primary resize-none transition-all"
-                />
+
+                {deliveryAddress ? (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="font-body text-[12px] text-text-primary leading-relaxed">
+                      {deliveryAddress}
+                    </p>
+                    {deliveryNotes && (
+                      <div className="bg-amber-50/70 border border-amber-200/60 rounded-[8px] px-2.5 py-1 text-[11px] font-body text-amber-900 flex items-start gap-1.5">
+                        <span className="font-bold shrink-0">Patokan:</span>
+                        <span className="line-clamp-2">{deliveryNotes}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-amber-50/70 border border-dashed border-amber-300 rounded-[10px] text-center">
+                    <p className="font-body font-medium text-[12px] text-amber-900">
+                      📍 Belum ada alamat delivery terpilih.
+                    </p>
+                    <span className="font-body font-bold text-[12px] text-brand-gold underline mt-1 inline-block">
+                      Ketuk di sini untuk pasang pin di peta
+                    </span>
+                  </div>
+                )}
+
+                {/* Distance & GPS Pinpoint Indicator */}
+                {deliveryCoords ? (
+                  <div className="pt-2 border-t border-gray-200/60 flex items-center justify-between text-[11px] font-body">
+                    <span className="text-emerald-700 font-bold flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Titik GPS Terpasang
+                    </span>
+                    {deliveryDistanceKm !== null && (
+                      <span className="text-text-secondary font-medium">
+                        Jarak ~{deliveryDistanceKm} km dari outlet
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  deliveryAddress && (
+                    <div className="pt-1.5 border-t border-gray-200/60 flex items-center gap-1 text-[11px] font-body text-amber-700">
+                      <AlertCircle size={12} />
+                      <span>Pin peta belum ditentukan. Ketuk untuk presisi pengantaran.</span>
+                    </div>
+                  )
+                )}
               </div>
 
-              <div>
-                <label className="block font-body font-medium text-[11px] text-text-secondary mb-1">
-                  Patokan / Catatan Kurir <span className="font-normal">(Opsional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={deliveryNotes}
-                  onChange={handleDeliveryNotesChange}
-                  placeholder="Contoh: Pagar hitam seberang masjid, titip di sekuriti"
-                  className="w-full px-3 py-1.5 text-[12px] font-body bg-gray-50 border border-gray-200 rounded-[10px] focus:outline-none focus:border-brand-blue focus:bg-white text-text-primary transition-all"
-                />
-              </div>
-
-              <div className="bg-blue-50/70 border border-blue-100 rounded-[10px] px-3 py-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Truck size={15} className="text-brand-blue shrink-0" />
-                  <span className="font-body text-[11px] text-brand-blue font-medium">
-                    Estimasi tiba: <strong>30 - 45 Menit</strong>
+              {/* Delivery ETA & Shipping Fee Card */}
+              <div className="bg-blue-50/70 border border-blue-100 rounded-[12px] px-3.5 py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-full bg-brand-blue/15 text-brand-blue flex items-center justify-center shrink-0">
+                    <Truck size={15} />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-body text-[11px] text-text-secondary">Estimasi Pengantaran</span>
+                    <span className="font-body font-bold text-[12px] text-brand-blue">
+                      30 - 45 Menit (Kurir Express)
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="font-body text-[10px] text-text-secondary block">Ongkir Flat</span>
+                  <span className="font-body font-bold text-[13px] text-text-primary">
+                    Rp{deliveryFee.toLocaleString('id-ID')}
                   </span>
                 </div>
-                <span className="font-body font-bold text-[11px] text-text-primary">
-                  Ongkir Rp10.000
-                </span>
               </div>
             </div>
           )}
@@ -848,6 +946,7 @@ export default function Checkout() {
                   orderType: orderType,
                   deliveryAddress: orderType === 'delivery' ? deliveryAddress.trim() : null,
                   deliveryNotes: orderType === 'delivery' ? deliveryNotes.trim() : null,
+                  deliveryCoords: orderType === 'delivery' ? deliveryCoords : null,
                   deliveryFee: deliveryFee
                 }
               });
@@ -976,11 +1075,10 @@ export default function Checkout() {
                     closeTimeModal();
                   }
                 }}
-                className={`w-full font-body font-black text-[15px] py-3.5 rounded-[16px] transition-all ${
-                  !selectedTime || availableTimes.length === 0
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
-                    : 'bg-brand-gold text-white shadow-elevated active:scale-95 cursor-pointer'
-                }`}
+                className={`w-full font-body font-black text-[15px] py-3.5 rounded-[16px] transition-all ${!selectedTime || availableTimes.length === 0
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
+                  : 'bg-brand-gold text-white shadow-elevated active:scale-95 cursor-pointer'
+                  }`}
               >
                 Save
               </button>

@@ -162,36 +162,29 @@ export default function Auth() {
   };
 
   if (isSuccessRedirecting) {
-    return (
-      <div className="max-w-[480px] mx-auto min-h-screen bg-bg-cream flex flex-col items-center justify-center px-6 py-12 relative overflow-hidden shadow-2xl">
-        {/* Soft background ambient glow */}
-        <div className="absolute w-72 h-72 rounded-full bg-brand-gold/15 blur-3xl -top-12 -left-12 pointer-events-none" />
-        <div className="absolute w-72 h-72 rounded-full bg-brand-blue/10 blur-3xl -bottom-12 -right-12 pointer-events-none" />
+    const displayName = successUser?.full_name ? String(successUser.full_name).toUpperCase() : 'PELANGGAN';
 
-        <div className="relative z-10 w-full max-w-[360px] bg-white rounded-[28px] p-8 shadow-card border border-gray-100 flex flex-col items-center text-center animate-fade-in">
-          {/* Animated Logo with Glowing Ring */}
-          <div className="relative mb-6">
-            <div className="absolute -inset-2 rounded-full bg-gradient-to-tr from-brand-gold via-brand-blue to-brand-gold opacity-40 blur-md animate-pulse" />
-            <div className="relative w-24 h-24 rounded-full bg-white shadow-elevated flex items-center justify-center p-3 border-2 border-brand-gold/30">
-              <img src={logoImg} alt="Makan Dimsum" className="w-full h-full object-contain drop-shadow-sm" />
-            </div>
-            {/* Spinning Indicator Badge */}
-            <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-brand-gold text-white flex items-center justify-center shadow-md animate-spin">
-              <Loader2 size={16} strokeWidth={2.5} />
+    return (
+      <div className="max-w-[480px] mx-auto min-h-screen bg-[#F5F1EB] flex flex-col items-center justify-center px-6 py-12 relative shadow-2xl">
+        <div className="relative z-10 w-full max-w-[360px] bg-white rounded-[20px] p-8 shadow-lg border border-gray-100 flex flex-col items-center text-center animate-fade-in">
+          {/* Avatar: clean gold ring, no glow, no corner spinner */}
+          <div className="mb-6">
+            <div className="w-24 h-24 rounded-full bg-white shadow-sm flex items-center justify-center p-3 border-2 border-[#C9A23D]">
+              <img src={logoImg} alt="Makan Dimsum" className="w-full h-full object-contain" />
             </div>
           </div>
 
-          {/* Success Status Tag */}
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 mb-3.5 shadow-2xs">
-            <CheckCircle2 size={15} className="text-emerald-600" />
-            <span className="font-body font-bold text-[11px] tracking-wide uppercase">
+          {/* Success Status Tag: color.success #2D8F5E on color.success.bg #E8F5EE */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#E8F5EE] border border-[#2D8F5E] text-[#2D8F5E] mb-3.5">
+            <CheckCircle2 size={14} strokeWidth={2.2} className="text-[#2D8F5E]" />
+            <span className="font-body font-bold text-[12px] text-[#2D8F5E]">
               {successType === 'login' ? 'Login Berhasil' : 'Registrasi Berhasil'}
             </span>
           </div>
 
           {/* Greeting */}
           <h2 className="font-heading font-black text-[20px] text-text-primary mb-1.5 leading-tight">
-            Selamat Datang, {successUser?.full_name || 'Pelanggan'}!
+            Selamat Datang, {displayName}!
           </h2>
           <p className="font-body text-[13px] text-text-secondary leading-snug mb-6">
             {successType === 'login'
@@ -199,9 +192,9 @@ export default function Auth() {
               : 'Akun Anda berhasil dibuat & otomatis terhubung. Mengalihkan ke menu...'}
           </p>
 
-          {/* Animated Progress Bar */}
-          <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden mb-3.5">
-            <div className="h-full bg-gradient-to-r from-brand-blue via-brand-gold to-brand-blue rounded-full w-full animate-progress" />
+          {/* Progress Bar: solid #C9A23D on #EAEAEA track, 4px height, rounded-full */}
+          <div className="w-full bg-[#EAEAEA] rounded-full h-[4px] overflow-hidden mb-3.5">
+            <div className="h-full bg-[#C9A23D] rounded-full w-full animate-progress" />
           </div>
 
           <span className="font-body font-medium text-[11px] text-text-secondary">

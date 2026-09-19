@@ -9,12 +9,18 @@ import {
   Package,
   Truck,
   ShoppingBag,
+  MapPin,
   Headset,
   ChevronRight,
   ShieldCheck,
   LogOut,
   Sparkles,
-  Settings
+  Settings,
+  X,
+  Navigation,
+  Home,
+  Briefcase,
+  Tag
 } from 'lucide-react';
 import logoImg from '../assets/logo.webp';
 import profileBannerImg from '../assets/user-profile-banner.webp';
@@ -22,9 +28,14 @@ import {
   isCustomerLoggedIn,
   getCustomerUser,
   logoutCustomer,
+  updateCustomerUser,
   subscribeCustomerAuth
 } from '../utils/customerAuth';
 import { getOrderHistory, syncOrderHistoryWithServer } from '../utils/orderHistory';
+import LocationPickerModal, {
+  calculateHaversineDistance,
+  OUTLET_COORDS
+} from '../components/LocationPickerModal';
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -32,6 +43,25 @@ export default function Profile() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => isCustomerLoggedIn());
   const [user, setUser] = useState(() => getCustomerUser());
   const [orders, setOrders] = useState(() => getOrderHistory());
+  const [savedAddress, setSavedAddress] = useState(() => {
+    const u = getCustomerUser();
+    return u?.address || localStorage.getItem('dimsum_delivery_address') || '';
+  });
+  const [savedNotes, setSavedNotes] = useState(() => {
+    return localStorage.getItem('dimsum_delivery_notes') || '';
+  });
+  const [savedLabel, setSavedLabel] = useState(() => {
+    return localStorage.getItem('dimsum_delivery_label') || 'Rumah';
+  });
+  const [savedCoords, setSavedCoords] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dimsum_delivery_coords');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
 
   const handleBack = () => {
     const from = location.state?.from;
@@ -43,11 +73,38 @@ export default function Profile() {
   };
 
   useEffect(() => {
+    const u = getCustomerUser();
+    if (u?.address) {
+      setSavedAddress(u.address);
+    } else {
+      setSavedAddress(localStorage.getItem('dimsum_delivery_address') || '');
+    }
+    setSavedNotes(localStorage.getItem('dimsum_delivery_notes') || '');
+    setSavedLabel(localStorage.getItem('dimsum_delivery_label') || 'Rumah');
+    try {
+      const saved = localStorage.getItem('dimsum_delivery_coords');
+      if (saved) setSavedCoords(JSON.parse(saved));
+    } catch { }
+  }, [location.key]);
+
+  useEffect(() => {
     // Auth subscriber
     const unsub = subscribeCustomerAuth(() => {
       const logged = isCustomerLoggedIn();
       setIsLoggedIn(logged);
-      setUser(getCustomerUser());
+      const currentUser = getCustomerUser();
+      setUser(currentUser);
+      if (currentUser?.address) {
+        setSavedAddress(currentUser.address);
+      } else {
+        setSavedAddress(localStorage.getItem('dimsum_delivery_address') || '');
+      }
+      setSavedNotes(localStorage.getItem('dimsum_delivery_notes') || '');
+      setSavedLabel(localStorage.getItem('dimsum_delivery_label') || 'Rumah');
+      try {
+        const saved = localStorage.getItem('dimsum_delivery_coords');
+        if (saved) setSavedCoords(JSON.parse(saved));
+      } catch { }
       if (!logged) {
         navigate('/auth?redirect=/profile', { replace: true });
       }
@@ -65,10 +122,20 @@ export default function Profile() {
           setOrders(updated);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return unsub;
   }, [navigate]);
+
+  // Jarak ke outlet Makan Dimsum
+  const distanceKm = savedCoords
+    ? calculateHaversineDistance(
+        OUTLET_COORDS.latitude,
+        OUTLET_COORDS.longitude,
+        savedCoords.latitude,
+        savedCoords.longitude
+      )
+    : null;
 
   // Order counts
   const pendingPaymentCount = orders.filter((o) => o.status === 'pending_payment').length;
@@ -91,6 +158,10 @@ export default function Profile() {
     const waUrl =
       'https://wa.me/6281234567890?text=Halo%20Admin%20Makan%20Dimsum,%20saya%20butuh%20bantuan%20layanan%20pelanggan...';
     window.open(waUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleOpenAddressModal = () => {
+    navigate('/address/new', { state: { returnTo: '/profile' } });
   };
 
   if (!isLoggedIn) {
@@ -274,7 +345,82 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* CARD 2: Bantuan & Layanan (Neutral card, WhatsApp green on icon only) */}
+        {/* CARD 2: Alamat Pengiriman & Titik Peta */}
+        <div className="bg-white rounded-[22px] p-4.5 shadow-card border border-gray-100/90 flex flex-col gap-3">
+          <div className="flex items-center justify-between pb-3.5 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-brand-blue/10 text-brand-blue flex items-center justify-center">
+                <MapPin size={15} />
+              </div>
+              <h2 className="font-heading font-black text-[15px] text-text-primary">
+                Alamat Pengiriman
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenAddressModal}
+              className="text-[12px] font-body font-bold text-brand-gold hover:text-brand-gold-dark hover:underline cursor-pointer"
+            >
+              {savedAddress ? 'Ubah Lokasi' : '+ Atur Titik Peta'}
+            </button>
+          </div>
+
+          {/* Alamat Pengiriman Detail Card */}
+          <div
+            onClick={handleOpenAddressModal}
+            className="w-full p-3.5 rounded-[16px] bg-gray-50/80 hover:bg-gray-100/80 border border-gray-200/60 flex flex-col gap-2.5 text-left group active:scale-[0.99] transition-all cursor-pointer shadow-2xs"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-body font-bold text-[13px] text-text-primary group-hover:text-brand-blue flex items-center gap-1.5">
+                  {savedLabel === 'Rumah' && <Home size={14} className="text-brand-blue" />}
+                  {savedLabel === 'Kantor' && <Briefcase size={14} className="text-brand-blue" />}
+                  {savedLabel !== 'Rumah' && savedLabel !== 'Kantor' && <Tag size={14} className="text-brand-blue" />}
+                  {savedLabel || 'Alamat Utama'}
+                </span>
+                <span className="text-[10px] bg-brand-gold/10 text-brand-gold-dark font-bold px-2 py-0.5 rounded-full border border-brand-gold/20">
+                  Default
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-text-secondary group-hover:text-brand-blue shrink-0 text-[11px] font-body font-semibold">
+                <span>Atur di Peta</span>
+                <ChevronRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </div>
+
+            <p className="font-body text-[12px] text-text-primary/90 leading-relaxed">
+              {savedAddress || 'Belum ada titik alamat. Ketuk untuk membuka peta dan pilih pin lokasi Anda.'}
+            </p>
+
+            {savedNotes && (
+              <div className="bg-amber-50/60 border border-amber-200/60 rounded-[10px] px-2.5 py-1.5 text-[11px] font-body text-amber-900 flex items-start gap-1.5">
+                <span className="font-bold shrink-0">Patokan:</span>
+                <span className="line-clamp-2">{savedNotes}</span>
+              </div>
+            )}
+
+            {savedCoords ? (
+              <div className="pt-2 border-t border-gray-200/60 flex items-center justify-between text-[11px] font-body">
+                <span className="text-emerald-700 font-bold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Titik Pin GPS Terpasang
+                </span>
+                {distanceKm !== null && (
+                  <span className="text-text-secondary font-medium">
+                    ~{distanceKm} km dari outlet
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="pt-1.5 border-t border-gray-200/60 flex items-center gap-1 text-[11px] font-body text-brand-red">
+                <Navigation size={12} />
+                <span>Belum ada titik GPS presisi (Buka peta untuk pasang pin)</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* CARD 3: Bantuan & Layanan (Neutral card, WhatsApp green on icon only) */}
         <div className="bg-white rounded-[22px] p-4.5 shadow-card border border-gray-100/90 flex flex-col gap-3">
           <div className="pb-2 border-b border-gray-100">
             <h2 className="font-heading font-black text-[15px] text-text-primary">
@@ -289,7 +435,7 @@ export default function Profile() {
             className="w-full p-3.5 rounded-[16px] bg-gray-50/80 hover:bg-gray-100/80 border border-gray-200/60 flex items-center justify-between text-left group active:scale-[0.99] transition-all cursor-pointer shadow-2xs"
           >
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-full bg-[#25D366]/15 text-[#25D366] flex items-center justify-center shrink-0 shadow-2xs border border-[#25D366]/30 group-hover:scale-105 transition-transform">
+              <div className="w-10 h-10 rounded-full bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0">
                 <Headset size={20} />
               </div>
               <div className="min-w-0">
@@ -345,6 +491,7 @@ export default function Profile() {
           </span>
         </div>
       </main>
+
     </div>
   );
 }

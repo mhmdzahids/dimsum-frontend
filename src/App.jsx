@@ -17,6 +17,7 @@ import OrderHistory from './pages/OrderHistory';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import Profile from './pages/Profile';
 import ProfileEdit from './pages/ProfileEdit';
+import AddressNew from './pages/AddressNew';
 
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
@@ -49,6 +50,7 @@ function App() {
             <Route path="/auth" element={<Auth />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/profile/edit" element={<ProfileEdit />} />
+            <Route path="/address/new" element={<AddressNew />} />
             <Route path="/order-history" element={<OrderHistory />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/admin" element={<AdminProducts />} />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -13,7 +13,9 @@ import {
   UtensilsCrossed,
   Wallet,
   PackageOpen,
-  Truck
+  Truck,
+  Loader2,
+  CircleX
 } from 'lucide-react';
 import { getOrderHistory, syncOrderHistoryWithServer } from '../utils/orderHistory';
 
@@ -24,13 +26,44 @@ export default function OrderHistory() {
   const [orders, setOrders] = useState(() => getOrderHistory());
   const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState(initialTab); // 'all' | 'pending' | 'processing' | 'delivering' | 'completed'
+  const [isTabLoading, setIsTabLoading] = useState(false);
+  const loadingTimeoutRef = useRef(null);
+
+  const handleTabChange = (newTab) => {
+    if (newTab === activeTab) return;
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current);
+    }
+    setIsTabLoading(true);
+    setActiveTab(newTab);
+    loadingTimeoutRef.current = setTimeout(() => {
+      setIsTabLoading(false);
+      loadingTimeoutRef.current = null;
+    }, 280);
+  };
 
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam) {
+    if (tabParam && tabParam !== activeTab) {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+      setIsTabLoading(true);
       setActiveTab(tabParam);
+      loadingTimeoutRef.current = setTimeout(() => {
+        setIsTabLoading(false);
+        loadingTimeoutRef.current = null;
+      }, 280);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Active pending order in localStorage
   const [pendingOrder, setPendingOrder] = useState(() => {
@@ -165,16 +198,16 @@ export default function OrderHistory() {
         {/* Segmented Filter Tabs */}
         <div className="flex border-t border-gray-100 bg-white px-3 py-2 gap-2 overflow-x-auto hide-scrollbar">
           <button
-            onClick={() => setActiveTab('all')}
+            onClick={() => handleTabChange('all')}
             className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap text-center shrink-0 ${activeTab === 'all'
-              ? 'bg-brand-blue text-white shadow-xs'
+              ? 'bg-brand-gold text-white shadow-xs'
               : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
               }`}
           >
             Semua ({orders.length})
           </button>
           <button
-            onClick={() => setActiveTab('pending')}
+            onClick={() => handleTabChange('pending')}
             className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${activeTab === 'pending'
               ? 'bg-brand-gold text-white shadow-xs'
               : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
@@ -188,43 +221,43 @@ export default function OrderHistory() {
             )}
           </button>
           <button
-            onClick={() => setActiveTab('processing')}
+            onClick={() => handleTabChange('processing')}
             className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${activeTab === 'processing'
-              ? 'bg-brand-blue text-white shadow-xs'
+              ? 'bg-brand-gold text-white shadow-xs'
               : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
               }`}
           >
             <span>Dikemas</span>
             {processingCount > 0 && (
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeTab === 'processing' ? 'bg-white text-brand-blue' : 'bg-gray-200 text-text-secondary'}`}>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeTab === 'processing' ? 'bg-white text-brand-gold' : 'bg-gray-200 text-text-secondary'}`}>
                 {processingCount}
               </span>
             )}
           </button>
           <button
-            onClick={() => setActiveTab('delivering')}
+            onClick={() => handleTabChange('delivering')}
             className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${activeTab === 'delivering'
-              ? 'bg-emerald-600 text-white shadow-xs'
+              ? 'bg-brand-gold text-white shadow-xs'
               : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
               }`}
           >
             <span>Dikirim</span>
             {deliveringCount > 0 && (
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeTab === 'delivering' ? 'bg-white text-emerald-600' : 'bg-gray-200 text-text-secondary'}`}>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeTab === 'delivering' ? 'bg-white text-brand-gold' : 'bg-gray-200 text-text-secondary'}`}>
                 {deliveringCount}
               </span>
             )}
           </button>
           <button
-            onClick={() => setActiveTab('completed')}
+            onClick={() => handleTabChange('completed')}
             className={`py-1.5 px-3 rounded-full font-body font-bold text-[12px] transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 shrink-0 ${activeTab === 'completed'
-              ? 'bg-brand-blue text-white shadow-xs'
+              ? 'bg-brand-gold text-white shadow-xs'
               : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
               }`}
           >
             <span>Selesai</span>
             {completedCount > 0 && (
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeTab === 'completed' ? 'bg-white text-brand-blue' : 'bg-gray-200 text-text-secondary'}`}>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeTab === 'completed' ? 'bg-white text-brand-gold' : 'bg-gray-200 text-text-secondary'}`}>
                 {completedCount}
               </span>
             )}
@@ -232,12 +265,21 @@ export default function OrderHistory() {
         </div>
       </header>
 
-
-      {/* 3. Active Pending Order Notification Card (if present and viewing all/pending) */}
-      {pendingOrder && (activeTab === 'all' || activeTab === 'pending') && (
-        <div className="p-4 bg-bg-cream/60 border-b border-gray-100">
-          <div className="bg-white border-2 border-brand-gold/60 rounded-[20px] p-4 shadow-sm">
-            <div className="flex justify-between items-center mb-2">
+      {/* 2. Content Area */}
+      {isTabLoading ? (
+        <div className="flex-1 flex flex-col items-center justify-center py-28 px-4 text-center">
+          <Loader2 size={36} className="text-brand-gold animate-spin mb-3" strokeWidth={2.5} />
+          <p className="font-body font-medium text-[13px] text-text-secondary">
+            Memuat pesanan...
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* 3. Active Pending Order Notification Card (if present and viewing all/pending) */}
+          {pendingOrder && (activeTab === 'all' || activeTab === 'pending') && (
+            <div className="p-4 bg-bg-cream/60 border-b border-gray-100">
+              <div className="bg-white border-2 border-brand-gold/60 rounded-[20px] p-4 shadow-sm">
+                <div className="flex justify-between items-center mb-2">
               <span className="bg-brand-gold text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-xs">
                 <Wallet size={12} strokeWidth={2} />
                 <span>Menunggu Pembayaran</span>
@@ -423,18 +465,18 @@ export default function OrderHistory() {
         ) : (
           /* Empty State */
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-            {/* Contextual Empty State Icon (Flat, No Background Container) */}
+            {/* Contextual Empty State Icon (Pendekatan A: Neutral color.text.secondary #6B7B8D with subtle micro-animations) */}
             <div className="mb-5 flex items-center justify-center">
               {activeTab === 'pending' ? (
-                <Wallet size={56} strokeWidth={1.75} className="text-brand-gold" />
+                <Wallet size={56} strokeWidth={1.5} className="text-text-secondary animate-icon-wallet" />
               ) : activeTab === 'processing' ? (
-                <PackageOpen size={56} strokeWidth={1.75} className="text-brand-blue" />
+                <PackageOpen size={56} strokeWidth={1.5} className="text-text-secondary animate-icon-package" />
               ) : activeTab === 'delivering' ? (
-                <Truck size={56} strokeWidth={1.75} className="text-emerald-600" />
+                <Truck size={56} strokeWidth={1.5} className="text-text-secondary animate-icon-truck" />
               ) : activeTab === 'completed' ? (
-                <CheckCircle2 size={56} strokeWidth={1.75} className="text-emerald-600" />
+                <CircleX size={56} strokeWidth={1.5} className="text-text-secondary animate-icon-cross" />
               ) : (
-                <ShoppingBag size={56} strokeWidth={1.75} className="text-brand-gold" />
+                <ShoppingBag size={56} strokeWidth={1.5} className="text-text-secondary animate-icon-sway" />
               )}
             </div>
 
@@ -471,7 +513,8 @@ export default function OrderHistory() {
           </div>
         )}
       </div>
-
+      </>
+      )}
 
     </div>
   );

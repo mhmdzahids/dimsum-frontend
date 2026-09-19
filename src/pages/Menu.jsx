@@ -642,14 +642,11 @@ function MenuPage() {
                 setSelectedProduct(product);
                 setQty(productQty || 1);
               }}
-              className={`bg-white rounded-[16px] shadow-sm flex p-3 cursor-pointer transition-all ${product.hasDiscount
-                ? productQty > 0
-                  ? 'border-[1.2px] border-brand-red/40 border-r-4 border-r-brand-red'
-                  : 'border-[1.2px] border-brand-red/40'
-                : productQty > 0
-                  ? 'border border-gray-100 border-r-4 border-r-brand-gold'
+              className={`bg-white rounded-[16px] shadow-sm flex p-3 cursor-pointer transition-all ${
+                productQty > 0
+                  ? 'border-[1.2px] border-brand-gold border-r-4 border-r-brand-gold'
                   : 'border border-gray-100 border-r-4 border-r-transparent'
-                }`}
+              }`}
             >
               {/* Product Image Box */}
               <div className="relative w-[84px] h-[84px] shrink-0">
