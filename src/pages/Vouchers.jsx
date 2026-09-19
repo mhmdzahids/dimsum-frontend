@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Ticket, CheckCircle2, Check, AlertCircle, Tag, Clock, Sparkles, Loader2 } from 'lucide-react';
+import api from '../api/client';
 
 /**
  * Reusable Voucher Card Component with 30% / 70% Layout
@@ -155,10 +156,9 @@ export default function Vouchers() {
     let isMounted = true;
     const fetchPublicVouchers = async () => {
       try {
-        const res = await fetch('/api/vouchers/public');
-        const data = await res.json();
-        if (isMounted && data.success) {
-          setPublicVouchers(data.data || []);
+        const res = await api.get('/api/vouchers/public');
+        if (isMounted && res.success) {
+          setPublicVouchers(res.data || []);
         }
       } catch (err) {
         console.error('Gagal mengambil daftar voucher:', err);
@@ -231,28 +231,22 @@ export default function Vouchers() {
 
     try {
       const [res] = await Promise.all([
-        fetch('/api/vouchers/validate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            code: code,
-            subtotal: currentSubtotal
-          })
+        api.post('/api/vouchers/validate', {
+          code: code,
+          subtotal: currentSubtotal
         }),
         minDelay
       ]);
 
-      const data = await res.json();
-
-      if (data.success && data.data) {
+      if (res.success && res.data) {
         const validatedVoucher = {
-          code: data.data.code,
-          discount: data.data.discount,
-          min_spend: data.data.min_spend,
-          discount_type: data.data.discount_type,
-          discount_value: data.data.discount_value,
-          max_discount: data.data.max_discount,
-          end_date: data.data.end_date
+          code: res.data.code,
+          discount: res.data.discount,
+          min_spend: res.data.min_spend,
+          discount_type: res.data.discount_type,
+          discount_value: res.data.discount_value,
+          max_discount: res.data.max_discount,
+          end_date: res.data.end_date
         };
         setSavedVoucher(validatedVoucher);
         setIsVoucherChecked(true);
@@ -265,7 +259,7 @@ export default function Vouchers() {
         setErrorMessage('');
         setPromoCode('');
       } else {
-        setErrorMessage(data.message || 'Kode promo tidak valid atau sudah kedaluwarsa.');
+        setErrorMessage(res.error || res.message || 'Kode promo tidak valid atau sudah kedaluwarsa.');
         setSuccessMessage('');
       }
     } catch (err) {

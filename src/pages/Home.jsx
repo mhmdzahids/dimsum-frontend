@@ -23,6 +23,7 @@ import logoImg from '../assets/logo.webp';
 import { Squash as Hamburger } from 'hamburger-react';
 import HeaderDropdown from '../components/HeaderDropdown';
 import HomeSkeleton from '../components/HomeSkeleton';
+import api from '../api/client';
 
 function Home() {
   const navigate = useNavigate();
@@ -82,27 +83,21 @@ function Home() {
         ];
 
         // 1. Fetch active banners & pending order validity in parallel
-        const bannersPromise = fetch('/api/banners?active_only=true')
-          .then(res => res.json())
-          .catch(err => {
-            console.error('Error fetching banners:', err);
-            return { success: false, data: [] };
-          });
+        const bannersPromise = api.get('/api/banners?active_only=true');
 
         let orderPromise = Promise.resolve();
         if (pendingOrder?.orderId) {
           const token = pendingOrder.accessToken || localStorage.getItem('dimsum_current_order_token');
           const headers = {};
           if (token) headers['X-Order-Token'] = token;
-          orderPromise = fetch(`/api/orders/${pendingOrder.orderId}`, { headers })
-            .then(res => res.json())
-            .then(data => {
-              if (data.success && data.data) {
-                if (data.data.status !== 'pending_payment') {
+          orderPromise = api.get(`/api/orders/${pendingOrder.orderId}`, { headers })
+            .then(res => {
+              if (res.success && res.data) {
+                if (res.data.status !== 'pending_payment') {
                   try { localStorage.removeItem('dimsum_pending_order'); } catch { }
                   if (isMounted) setPendingOrder(null);
                 }
-              } else if (data.status === 404 || data.error?.includes('tidak ditemukan')) {
+              } else if (res.status === 404 || res.error?.includes('tidak ditemukan')) {
                 try { localStorage.removeItem('dimsum_pending_order'); } catch { }
                 if (isMounted) setPendingOrder(null);
               }

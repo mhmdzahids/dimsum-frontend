@@ -4,6 +4,7 @@ import { ArrowLeft, User, Phone, Mail, Lock, Eye, EyeOff, CheckCircle2, Shield, 
 import { GoogleLogin } from '@react-oauth/google';
 import logoImg from '../assets/logo.webp';
 import { loginCustomer, isCustomerLoggedIn } from '../utils/customerAuth';
+import api from '../api/client';
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -51,22 +52,17 @@ export default function Auth() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: credentialResponse.credential })
-      });
-      const data = await res.json();
-      if (data.success && data.data?.token) {
-        loginCustomer(data.data.token, data.data.user);
-        setSuccessUser(data.data.user);
+      const res = await api.post('/api/auth/google', { credential: credentialResponse.credential });
+      if (res.success && res.data?.token) {
+        loginCustomer(res.data.token, res.data.user);
+        setSuccessUser(res.data.user);
         setSuccessType('login');
         setIsSuccessRedirecting(true);
         setTimeout(() => {
           navigate(redirectTo, { replace: true });
         }, 1300);
       } else {
-        triggerToast(data.error || 'Gagal masuk dengan akun Google.');
+        triggerToast(res.error || 'Gagal masuk dengan akun Google.');
       }
     } catch (err) {
       triggerToast('Terjadi gangguan jaringan saat memproses login Google.');
@@ -88,25 +84,20 @@ export default function Auth() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          identifier: loginIdentifier.trim(),
-          password: loginPassword
-        })
+      const res = await api.post('/api/auth/login', {
+        identifier: loginIdentifier.trim(),
+        password: loginPassword
       });
-      const data = await res.json();
-      if (data.success && data.data) {
-        loginCustomer(data.data.token, data.data.user);
-        setSuccessUser(data.data.user);
+      if (res.success && res.data) {
+        loginCustomer(res.data.token, res.data.user);
+        setSuccessUser(res.data.user);
         setSuccessType('login');
         setIsSuccessRedirecting(true);
         setTimeout(() => {
           navigate(redirectTo, { replace: true });
         }, 1300);
       } else {
-        triggerToast(data.error || 'Email/Nomor WhatsApp atau kata sandi tidak cocok.');
+        triggerToast(res.error || 'Email/Nomor WhatsApp atau kata sandi tidak cocok.');
       }
     } catch (err) {
       triggerToast('Terjadi gangguan jaringan. Silakan coba lagi.');
@@ -133,29 +124,24 @@ export default function Auth() {
     setIsSubmitting(true);
     try {
       const identifier = (regPhone.trim() || regEmail.trim());
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          identifier,
-          full_name: regName.trim(),
-          password: regPassword
-        })
+      const res = await api.post('/api/auth/register', {
+        identifier,
+        full_name: regName.trim(),
+        password: regPassword
       });
-      const data = await res.json();
-      if (data.success && data.data) {
-        loginCustomer(data.data.token, data.data.user, 1500);
-        setSuccessUser(data.data.user);
+      if (res.success && res.data) {
+        loginCustomer(res.data.token, res.data.user, 1500);
+        setSuccessUser(res.data.user);
         setSuccessType('register');
         setIsSuccessRedirecting(true);
         setTimeout(() => {
           navigate(redirectTo, { replace: true });
         }, 1300);
       } else {
-        triggerToast(data.error || 'Pendaftaran gagal. Silakan periksa kembali data Anda.');
+        triggerToast(res.error || 'Pendaftaran gagal. Silakan periksa kembali data Anda.');
       }
     } catch (err) {
-      triggerToast('Terjadi gangguan koneksi saat mendaftar.');
+      triggerToast('Terjadi gangguan jaringan. Silakan coba lagi.');
     } finally {
       setIsSubmitting(false);
     }

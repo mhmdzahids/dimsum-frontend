@@ -23,10 +23,11 @@ import {
   getCustomerUser,
   subscribeCustomerAuth
 } from '../utils/customerAuth';
-import LocationPickerModal, {
+import {
   calculateHaversineDistance,
   OUTLET_COORDS
-} from '../components/LocationPickerModal';
+} from '../utils/geo';
+import api from '../api/client';
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -59,10 +60,9 @@ export default function Checkout() {
   // Order Limit
   const [orderLimit, setOrderLimit] = useState(null);
   useEffect(() => {
-    fetch('/api/settings/order-limit')
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) setOrderLimit(data.data.order_item_limit);
+    api.get('/api/settings/order-limit')
+      .then(res => {
+        if (res.success && res.data) setOrderLimit(res.data.order_item_limit);
       })
       .catch(() => { });
   }, []);
@@ -340,13 +340,12 @@ export default function Checkout() {
 
   // Sync latest product prices and discount status from backend on mount
   useEffect(() => {
-    fetch('/api/products')
-      .then(r => r.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.data)) {
+    api.get('/api/products')
+      .then(res => {
+        if (res.success && Array.isArray(res.data)) {
           setItems(prevItems => {
             return prevItems.map(item => {
-              const latest = data.data.find(p => p.id === item.id);
+              const latest = res.data.find(p => p.id === item.id);
               if (latest) {
                 const hasDiscount = Boolean(latest.is_discount && latest.discount_percent > 0);
                 const activePrice = Number(latest.price);
@@ -412,12 +411,7 @@ export default function Checkout() {
   // Auto-resync voucher if discount was zero or missing discount_value metadata
   useEffect(() => {
     if (appliedVoucher && appliedVoucher.code && subtotalMenu > 0 && (!appliedVoucher.discount_value || Number(appliedVoucher.discount) === 0)) {
-      fetch('/api/vouchers/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: appliedVoucher.code, subtotal: subtotalMenu })
-      })
-        .then(r => r.json())
+      api.post('/api/vouchers/validate', { code: appliedVoucher.code, subtotal: subtotalMenu })
         .then(res => {
           if (res.success && res.data) {
             const updated = {

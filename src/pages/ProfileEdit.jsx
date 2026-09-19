@@ -17,6 +17,7 @@ import {
   isCustomerLoggedIn,
   updateCustomerUser
 } from '../utils/customerAuth';
+import api from '../api/client';
 
 export default function ProfileEdit() {
   const navigate = useNavigate();
@@ -160,25 +161,16 @@ export default function ProfileEdit() {
         payload.new_password = newPassword;
       }
 
-      const res = await fetch('/api/auth/profile', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
+      const res = await api.put('/api/auth/profile', payload);
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || 'Gagal memperbarui profil.');
+      if (!res.success) {
+        throw new Error(res.error || res.message || 'Gagal memperbarui profil.');
       }
 
       // Update local storage and dispatch subscriber event
-      if (data.data) {
-        updateCustomerUser(data.data);
-        setUser(data.data);
+      if (res.data) {
+        updateCustomerUser(res.data);
+        setUser(res.data);
       }
 
       setSuccessMessage('Profil dan detail akun Anda berhasil diperbarui!');

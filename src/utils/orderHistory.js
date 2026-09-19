@@ -2,6 +2,7 @@
  * Order History Manager
  * Manages local persistence, deduplication, and server status sync for user orders.
  */
+import api from '../api/client';
 
 const STORAGE_KEY = 'dimsum_order_history';
 
@@ -111,10 +112,9 @@ export async function syncOrderHistoryWithServer() {
         if (localOrder.accessToken) {
           headers['X-Order-Token'] = localOrder.accessToken;
         }
-        const res = await fetch(`/api/orders/${localOrder.orderId}`, { headers });
-        const data = await res.json();
-        if (data.success && data.data) {
-          const serverOrder = data.data;
+        const res = await api.get(`/api/orders/${localOrder.orderId}`, { headers });
+        if (res.success && res.data) {
+          const serverOrder = res.data;
           const idx = updatedHistory.findIndex(o => o.orderId === localOrder.orderId);
           if (idx >= 0 && (serverOrder.status !== localOrder.status || serverOrder.qr_token !== localOrder.qrToken)) {
             updatedHistory[idx] = {

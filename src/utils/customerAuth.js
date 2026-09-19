@@ -2,6 +2,7 @@
  * Customer Authentication & Coins State Manager
  * Handles persistent session, dummy rewards coins, and cross-component sync.
  */
+import api from '../api/client';
 
 const TOKEN_KEY = 'dimsum_customer_token';
 const USER_KEY = 'dimsum_customer_user';
@@ -113,14 +114,8 @@ export function logoutCustomer() {
   try {
     const token = getCustomerToken();
     if (token) {
-      // Call backend logout asynchronously
-      fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      }).catch(() => {});
+      // Call backend logout asynchronously using centralized api client
+      api.post('/api/auth/logout').catch(() => {});
     }
 
     localStorage.removeItem(TOKEN_KEY);

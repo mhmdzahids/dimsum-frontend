@@ -27,6 +27,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { saveOrderToHistory, updateOrderStatusInHistory } from '../utils/orderHistory';
+import api from '../api/client';
 
 export default function Payment() {
   const navigate = useNavigate();
@@ -404,6 +405,7 @@ export default function Payment() {
   // Automatically listen for webhook settlement while user is on QRIS screen
   useEffect(() => {
     if (!orderId || !qrisData) return;
+    const controller = new AbortController();
 
     const pollInterval = setInterval(async () => {
       try {
@@ -415,17 +417,18 @@ export default function Payment() {
         const headers = {};
         if (orderToken) headers['X-Order-Token'] = orderToken;
 
-        const res = await fetch(`/api/orders/${orderId}`, { headers });
-        const data = await res.json();
-        if (data.success && data.data) {
-          const s = data.data.status;
+        const res = await api.get(`/api/orders/${orderId}`, { headers, signal: controller.signal });
+        if (res.isAborted || res.isUserAbort) return;
+
+        if (res.success && res.data) {
+          const s = res.data.status;
           if (s === 'paid' || s === 'fulfilling' || s === 'completed') {
             clearInterval(pollInterval);
             localStorage.removeItem('dimsum_pending_order');
             localStorage.removeItem('dimsum_cart');
             localStorage.removeItem('dimsum_checkout_items');
             localStorage.removeItem('dimsum_order_notes');
-            updateOrderStatusInHistory(orderId, s, { qrToken: data.data.qr_token });
+            updateOrderStatusInHistory(orderId, s, { qrToken: res.data.qr_token });
             navigate('/order-status', { state: { orderId, accessToken: orderToken } });
           } else if (s === 'cancelled') {
             setIsExpired(true);
@@ -438,7 +441,10 @@ export default function Payment() {
       }
     }, 4000);
 
-    return () => clearInterval(pollInterval);
+    return () => {
+      clearInterval(pollInterval);
+      controller.abort();
+    };
   }, [orderId, qrisData, navigate]);
 
   const handlePayment = async () => {
@@ -453,29 +459,20 @@ export default function Payment() {
     setIsLoading(true);
     try {
       const fullDeliveryAddress = deliveryAddress ? (deliveryAddress + (deliveryNotes ? ` (Patokan: ${deliveryNotes})` : '')) : null;
-      const customerToken = localStorage.getItem('dimsum_customer_token');
-      const headers = { 'Content-Type': 'application/json' };
-      if (customerToken) {
-        headers['Authorization'] = `Bearer ${customerToken}`;
-      }
 
-      const response = await fetch('/api/orders', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          customer: { name: customerName, phone: customerPhone, email: customerEmail },
-          items: cartItems.map(item => ({ product_id: item.id, quantity: item.quantity })),
-          notes: orderNotes ? orderNotes.trim() : null,
-          voucher_code: appliedVoucher?.code || null,
-          pickup_time: orderType === 'delivery' ? null : (confirmedTime || null),
-          order_type: orderType,
-          delivery_address: orderType === 'delivery' ? fullDeliveryAddress : null
-        })
+      const res = await api.post('/api/orders', {
+        customer: { name: customerName, phone: customerPhone, email: customerEmail },
+        items: cartItems.map(item => ({ product_id: item.id, quantity: item.quantity })),
+        notes: orderNotes ? orderNotes.trim() : null,
+        voucher_code: appliedVoucher?.code || null,
+        pickup_time: orderType === 'delivery' ? null : (confirmedTime || null),
+        order_type: orderType,
+        delivery_address: orderType === 'delivery' ? fullDeliveryAddress : null
       });
-      const data = await response.json();
-      if (data.success) {
-        const orderObj = data.data.order;
-        const paywuzObj = data.data.paywuz;
+
+      if (res.success && res.data) {
+        const orderObj = res.data.order;
+        const paywuzObj = res.data.paywuz;
         const token = orderObj?.access_token;
         if (token) {
           localStorage.setItem('dimsum_current_order_token', token);

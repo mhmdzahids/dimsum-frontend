@@ -34,6 +34,7 @@ import {
   getCustomerUser,
   subscribeCustomerAuth
 } from '../utils/customerAuth';
+import api from '../api/client';
 
 function MenuPage() {
   const navigate = useNavigate();
@@ -107,10 +108,9 @@ function MenuPage() {
   const [orderLimit, setOrderLimit] = useState(null);
   const [limitToast, setLimitToast] = useState(false);
   useEffect(() => {
-    fetch('/api/settings/order-limit')
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) setOrderLimit(data.data.order_item_limit);
+    api.get('/api/settings/order-limit')
+      .then(res => {
+        if (res.success && res.data) setOrderLimit(res.data.order_item_limit);
       })
       .catch(() => { });
   }, []);
@@ -130,15 +130,14 @@ function MenuPage() {
     const headers = {};
     if (token) headers['X-Order-Token'] = token;
 
-    fetch(`/api/orders/${pendingOrder.orderId}`, { headers })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.data) {
-          if (data.data.status !== 'pending_payment') {
+    api.get(`/api/orders/${pendingOrder.orderId}`, { headers })
+      .then(res => {
+        if (res.success && res.data) {
+          if (res.data.status !== 'pending_payment') {
             localStorage.removeItem('dimsum_pending_order');
             setPendingOrder(null);
           }
-        } else if (data.status === 404 || data.error?.includes('tidak ditemukan')) {
+        } else if (res.status === 404 || res.error?.includes('tidak ditemukan')) {
           localStorage.removeItem('dimsum_pending_order');
           setPendingOrder(null);
         }
@@ -313,12 +312,11 @@ function MenuPage() {
       try {
         if (isMounted) setLoadingProgress(15);
 
-        const res = await fetch('/api/products');
-        const data = await res.json();
+        const res = await api.get('/api/products');
 
         let formattedProducts = [];
-        if (data.success) {
-          formattedProducts = data.data.map(p => {
+        if (res.success && Array.isArray(res.data)) {
+          formattedProducts = res.data.map(p => {
             const hasDiscount = Boolean(p.is_discount && p.discount_percent > 0);
             const activePrice = Number(p.price);
             const originalPrice = p.original_price ? Number(p.original_price) : activePrice;

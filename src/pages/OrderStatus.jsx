@@ -13,11 +13,13 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { updateOrderStatusInHistory, getOrderHistory } from '../utils/orderHistory';
 import HappyDimsumCharacter from '../components/HappyDimsumCharacter';
+import api from '../api/client';
 
 export default function OrderStatus() {
   const location = useLocation();
   const navigate = useNavigate();
-  const orderId = location.state?.orderId;
+  const queryParams = new URLSearchParams(location.search);
+  const orderId = location.state?.orderId || queryParams.get('orderId');
 
   const [status, setStatus] = useState('Checking...');
   const [qrToken, setQrToken] = useState(null);
@@ -75,7 +77,7 @@ export default function OrderStatus() {
     }
   };
 
-  const checkStatus = async (isManual = false) => {
+  const checkStatus = async (isManual = false, signal = null) => {
     if (!orderId) return;
     if (isManual) setIsRefreshing(true);
     try {
@@ -86,22 +88,25 @@ export default function OrderStatus() {
 
       // Manual refresh calls sync-payment fallback; auto-poll calls lightweight local DB endpoint
       const endpoint = isManual ? `/api/orders/${orderId}/sync-payment` : `/api/orders/${orderId}`;
-      const method = isManual ? 'POST' : 'GET';
-      const res = await fetch(endpoint, { method, headers });
-      const data = await res.json();
-      if (data.success && data.data) {
-        const s = data.data.status;
-        setOrderDetail(data.data);
+      const res = isManual
+        ? await api.post(endpoint, {}, { headers, signal })
+        : await api.get(endpoint, { headers, signal });
+
+      if (res.isAborted || res.isUserAbort) return;
+
+      if (res.success && res.data) {
+        const s = res.data.status;
+        setOrderDetail(res.data);
         if (s === 'paid' || s === 'fulfilling' || s === 'completed') {
           localStorage.removeItem('dimsum_pending_order');
           localStorage.removeItem('dimsum_cart');
           localStorage.removeItem('dimsum_checkout_items');
           localStorage.removeItem('dimsum_order_notes');
         }
-        if (data.data.qr_token) {
-          setQrToken(data.data.qr_token);
+        if (res.data.qr_token) {
+          setQrToken(res.data.qr_token);
         }
-        updateOrderStatusInHistory(orderId, s, { qrToken: data.data.qr_token });
+        updateOrderStatusInHistory(orderId, s, { qrToken: res.data.qr_token });
 
         // If cashier just scanned QR and status changed to completed: show branded loading screen transition first!
         if (s === 'completed' && (status === 'paid' || status === 'fulfilling') && !isTransitioningRef.current) {
@@ -152,13 +157,14 @@ export default function OrderStatus() {
   // Polling effect: actively polls while unpaid OR while waiting for cashier QR scan!
   useEffect(() => {
     if (!orderId) return;
+    const controller = new AbortController();
 
     // Initial fetch
-    checkStatus(false);
+    checkStatus(false, controller.signal);
 
     // Stop polling only when final state is reached: completed or cancelled
     if (status === 'completed' || status === 'cancelled') {
-      return;
+      return () => controller.abort();
     }
 
     let attempts = 0;
@@ -172,13 +178,18 @@ export default function OrderStatus() {
       // While waiting for cashier pickup scan (paid or fulfilling), check every 2.5s for instant response
       const delay = (status === 'paid' || status === 'fulfilling') ? 2500 : (attempts <= 12 ? 4000 : 8000);
       timerId = setTimeout(async () => {
-        await checkStatus(false);
-        scheduleNextCheck();
+        await checkStatus(false, controller.signal);
+        if (!controller.signal.aborted) {
+          scheduleNextCheck();
+        }
       }, delay);
     };
 
     scheduleNextCheck();
-    return () => clearTimeout(timerId);
+    return () => {
+      clearTimeout(timerId);
+      controller.abort();
+    };
   }, [orderId, status]);
 
   const handleBackHome = () => {
