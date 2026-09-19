@@ -98,6 +98,10 @@ function MenuPage() {
 
   useEffect(() => {
     localStorage.setItem('dimsum_cart', JSON.stringify(cart));
+    const totalQty = Object.values(cart || {}).reduce((acc, qty) => acc + (Number(qty) || 0), 0);
+    if (totalQty === 0) {
+      localStorage.removeItem('dimsum_checkout_items');
+    }
   }, [cart]);
 
   useEffect(() => {

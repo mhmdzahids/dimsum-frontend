@@ -320,9 +320,27 @@ export default function Checkout() {
   }, [confirmedTime]);
 
   const [items, setItems] = useState(() => {
-    if (cartItems && cartItems.length > 0) {
+    // Cross-validate with active cart in localStorage (dimsum_cart)
+    let hasActiveCartItems = false;
+    try {
+      const rawCart = localStorage.getItem('dimsum_cart');
+      const cartObj = rawCart ? JSON.parse(rawCart) : {};
+      const totalCartQty = Object.values(cartObj).reduce((sum, q) => sum + (Number(q) || 0), 0);
+      hasActiveCartItems = totalCartQty > 0;
+    } catch {
+      hasActiveCartItems = false;
+    }
+
+    if (cartItems && cartItems.length > 0 && hasActiveCartItems) {
       return cartItems;
     }
+
+    // Cross-validation: If active cart is empty, purge stale checkout snapshot
+    if (!hasActiveCartItems) {
+      localStorage.removeItem('dimsum_checkout_items');
+      return [];
+    }
+
     const savedItems = localStorage.getItem('dimsum_checkout_items');
     return savedItems ? JSON.parse(savedItems) : [];
   });
@@ -330,7 +348,17 @@ export default function Checkout() {
   // Security Route Guard: Prevent direct URL access when cart is empty
   useEffect(() => {
     const savedPending = localStorage.getItem('dimsum_pending_order');
-    if (!savedPending && (!items || items.length === 0)) {
+    let hasActiveCart = false;
+    try {
+      const rawCart = localStorage.getItem('dimsum_cart');
+      const cartObj = rawCart ? JSON.parse(rawCart) : {};
+      hasActiveCart = Object.values(cartObj).reduce((sum, q) => sum + (Number(q) || 0), 0) > 0;
+    } catch {
+      hasActiveCart = false;
+    }
+
+    if (!savedPending && (!hasActiveCart || !items || items.length === 0)) {
+      localStorage.removeItem('dimsum_checkout_items');
       navigate('/menu', {
         replace: true,
         state: { emptyCartNotice: 'Keranjang belanja Anda masih kosong. Silakan pilih menu terlebih dahulu.' }

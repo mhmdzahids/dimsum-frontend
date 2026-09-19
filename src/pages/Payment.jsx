@@ -58,6 +58,13 @@ export default function Payment() {
 
     const hasCart = (cartItems && cartItems.length > 0) || (() => {
       try {
+        const rawCart = localStorage.getItem('dimsum_cart');
+        const cartObj = rawCart ? JSON.parse(rawCart) : {};
+        const totalCartQty = Object.values(cartObj).reduce((sum, q) => sum + (Number(q) || 0), 0);
+        if (totalCartQty === 0) {
+          localStorage.removeItem('dimsum_checkout_items');
+          return false;
+        }
         const chk = localStorage.getItem('dimsum_checkout_items');
         return chk ? JSON.parse(chk).length > 0 : false;
       } catch {
