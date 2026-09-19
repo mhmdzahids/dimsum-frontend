@@ -10,7 +10,6 @@ import {
   RotateCw,
   ArrowRight,
   PenLine,
-  UtensilsCrossed,
   Wallet,
   PackageOpen,
   Truck,
@@ -19,6 +18,13 @@ import {
   Flower2
 } from 'lucide-react';
 import { getOrderHistory, syncOrderHistoryWithServer } from '../utils/orderHistory';
+import api from '../api/client';
+import imgWortel from '../assets/icon/wortel.webp';
+import imgBeef from '../assets/icon/beef.webp';
+import imgKeju from '../assets/icon/keju.webp';
+import imgJamur from '../assets/icon/jamur.webp';
+import imgCrabstick from '../assets/icon/crabstick.webp';
+import imgSosis from '../assets/icon/sosis.webp';
 
 export default function OrderHistory() {
   const navigate = useNavigate();
@@ -28,7 +34,46 @@ export default function OrderHistory() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState(initialTab); // 'all' | 'pending' | 'processing' | 'delivering' | 'completed'
   const [isTabLoading, setIsTabLoading] = useState(false);
+  const [catalogMap, setCatalogMap] = useState({});
   const loadingTimeoutRef = useRef(null);
+
+  // Load product catalog images to match menu thumbnails
+  useEffect(() => {
+    api.get('/api/products')
+      .then(res => {
+        if (res.success && Array.isArray(res.data)) {
+          const map = {};
+          res.data.forEach(p => {
+            if (p.id) map[p.id] = p.image_url;
+            if (p.name) map[p.name.toLowerCase().trim()] = p.image_url;
+          });
+          setCatalogMap(map);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const getProductThumbnail = (item) => {
+    if (item?.image) return item.image;
+    if (item?.image_url) return item.image_url;
+
+    const itemId = item?.id || item?.product_id;
+    if (itemId && catalogMap[itemId]) {
+      return catalogMap[itemId];
+    }
+    const itemName = (item?.name || item?.product_name || '').toLowerCase().trim();
+    if (itemName && catalogMap[itemName]) {
+      return catalogMap[itemName];
+    }
+
+    if (itemName.includes('beef') || itemName.includes('sapi')) return imgBeef;
+    if (itemName.includes('keju') || itemName.includes('cheese')) return imgKeju;
+    if (itemName.includes('jamur') || itemName.includes('mushroom')) return imgJamur;
+    if (itemName.includes('crab') || itemName.includes('kepiting')) return imgCrabstick;
+    if (itemName.includes('sosis') || itemName.includes('sausage')) return imgSosis;
+
+    return imgWortel;
+  };
 
   const handleTabChange = (newTab) => {
     if (newTab === activeTab) return;
@@ -378,9 +423,17 @@ export default function OrderHistory() {
                         {order.items && order.items.length > 0 ? (
                           order.items.map((item, idx) => (
                             <div key={idx} className="flex items-center justify-between text-[13px]">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className="w-8 h-8 rounded-[8px] bg-bg-cream flex items-center justify-center text-brand-gold shrink-0">
-                                  <UtensilsCrossed size={14} />
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-8 h-8 rounded-[8px] bg-bg-cream overflow-hidden shrink-0 border border-gray-100 flex items-center justify-center shadow-2xs">
+                                  <img
+                                    src={getProductThumbnail(item)}
+                                    alt={item.name || item.product_name || 'Dimsum'}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.onerror = null;
+                                      e.currentTarget.src = imgWortel;
+                                    }}
+                                  />
                                 </div>
                                 <span className="font-body font-bold text-text-primary truncate">
                                   {item.name || item.product_name || 'Dimsum'}
@@ -397,8 +450,14 @@ export default function OrderHistory() {
                             </div>
                           ))
                         ) : (
-                          <div className="flex items-center gap-2 text-[13px] font-body text-text-primary font-bold">
-                            <UtensilsCrossed size={15} className="text-brand-gold" />
+                          <div className="flex items-center gap-2.5 text-[13px] font-body text-text-primary font-bold">
+                            <div className="w-8 h-8 rounded-[8px] bg-bg-cream overflow-hidden shrink-0 border border-gray-100 flex items-center justify-center shadow-2xs">
+                              <img
+                                src={imgWortel}
+                                alt="Dimsum"
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
                             <span>{order.totalItems || 1} Item Dimsum</span>
                           </div>
                         )}
