@@ -26,7 +26,7 @@ import {
 import {
   OUTLET_COORDS,
   calculateHaversineDistance
-} from '../components/LocationPickerModal';
+} from '../utils/geo';
 import RegionWheelPickerModal from '../components/RegionWheelPickerModal';
 import { findRegionCoordinates } from '../data/indonesiaRegions';
 
