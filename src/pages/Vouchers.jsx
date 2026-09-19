@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Ticket, CheckCircle2, Check, AlertCircle, Tag, Clock, Sparkles, Loader2 } from 'lucide-react';
 import api from '../api/client';
+import useQuery from '../hooks/useQuery';
 
 /**
  * Reusable Voucher Card Component with 30% / 70% Layout
@@ -130,9 +131,11 @@ export default function Vouchers() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Page loading spinner state so user does not see content before data is ready
-  const [pageLoading, setPageLoading] = useState(true);
-  const [publicVouchers, setPublicVouchers] = useState([]);
+  // Fetch public vouchers with useQuery
+  const { data: vouchersData, loading: pageLoading } = useQuery('/api/vouchers/public', {
+    initialData: []
+  });
+  const publicVouchers = Array.isArray(vouchersData) ? vouchersData : [];
 
   // Active voucher state from localStorage
   const [savedVoucher, setSavedVoucher] = useState(() => {
@@ -150,30 +153,6 @@ export default function Vouchers() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSwitchingVoucher, setIsSwitchingVoucher] = useState(false);
-
-  // Fetch public vouchers on component mount
-  useEffect(() => {
-    let isMounted = true;
-    const fetchPublicVouchers = async () => {
-      try {
-        const res = await api.get('/api/vouchers/public');
-        if (isMounted && res.success) {
-          setPublicVouchers(res.data || []);
-        }
-      } catch (err) {
-        console.error('Gagal mengambil daftar voucher:', err);
-      } finally {
-        if (isMounted) {
-          setPageLoading(false);
-        }
-      }
-    };
-
-    fetchPublicVouchers();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   // Toggle circular checkbox on the active voucher card (copot atau aktifkan kembali)
   const handleToggleVoucher = async () => {

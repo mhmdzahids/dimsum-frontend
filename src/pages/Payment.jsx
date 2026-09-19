@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { saveOrderToHistory, updateOrderStatusInHistory } from '../utils/orderHistory';
 import api from '../api/client';
+import usePolling from '../hooks/usePolling';
 
 export default function Payment() {
   const navigate = useNavigate();
@@ -402,50 +403,38 @@ export default function Payment() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Automatically listen for webhook settlement while user is on QRIS screen
-  useEffect(() => {
-    if (!orderId || !qrisData) return;
-    const controller = new AbortController();
+  // Automatically listen for webhook settlement while user is on QRIS screen with usePolling
+  const pendingRaw = localStorage.getItem('dimsum_pending_order');
+  let orderToken = localStorage.getItem('dimsum_current_order_token');
+  if (!orderToken && pendingRaw) {
+    try { orderToken = JSON.parse(pendingRaw).accessToken; } catch {}
+  }
+  const pollHeaders = orderToken ? { 'X-Order-Token': orderToken } : {};
 
-    const pollInterval = setInterval(async () => {
-      try {
-        const pendingRaw = localStorage.getItem('dimsum_pending_order');
-        let orderToken = localStorage.getItem('dimsum_current_order_token');
-        if (!orderToken && pendingRaw) {
-          try { orderToken = JSON.parse(pendingRaw).accessToken; } catch {}
+  usePolling(
+    orderId && qrisData ? `/api/orders/${orderId}` : null,
+    {
+      interval: 4000,
+      headers: pollHeaders,
+      pauseOnHidden: true,
+      stopWhen: (d) => d?.status === 'paid' || d?.status === 'fulfilling' || d?.status === 'completed' || d?.status === 'cancelled',
+      onData: (data) => {
+        const s = data.status;
+        if (s === 'paid' || s === 'fulfilling' || s === 'completed') {
+          localStorage.removeItem('dimsum_pending_order');
+          localStorage.removeItem('dimsum_cart');
+          localStorage.removeItem('dimsum_checkout_items');
+          localStorage.removeItem('dimsum_order_notes');
+          updateOrderStatusInHistory(orderId, s, { qrToken: data.qr_token });
+          navigate('/order-status', { state: { orderId, accessToken: orderToken } });
+        } else if (s === 'cancelled') {
+          setIsExpired(true);
+          localStorage.removeItem('dimsum_pending_order');
+          updateOrderStatusInHistory(orderId, 'cancelled');
         }
-        const headers = {};
-        if (orderToken) headers['X-Order-Token'] = orderToken;
-
-        const res = await api.get(`/api/orders/${orderId}`, { headers, signal: controller.signal });
-        if (res.isAborted || res.isUserAbort) return;
-
-        if (res.success && res.data) {
-          const s = res.data.status;
-          if (s === 'paid' || s === 'fulfilling' || s === 'completed') {
-            clearInterval(pollInterval);
-            localStorage.removeItem('dimsum_pending_order');
-            localStorage.removeItem('dimsum_cart');
-            localStorage.removeItem('dimsum_checkout_items');
-            localStorage.removeItem('dimsum_order_notes');
-            updateOrderStatusInHistory(orderId, s, { qrToken: res.data.qr_token });
-            navigate('/order-status', { state: { orderId, accessToken: orderToken } });
-          } else if (s === 'cancelled') {
-            setIsExpired(true);
-            localStorage.removeItem('dimsum_pending_order');
-            updateOrderStatusInHistory(orderId, 'cancelled');
-          }
-        }
-      } catch (err) {
-        console.error("Auto-status check failed:", err);
       }
-    }, 4000);
-
-    return () => {
-      clearInterval(pollInterval);
-      controller.abort();
-    };
-  }, [orderId, qrisData, navigate]);
+    }
+  );
 
   const handlePayment = async () => {
     if (!customerName?.trim() || !customerPhone?.trim()) {

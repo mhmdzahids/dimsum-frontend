@@ -14,6 +14,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { updateOrderStatusInHistory, getOrderHistory } from '../utils/orderHistory';
 import HappyDimsumCharacter from '../components/HappyDimsumCharacter';
 import api from '../api/client';
+import usePolling from '../hooks/usePolling';
 
 export default function OrderStatus() {
   const location = useLocation();
@@ -24,7 +25,6 @@ export default function OrderStatus() {
   const [status, setStatus] = useState('Checking...');
   const [qrToken, setQrToken] = useState(null);
   const [orderDetail, setOrderDetail] = useState(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [isVerifyingTransition, setIsVerifyingTransition] = useState(false);
   const isTransitioningRef = useRef(false);
@@ -77,55 +77,70 @@ export default function OrderStatus() {
     }
   };
 
-  const checkStatus = async (isManual = false, signal = null) => {
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+
+  // Prepare order token header
+  const historyOrder = getOrderHistory().find(o => o.orderId === orderId);
+  const token = location.state?.accessToken || historyOrder?.accessToken || localStorage.getItem('dimsum_current_order_token');
+  const headers = token ? { 'X-Order-Token': token } : {};
+
+  const handleOrderData = (data) => {
+    if (!data) return;
+    const s = data.status;
+    setOrderDetail(data);
+    if (s === 'paid' || s === 'fulfilling' || s === 'completed') {
+      localStorage.removeItem('dimsum_pending_order');
+      localStorage.removeItem('dimsum_cart');
+      localStorage.removeItem('dimsum_checkout_items');
+      localStorage.removeItem('dimsum_order_notes');
+    }
+    if (data.qr_token) {
+      setQrToken(data.qr_token);
+    }
+    updateOrderStatusInHistory(orderId, s, { qrToken: data.qr_token });
+
+    // If cashier just scanned QR and status changed to completed: show branded loading screen transition first!
+    if (s === 'completed' && (status === 'paid' || status === 'fulfilling') && !isTransitioningRef.current) {
+      isTransitioningRef.current = true;
+      setIsVerifyingTransition(true);
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      setTimeout(() => {
+        setIsVerifyingTransition(false);
+        setStatus('completed');
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      }, 900);
+    } else if (!isTransitioningRef.current) {
+      setStatus(s);
+    }
+  };
+
+  // Resilient real-time polling with Page Visibility API & AbortController
+  const { isPolling, isRefreshing: isPollRefreshing } = usePolling(
+    orderId ? `/api/orders/${orderId}` : null,
+    {
+      headers,
+      interval: (d, attempt) => (d?.status === 'paid' || d?.status === 'fulfilling') ? 2500 : (attempt <= 12 ? 4000 : 8000),
+      stopWhen: (d) => d?.status === 'completed' || d?.status === 'cancelled',
+      pauseOnHidden: true,
+      onData: handleOrderData
+    }
+  );
+
+  const isRefreshing = isManualSyncing || isPollRefreshing;
+
+  // Manual refresh calls sync-payment fallback for Midtrans/real-time payment sync
+  const handleManualRefresh = async () => {
     if (!orderId) return;
-    if (isManual) setIsRefreshing(true);
+    setIsManualSyncing(true);
     try {
-      const historyOrder = getOrderHistory().find(o => o.orderId === orderId);
-      const token = location.state?.accessToken || historyOrder?.accessToken || localStorage.getItem('dimsum_current_order_token');
-      const headers = {};
-      if (token) headers['X-Order-Token'] = token;
-
-      // Manual refresh calls sync-payment fallback; auto-poll calls lightweight local DB endpoint
-      const endpoint = isManual ? `/api/orders/${orderId}/sync-payment` : `/api/orders/${orderId}`;
-      const res = isManual
-        ? await api.post(endpoint, {}, { headers, signal })
-        : await api.get(endpoint, { headers, signal });
-
-      if (res.isAborted || res.isUserAbort) return;
-
+      const res = await api.post(`/api/orders/${orderId}/sync-payment`, {}, { headers });
       if (res.success && res.data) {
-        const s = res.data.status;
-        setOrderDetail(res.data);
-        if (s === 'paid' || s === 'fulfilling' || s === 'completed') {
-          localStorage.removeItem('dimsum_pending_order');
-          localStorage.removeItem('dimsum_cart');
-          localStorage.removeItem('dimsum_checkout_items');
-          localStorage.removeItem('dimsum_order_notes');
-        }
-        if (res.data.qr_token) {
-          setQrToken(res.data.qr_token);
-        }
-        updateOrderStatusInHistory(orderId, s, { qrToken: res.data.qr_token });
-
-        // If cashier just scanned QR and status changed to completed: show branded loading screen transition first!
-        if (s === 'completed' && (status === 'paid' || status === 'fulfilling') && !isTransitioningRef.current) {
-          isTransitioningRef.current = true;
-          setIsVerifyingTransition(true);
-          window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-          setTimeout(() => {
-            setIsVerifyingTransition(false);
-            setStatus('completed');
-            window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-          }, 900);
-        } else if (!isTransitioningRef.current) {
-          setStatus(s);
-        }
+        handleOrderData(res.data);
       }
     } catch (e) {
-      console.error("Failed to check order status:", e);
+      console.error('Failed to sync payment:', e);
     } finally {
-      if (isManual) setIsRefreshing(false);
+      setIsManualSyncing(false);
     }
   };
 
@@ -153,44 +168,6 @@ export default function OrderStatus() {
 
     return () => clearTimeout(returnTimer);
   }, [orderId, navigate, location.state]);
-
-  // Polling effect: actively polls while unpaid OR while waiting for cashier QR scan!
-  useEffect(() => {
-    if (!orderId) return;
-    const controller = new AbortController();
-
-    // Initial fetch
-    checkStatus(false, controller.signal);
-
-    // Stop polling only when final state is reached: completed or cancelled
-    if (status === 'completed' || status === 'cancelled') {
-      return () => controller.abort();
-    }
-
-    let attempts = 0;
-    let timerId;
-
-    const scheduleNextCheck = () => {
-      attempts++;
-      // Stop polling after ~15 minutes of idle
-      if (attempts > 360) return;
-
-      // While waiting for cashier pickup scan (paid or fulfilling), check every 2.5s for instant response
-      const delay = (status === 'paid' || status === 'fulfilling') ? 2500 : (attempts <= 12 ? 4000 : 8000);
-      timerId = setTimeout(async () => {
-        await checkStatus(false, controller.signal);
-        if (!controller.signal.aborted) {
-          scheduleNextCheck();
-        }
-      }, delay);
-    };
-
-    scheduleNextCheck();
-    return () => {
-      clearTimeout(timerId);
-      controller.abort();
-    };
-  }, [orderId, status]);
 
   const handleBackHome = () => {
     localStorage.removeItem('dimsum_cart');
@@ -246,7 +223,7 @@ export default function OrderStatus() {
           Status Pesanan
         </span>
         <button
-          onClick={() => checkStatus(true)}
+          onClick={handleManualRefresh}
           disabled={isRefreshing}
           className="w-10 h-10 rounded-full bg-white text-brand-blue shadow-sm flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all disabled:opacity-50"
           title="Perbarui Status"
@@ -477,7 +454,7 @@ export default function OrderStatus() {
               Status saat ini: <strong className="text-brand-blue capitalize">{status}</strong>
             </p>
             <button
-              onClick={() => checkStatus(true)}
+              onClick={handleManualRefresh}
               disabled={isRefreshing}
               className="border-2 border-brand-gold text-brand-gold px-5 py-2.5 rounded-xl font-body font-bold text-[13.5px] transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50"
             >
