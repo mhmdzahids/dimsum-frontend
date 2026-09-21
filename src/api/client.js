@@ -72,9 +72,13 @@ export function resolveAuthToken(endpoint, authOption) {
     try { return localStorage.getItem('dimsum_customer_token') || null; } catch { return null; }
   }
 
-  // Fallback default: if endpoint is strictly an admin route, use adminToken
-  if (endpoint.startsWith('/api/admin') || endpoint.startsWith('/admin')) {
-    try { return localStorage.getItem('adminToken') || null; } catch { return null; }
+  // Fallback default: if endpoint is strictly an admin/inventory route or browsing admin panel, use adminToken
+  const isAdminPath = typeof window !== 'undefined' && window.location?.pathname?.startsWith('/admin');
+  if (endpoint.startsWith('/api/admin') || endpoint.startsWith('/admin') || endpoint.startsWith('/api/inventory') || isAdminPath) {
+    try {
+      const adminTok = localStorage.getItem('adminToken');
+      if (adminTok) return adminTok;
+    } catch { /* ignore */ }
   }
 
   // Default to customer token if present in localStorage

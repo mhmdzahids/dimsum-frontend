@@ -11,7 +11,8 @@ import {
   Image as ImageIcon, 
   AlertCircle, 
   ArrowRight,
-  Plus
+  Plus,
+  Package
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -213,10 +214,27 @@ export default function AdminProducts() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6">
+    <div className="space-y-6 animate-fadeIn">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="px-2.5 py-0.5 rounded-full bg-brand-blue/15 text-brand-blue border border-brand-blue/30 text-[11px] font-bold">
+              Katalog &amp; Pricing
+            </span>
+          </div>
+          <h1 className="text-2xl font-bold text-text-primary font-heading flex items-center gap-2.5">
+            <Package className="text-brand-blue" size={26} />
+            <span>Katalog Produk &amp; Menu</span>
+          </h1>
+          <p className="text-xs text-text-secondary mt-1">
+            Kelola menu dimsum, harga jual, promo diskon coret, dan batas maksimal pembelian pelanggan.
+          </p>
+        </div>
+      </div>
 
       {/* Order Limit Settings */}
-      <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6 shadow-xs">
+      <div className="bg-amber-50/70 border border-amber-200/80 p-5 rounded-card shadow-xs">
         <h2 className="font-bold mb-2 text-amber-800 flex items-center gap-2">
           <Settings size={18} /> Pengaturan Order Limit
         </h2>

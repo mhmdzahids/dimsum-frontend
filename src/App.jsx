@@ -30,8 +30,14 @@ const AdminProducts = lazy(() => import('./pages/AdminProducts'));
 const AdminBanners = lazy(() => import('./pages/AdminBanners'));
 const AdminVouchers = lazy(() => import('./pages/AdminVouchers'));
 const AdminScanQR = lazy(() => import('./pages/AdminScanQR'));
+const AdminUsers = lazy(() => import('./pages/AdminUsers'));
+const AdminProduction = lazy(() => import('./pages/AdminProduction'));
+const AdminInventoryDashboard = lazy(() => import('./pages/AdminInventoryDashboard'));
+const AdminStockOut = lazy(() => import('./pages/AdminStockOut'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import { getAdminDefaultRoute, getAdminRole } from './utils/adminAuth';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '382706943737-7meooomqaah5o8rv1c9jblpshgt8tl9i.apps.googleusercontent.com';
 
@@ -43,6 +49,15 @@ function ScrollToTop() {
   }, [pathname]);
 
   return null;
+}
+
+function AdminIndexRedirect() {
+  const role = getAdminRole();
+  if (role === 'admin') {
+    return <AdminDashboard />;
+  }
+  const destination = getAdminDefaultRoute(role);
+  return <Navigate to={destination} replace />;
 }
 
 function App() {
@@ -76,11 +91,31 @@ function App() {
                 <Route path="/admin/login" element={<AdminLogin />} />
                 <Route element={<AdminRoute />}>
                   <Route element={<AdminLayout />}>
-                    <Route path="/admin" element={<Navigate to="/admin/products" replace />} />
-                    <Route path="/admin/products" element={<AdminProducts />} />
-                    <Route path="/admin/banners" element={<AdminBanners />} />
-                    <Route path="/admin/vouchers" element={<AdminVouchers />} />
-                    <Route path="/admin/scan-qr" element={<AdminScanQR />} />
+                    <Route path="/admin" element={<AdminIndexRedirect />} />
+                    
+                    {/* All internal roles (including Cashier / Staff) */}
+                    <Route element={<AdminRoute allowedRoles={['admin', 'inventory', 'checker', 'staff']} />}>
+                      <Route path="/admin/scan-qr" element={<AdminScanQR />} />
+                    </Route>
+
+                    {/* Production & Buffer stock monitoring (Checker, Inventory, Admin) */}
+                    <Route element={<AdminRoute allowedRoles={['admin', 'inventory', 'checker']} />}>
+                      <Route path="/admin/production" element={<AdminProduction />} />
+                      <Route path="/admin/inventory" element={<AdminInventoryDashboard />} />
+                    </Route>
+
+                    {/* Inventory control & Product management (Inventory, Admin) */}
+                    <Route element={<AdminRoute allowedRoles={['admin', 'inventory']} />}>
+                      <Route path="/admin/stock-out" element={<AdminStockOut />} />
+                      <Route path="/admin/products" element={<AdminProducts />} />
+                    </Route>
+
+                    {/* Super Admin / Owner only */}
+                    <Route element={<AdminRoute allowedRoles={['admin']} />}>
+                      <Route path="/admin/banners" element={<AdminBanners />} />
+                      <Route path="/admin/vouchers" element={<AdminVouchers />} />
+                      <Route path="/admin/users" element={<AdminUsers />} />
+                    </Route>
                   </Route>
                 </Route>
               </Routes>

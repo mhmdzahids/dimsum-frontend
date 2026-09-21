@@ -27,6 +27,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { saveOrderToHistory, updateOrderStatusInHistory } from '../utils/orderHistory';
+import { isCustomerLoggedIn, getCustomerUser, updateCustomerUser } from '../utils/customerAuth';
 import api from '../api/client';
 import usePolling from '../hooks/usePolling';
 
@@ -473,6 +474,15 @@ export default function Payment() {
         if (token) {
           localStorage.setItem('dimsum_current_order_token', token);
         }
+
+        if (isCustomerLoggedIn()) {
+          const currentUser = getCustomerUser() || {};
+          updateCustomerUser({
+            ...currentUser,
+            full_name: customerName.trim(),
+            phone: customerPhone.trim()
+          });
+        }
         const amt = Math.round(Number(orderObj?.total_amount || paywuzObj?.amount || finalTotal || total || 0));
         const totalItemsCount = cartItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
         const expiresAt = paywuzObj?.expiresAt || new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -916,7 +926,10 @@ export default function Payment() {
                 <input 
                   type="text" 
                   value={customerName} 
-                  onChange={e => setCustomerName(e.target.value)} 
+                  onChange={e => {
+                    const filtered = e.target.value.replace(/[^a-zA-Z0-9\s.'-]/g, '').slice(0, 70);
+                    setCustomerName(filtered);
+                  }} 
                   placeholder="Contoh: Budi Santoso" 
                   className="w-full border border-gray-200 rounded-[12px] pl-10 pr-4 py-2.5 font-body text-[14px] text-text-primary focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold transition-colors" 
                 />
@@ -934,7 +947,10 @@ export default function Payment() {
                 <input 
                   type="tel" 
                   value={customerPhone} 
-                  onChange={e => setCustomerPhone(e.target.value)} 
+                  onChange={e => {
+                    const filtered = e.target.value.replace(/[^\d\+\-\s]/g, '').slice(0, 20);
+                    setCustomerPhone(filtered);
+                  }} 
                   placeholder="Contoh: 081234567890" 
                   className="w-full border border-gray-200 rounded-[12px] pl-10 pr-4 py-2.5 font-body text-[14px] text-text-primary focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold transition-colors" 
                 />

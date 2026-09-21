@@ -271,7 +271,10 @@ export default function ProfileEdit() {
                   type="text"
                   required
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  onChange={(e) => {
+                    const filtered = e.target.value.replace(/[^a-zA-Z0-9\s.'-]/g, '').slice(0, 70);
+                    setFullName(filtered);
+                  }}
                   placeholder="Masukkan nama lengkap"
                   className="w-full min-h-[48px] px-3.5 py-2.5 rounded-input border border-[#D1D5DB] bg-white font-body text-[15px] text-text-primary placeholder:text-gray-400 focus:outline-none focus:border-2 focus:border-[#4E8298] transition-all"
                 />
@@ -307,7 +310,10 @@ export default function ProfileEdit() {
                   id="phone-input"
                   type="tel"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    const filtered = e.target.value.replace(/[^\d\+\-\s]/g, '').slice(0, 20);
+                    setPhone(filtered);
+                  }}
                   placeholder="08123456789"
                   className="w-full min-h-[48px] px-3.5 py-2.5 rounded-input border border-[#D1D5DB] bg-white font-body text-[15px] text-text-primary placeholder:text-gray-400 focus:outline-none focus:border-2 focus:border-[#4E8298] transition-all"
                 />

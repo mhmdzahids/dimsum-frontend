@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { ShieldCheck, Lock, Eye, EyeOff, AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
 import api from '../api/client';
+import { getAdminDefaultRoute } from '../utils/adminAuth';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -13,11 +14,12 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // If already logged in, redirect immediately
+  // Auto redirect if already logged in with admin token
   useEffect(() => {
-    const existingToken = localStorage.getItem('adminToken');
-    if (existingToken) {
-      navigate('/admin/products', { replace: true });
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+      const defaultDest = getAdminDefaultRoute();
+      navigate(defaultDest, { replace: true });
     }
   }, [navigate]);
 
@@ -30,8 +32,20 @@ export default function AdminLogin() {
       const res = await api.post('/api/auth/login', { email, password }, { auth: false });
 
       if (res.success && res.data?.token) {
+        const user = res.data.user;
+        if (user?.role === 'customer') {
+          setError('Akses ditolak. Akun ini adalah akun pelanggan, bukan staf internal toko.');
+          setLoading(false);
+          return;
+        }
+
         localStorage.setItem('adminToken', res.data.token);
-        const destination = location.state?.from?.pathname || '/admin/products';
+        if (user) {
+          localStorage.setItem('adminUser', JSON.stringify(user));
+        }
+
+        const defaultDest = getAdminDefaultRoute(user?.role);
+        const destination = location.state?.from?.pathname || defaultDest;
         navigate(destination, { replace: true });
       } else {
         setError(res.error || 'Login gagal. Periksa kembali email dan password.');

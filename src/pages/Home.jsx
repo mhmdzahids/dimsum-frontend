@@ -22,7 +22,6 @@ import imgKeju from '../assets/icon/keju.webp';
 import logoImg from '../assets/logo.webp';
 import { Squash as Hamburger } from 'hamburger-react';
 import HeaderDropdown from '../components/HeaderDropdown';
-import HomeSkeleton from '../components/HomeSkeleton';
 import api from '../api/client';
 
 function Home() {
@@ -31,9 +30,8 @@ function Home() {
   const [orderType, setOrderType] = useState('Pick Up');
   const [activeBanner, setActiveBanner] = useState(0);
   const [banners, setBanners] = useState([]);
+  const [bannersLoading, setBannersLoading] = useState(true);
   const [activeTopping, setActiveTopping] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [assetsLoaded, setAssetsLoaded] = useState(false);
 
   const handleToppingClick = (name) => {
     setActiveTopping(name);
@@ -67,22 +65,12 @@ function Home() {
     }
   });
 
-  // Preload banners, pending order validation, and core assets
+  // Fetch active banners & validate pending order
   useEffect(() => {
     let isMounted = true;
 
-    const loadDataAndAssets = async () => {
+    const loadData = async () => {
       try {
-        const staticImages = [
-          logoImg,
-          imgWortel,
-          imgSosis,
-          imgJamur,
-          imgBeef,
-          imgCrabstick
-        ];
-
-        // 1. Fetch active banners & pending order validity in parallel
         const bannersPromise = api.get('/api/banners?active_only=true');
 
         let orderPromise = Promise.resolve();
@@ -107,42 +95,21 @@ function Home() {
 
         const [bannersData] = await Promise.all([bannersPromise, orderPromise]);
 
-        let bannerUrls = [];
-        if (bannersData?.success && Array.isArray(bannersData.data) && bannersData.data.length > 0) {
-          if (isMounted) setBanners(bannersData.data);
-          bannerUrls = bannersData.data.map(b => b.image_url).filter(Boolean);
-        }
-
-        // 2. Preload all images (icons + banners)
-        const allImages = [...staticImages, ...bannerUrls];
-        const imagePromises = allImages.map(src => {
-          return new Promise((resolve) => {
-            const img = new Image();
-            img.src = src;
-            img.onload = resolve;
-            img.onerror = resolve;
-          });
-        });
-
-        // 3. Minimum delay (550ms) for smooth skeleton presentation without abrupt flash
-        const minLoadingTime = new Promise(resolve => setTimeout(resolve, 550));
-
-        await Promise.all([...imagePromises, minLoadingTime]);
-
         if (isMounted) {
-          setAssetsLoaded(true);
-          setLoading(false);
+          if (bannersData?.success && Array.isArray(bannersData.data) && bannersData.data.length > 0) {
+            setBanners(bannersData.data);
+          }
+          setBannersLoading(false);
         }
       } catch (err) {
         console.error('Error initializing homepage:', err);
         if (isMounted) {
-          setAssetsLoaded(true);
-          setLoading(false);
+          setBannersLoading(false);
         }
       }
     };
 
-    loadDataAndAssets();
+    loadData();
 
     return () => {
       isMounted = false;
@@ -209,10 +176,6 @@ function Home() {
     },
   ];
 
-  // Render precise 1:1 skeleton loader while data and assets are loading
-  if (loading || !assetsLoaded) {
-    return <HomeSkeleton key="home-skeleton" />;
-  }
 
   return (
     <div key="home-main-content" className="max-w-[480px] mx-auto min-h-screen relative shadow-2xl overflow-x-hidden bg-bg-cream animate-fade-in">
@@ -292,17 +255,32 @@ function Home() {
         </div>
 
         {/* Carousel */}
-        {banners.length > 0 && (
+        {bannersLoading ? (
           <div className="px-6 pb-6 mt-4">
-            <div className="overflow-hidden mb-6 rounded-banner shadow-card relative">
+            <div className="overflow-hidden mb-6 rounded-banner shadow-card relative h-[160px] bg-slate-200/70 animate-pulse flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-slate-300/80"></div>
+            </div>
+          </div>
+        ) : banners.length > 0 ? (
+          <div className="px-6 pb-6 mt-4">
+            <div className="overflow-hidden mb-6 rounded-banner shadow-card relative h-[160px]">
               <div
-                className="flex transition-transform duration-500 ease-in-out"
+                className="flex transition-transform duration-500 ease-in-out h-full"
                 style={{ transform: `translateX(-${activeBanner * 100}%)` }}
               >
                 {banners.map((item, index) => (
                   <div key={item.id || index} className="shrink-0 w-full h-[160px] bg-brand-blue-light flex items-center justify-center text-white font-body font-bold text-[14px] overflow-hidden">
                     {item.image_url ? (
-                      <img src={item.image_url} alt={`Promo ${index + 1}`} className="w-full h-full object-cover" />
+                      <img
+                        src={item.image_url}
+                        alt={`Promo ${index + 1}`}
+                        className="w-full h-full object-cover"
+                        width="432"
+                        height="160"
+                        fetchPriority={index === 0 ? "high" : "auto"}
+                        loading={index === 0 ? "eager" : "lazy"}
+                        decoding="async"
+                      />
                     ) : (
                       <div className="flex flex-col items-center justify-center text-white/90">
                         <span className="font-heading font-black text-[16px]">Dimsum Hangat Premium</span>
@@ -325,7 +303,7 @@ function Home() {
               </div>
             )}
           </div>
-        )}
+        ) : null}
 
         {/* Categories / Favorites */}
         <div className="px-6 mb-8">

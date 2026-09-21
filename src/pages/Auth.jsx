@@ -244,8 +244,8 @@ export default function Auth() {
           <button
             onClick={() => setActiveTab('login')}
             className={`flex-1 py-2.5 rounded-[14px] font-body font-bold text-[13px] transition-all cursor-pointer ${activeTab === 'login'
-                ? 'bg-brand-gold text-white shadow-sm'
-                : 'text-text-secondary hover:text-text-primary'
+              ? 'bg-brand-gold text-white shadow-sm'
+              : 'text-text-secondary hover:text-text-primary'
               }`}
           >
             Masuk
@@ -253,8 +253,8 @@ export default function Auth() {
           <button
             onClick={() => setActiveTab('register')}
             className={`flex-1 py-2.5 rounded-[14px] font-body font-bold text-[13px] transition-all cursor-pointer ${activeTab === 'register'
-                ? 'bg-brand-gold text-white shadow-sm'
-                : 'text-text-secondary hover:text-text-primary'
+              ? 'bg-brand-gold text-white shadow-sm'
+              : 'text-text-secondary hover:text-text-primary'
               }`}
           >
             Daftar
@@ -368,7 +368,10 @@ export default function Auth() {
                   required
                   placeholder="Contoh: Budi Santoso"
                   value={regName}
-                  onChange={(e) => setRegName(e.target.value)}
+                  onChange={(e) => {
+                    const filtered = e.target.value.replace(/[^a-zA-Z0-9\s.'-]/g, '').slice(0, 70);
+                    setRegName(filtered);
+                  }}
                   className="w-full pl-10 pr-3 py-2.5 text-[13px] font-body bg-gray-50 border border-gray-200 rounded-[14px] focus:outline-none focus:border-brand-blue focus:bg-white transition-all text-text-primary"
                 />
               </div>
@@ -385,7 +388,10 @@ export default function Auth() {
                   required
                   placeholder="08123456789"
                   value={regPhone}
-                  onChange={(e) => setRegPhone(e.target.value)}
+                  onChange={(e) => {
+                    const filtered = e.target.value.replace(/[^\d\+\-\s]/g, '').slice(0, 20);
+                    setRegPhone(filtered);
+                  }}
                   className="w-full pl-10 pr-3 py-2.5 text-[13px] font-body bg-gray-50 border border-gray-200 rounded-[14px] focus:outline-none focus:border-brand-blue focus:bg-white transition-all text-text-primary"
                 />
               </div>

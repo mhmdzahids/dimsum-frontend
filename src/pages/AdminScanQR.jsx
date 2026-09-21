@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   QrCode, 
   Package, 
@@ -23,7 +24,9 @@ import {
   Upload,
   ScanLine,
   Smartphone,
-  ExternalLink
+  ExternalLink,
+  Factory,
+  ArrowUpRight
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import jsQR from 'jsqr';
@@ -47,6 +50,7 @@ export default function AdminScanQR() {
   const [qrTokenInput, setQrTokenInput] = useState('');
   const [checkingOrder, setCheckingOrder] = useState(false);
   const [previewOrder, setPreviewOrder] = useState(null);
+  const [previewLot, setPreviewLot] = useState(null);
   const [previewError, setPreviewError] = useState('');
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [verifySuccess, setVerifySuccess] = useState(null);
@@ -137,7 +141,7 @@ export default function AdminScanQR() {
     }
   };
 
-  // Preview Order by QR Token
+  // Preview Order or Production Lot by QR Token/Payload
   const handleCheckQR = async (tokenToCheck) => {
     const rawToken = tokenToCheck || qrTokenInput;
     if (!rawToken || !rawToken.trim()) {
@@ -148,18 +152,54 @@ export default function AdminScanQR() {
     setPreviewError('');
     setVerifySuccess(null);
     setVerifyError('');
+    setPreviewOrder(null);
+    setPreviewLot(null);
 
+    const clean = rawToken.trim();
+
+    // Check if it's a LOT STICKER QR (BATCH:...|LOT:...)
+    if (clean.startsWith('BATCH:') || clean.includes('|LOT:')) {
+      try {
+        let batchCode = '';
+        let lotInfo = '';
+        let qtyInfo = '25';
+        let skuInfo = '';
+        clean.split('|').forEach(part => {
+          if (part.startsWith('BATCH:')) batchCode = part.replace('BATCH:', '');
+          if (part.startsWith('LOT:')) lotInfo = part.replace('LOT:', '');
+          if (part.startsWith('QTY:')) qtyInfo = part.replace('QTY:', '');
+          if (part.startsWith('SKU:')) skuInfo = part.replace('SKU:', '');
+        });
+
+        const res = await api.get(`/api/inventory/batches/code/${encodeURIComponent(batchCode || clean)}`, { auth: 'admin' });
+        if (res.success && res.data) {
+          setPreviewLot({
+            ...res.data,
+            scanned_lot_info: lotInfo,
+            scanned_lot_qty: qtyInfo,
+            scanned_sku: skuInfo
+          });
+        } else {
+          setPreviewError(res.error || 'Batch produksi dari stiker LOT tidak ditemukan di database.');
+        }
+      } catch {
+        setPreviewError('Koneksi gagal saat memverifikasi stiker LOT produksi.');
+      } finally {
+        setCheckingOrder(false);
+      }
+      return;
+    }
+
+    // Standard Customer Order QR
     try {
-      const res = await api.get(`/api/orders/check-qr/${encodeURIComponent(rawToken.trim())}`, { auth: 'admin' });
+      const res = await api.get(`/api/orders/check-qr/${encodeURIComponent(clean)}`, { auth: 'admin' });
       if (res.success && res.data) {
         setPreviewOrder(res.data);
       } else {
         setPreviewError(res.error || 'Pesanan dengan QR tersebut tidak ditemukan');
-        setPreviewOrder(null);
       }
     } catch {
-      setPreviewError('Koneksi gagal memeriksa kode QR');
-      setPreviewOrder(null);
+      setPreviewError('Koneksi gagal memeriksa kode QR pesanan');
     } finally {
       setCheckingOrder(false);
     }
@@ -392,9 +432,9 @@ export default function AdminScanQR() {
   });
 
   return (
-    <main className="max-w-6xl mx-auto px-4 sm:px-6">
+    <div className="space-y-6 animate-fadeIn">
         {/* Title Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
           <div>
             <h1 className="text-2xl font-bold font-heading text-text-primary flex items-center gap-2">
               <QrCode className="text-brand-gold" size={24} />
@@ -845,7 +885,7 @@ export default function AdminScanQR() {
                         type="text"
                         value={qrTokenInput}
                         onChange={(e) => setQrTokenInput(e.target.value)}
-                        placeholder="Tempelkan token QR di sini..."
+                        placeholder="Scan atau tempelkan QR token pembeli / stiker Lot (BATCH:...)..."
                         className="flex-1 px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-mono text-text-primary focus:outline-none focus:border-brand-blue"
                       />
                       <button
@@ -865,6 +905,90 @@ export default function AdminScanQR() {
                   <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
                     <AlertCircle size={16} />
                     <span>{previewError}</span>
+                  </div>
+                )}
+
+                {/* PREVIEW HASIL SCAN STIKER LOT PRODUKSI FISIK */}
+                {previewLot && (
+                  <div className="bg-blue-50/70 rounded-2xl p-5 border-2 border-brand-blue/30 animate-fadeIn space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-blue-200/60">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="px-2 py-0.5 rounded-md bg-brand-blue text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                            <Factory size={11} />
+                            Stiker Lot Fisik Terverifikasi
+                          </span>
+                          <span className="text-[11px] font-mono text-text-secondary">
+                            {previewLot.batch_code}
+                          </span>
+                        </div>
+                        <h3 className="text-sm font-bold text-text-primary font-heading flex items-center gap-1.5">
+                          <span>{previewLot.product_name || 'Dimsum'}</span>
+                          {previewLot.product_sku && (
+                            <span className="text-xs text-text-secondary font-mono">({previewLot.product_sku})</span>
+                          )}
+                        </h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold px-3 py-1 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                          <CheckCircle2 size={13} />
+                          QC Disetujui (Om Yosi)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Informasi Lot & Kapasitas Fisik */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                      <div className="bg-white p-3 rounded-xl border border-blue-100">
+                        <span className="text-[10px] text-text-secondary block">Nomor Lot</span>
+                        <span className="font-bold text-brand-blue text-sm">
+                          {previewLot.scanned_lot_info ? `Lot ${previewLot.scanned_lot_info}` : 'Lot Standar'}
+                        </span>
+                      </div>
+                      <div className="bg-white p-3 rounded-xl border border-blue-100">
+                        <span className="text-[10px] text-text-secondary block">Isi Mika / Lot</span>
+                        <span className="font-bold text-text-primary text-sm">
+                          {previewLot.scanned_lot_qty || previewLot.lot_size || 25} pcs
+                        </span>
+                      </div>
+                      <div className="bg-white p-3 rounded-xl border border-blue-100">
+                        <span className="text-[10px] text-text-secondary block">Total Batch</span>
+                        <span className="font-bold text-text-primary text-sm">
+                          {previewLot.actual_lots || 0} Lot ({previewLot.produced_qty || 0} pcs)
+                        </span>
+                      </div>
+                      <div className="bg-white p-3 rounded-xl border border-blue-100">
+                        <span className="text-[10px] text-text-secondary block">Sisa Stok Batch</span>
+                        <span className="font-bold text-emerald-700 text-sm">
+                          {previewLot.remaining_qty || 0} pcs
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-text-secondary pt-1">
+                      <span>Waktu Selesai Verifikasi QC:</span>
+                      <span className="font-semibold text-text-primary">
+                        {previewLot.completed_at ? new Date(previewLot.completed_at).toLocaleString('id-ID') : 'Hari ini'}
+                      </span>
+                    </div>
+
+                    {/* Tombol Aksi Cepat */}
+                    <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                      <Link
+                        to={`/admin/stock-out?product_id=${previewLot.product_id || ''}&lots=1`}
+                        className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5"
+                      >
+                        <ArrowUpRight size={15} />
+                        <span>Keluarkan Stok Lot Ini (Shopee/TikTok/PO)</span>
+                      </Link>
+                      <Link
+                        to="/admin/production"
+                        className="px-4 py-2.5 border border-gray-300 hover:bg-gray-100 text-text-primary rounded-xl font-medium text-xs transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Factory size={14} />
+                        <span>Portal Produksi</span>
+                      </Link>
+                    </div>
                   </div>
                 )}
 
@@ -1123,6 +1247,6 @@ export default function AdminScanQR() {
             </div>
           )}
         </section>
-      </main>
+      </div>
   );
 }

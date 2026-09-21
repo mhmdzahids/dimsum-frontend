@@ -176,9 +176,9 @@ export default function AdminVouchers() {
   );
 
   return (
-    <main className="max-w-6xl mx-auto px-4 sm:px-6">
+    <div className="space-y-6 animate-fadeIn">
         {/* Header Title Section */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
           <div>
             <h1 className="text-2xl font-bold font-heading text-text-primary flex items-center gap-2">
               <Ticket className="text-brand-gold" size={24} />
@@ -610,6 +610,6 @@ export default function AdminVouchers() {
             </div>
           </div>
         </div>
-      </main>
+      </div>
   );
 }
