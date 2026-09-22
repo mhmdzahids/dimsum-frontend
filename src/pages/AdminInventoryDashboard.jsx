@@ -115,44 +115,6 @@ export default function AdminInventoryDashboard() {
           <button onClick={fetchSummary} className="underline text-xs font-semibold">Coba Lagi</button>
         </div>
       )}
-
-      {/* Critical Stock Alert Banner if any */}
-      {criticalProducts.length > 0 && (
-        <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-5 shadow-xs animate-in fade-in duration-300">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start sm:items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                <ShieldAlert size={22} />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-red-900 font-heading flex items-center gap-2">
-                  <span>Peringatan Buffer Stock: {criticalProducts.length} Produk di Bawah Batas Minimum!</span>
-                </h3>
-                <p className="text-xs text-red-700 mt-0.5">
-                  Sesuai arahan rapat, stok freezer wajib dijaga minimal 70 pcs (buffer aman). Segera buat rencana produksi lot untuk varian berikut:
-                </p>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {criticalProducts.map(p => (
-                    <span key={p.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-100 text-red-900 border border-red-200 text-xs font-semibold">
-                      <span>{p.name}</span>
-                      <span className="font-mono text-red-700 font-bold">({p.stock_qty} pcs / {p.stock_lots} lot)</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <Link
-              to="/admin/production"
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-bold transition-all shadow-xs shrink-0"
-            >
-              <span>Jadwalkan Lot Sekarang</span>
-              <ArrowRight size={14} />
-            </Link>
-          </div>
-        </div>
-      )}
-
       {/* Top 4 KPI Metrics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Metric 1: Total Stok Freezer */}
@@ -274,11 +236,7 @@ export default function AdminInventoryDashboard() {
 
             {/* Gauge Progress Bar */}
             <div className="space-y-2 mt-4">
-              <div className="flex justify-between text-xs text-text-secondary font-medium">
-                <span>0 Lot</span>
-                <span className="text-text-primary font-bold">20 Lot (Batas Normal)</span>
-                <span>24 Lot (Maks Lembur)</span>
-              </div>
+
               <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden p-0.5 border border-gray-200 relative">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${todayProd.completed_lots > 24
@@ -296,12 +254,17 @@ export default function AdminInventoryDashboard() {
                   title="Target Normal (20 Lot)"
                 />
               </div>
+              <div className="flex justify-between text-xs text-text-secondary font-medium">
+                <span>0 Lot</span>
+                <span className="text-text-primary font-bold">20 Lot</span>
+                <span>24 Lot</span>
+              </div>
             </div>
 
             {/* Detail Pills */}
             <div className="grid grid-cols-3 gap-2 mt-5">
               <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-center">
-                <div className="text-xs text-text-secondary">Direncanakan PPSI</div>
+                <div className="text-xs text-text-secondary">Direncanakan</div>
                 <div className="text-base font-bold text-text-primary font-heading mt-0.5">
                   {todayProd.planned_lots} Lot
                 </div>
@@ -355,7 +318,6 @@ export default function AdminInventoryDashboard() {
                   <h2 className="text-base font-bold text-text-primary font-heading">
                     Distribusi Pengeluaran Stok
                   </h2>
-                  <p className="text-xs text-text-secondary">Total {totalOutPcs.toLocaleString('id-ID')} pcs dialokasikan keluar dari freezer</p>
                 </div>
               </div>
             </div>

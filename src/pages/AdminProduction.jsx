@@ -166,34 +166,6 @@ export default function AdminProduction() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary font-heading flex items-center gap-2.5">
-            <Factory className="text-brand-blue" size={26} />
-            <span>Produksi</span>
-          </h1>
-        </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button
-            onClick={fetchData}
-            disabled={loading}
-            className="p-2.5 rounded-xl border border-gray-200 bg-white text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-            title="Refresh"
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button
-            onClick={() => { setShowPlanModal(true); setPlanError(''); }}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-blue hover:bg-brand-blue/90 text-white rounded-xl text-xs font-semibold shadow-xs transition-all"
-          >
-            <PlusCircle size={16} />
-            <span>Rencana Baru</span>
-          </button>
-        </div>
-      </div>
-
       {/* Notifications */}
       {successMsg && (
         <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800 animate-fadeIn">
@@ -220,32 +192,52 @@ export default function AdminProduction() {
       )}
 
       {/* Tab Navigation */}
-      <div className="flex items-center gap-2 border-b border-gray-200 mb-6 pb-2">
-        <button
-          onClick={() => setActiveTab('planner')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${activeTab === 'planner'
-            ? 'bg-brand-blue text-white shadow-xs'
-            : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
-            }`}
-        >
-          <FileText size={15} />
-          <span>Rencana ({batches.length})</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('checker')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors relative ${activeTab === 'checker'
-            ? 'bg-amber-700 text-white shadow-xs'
-            : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
-            }`}
-        >
-          <ShieldCheck size={15} />
-          <span>Verifikasi</span>
-          {pendingBatches.length > 0 && (
-            <span className="ml-1 px-1.5 py-0.2 bg-red-500 text-white rounded-full text-[10px] font-bold">
-              {pendingBatches.length}
-            </span>
-          )}
-        </button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 mb-6 pb-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTab('planner')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${activeTab === 'planner'
+              ? 'bg-brand-blue text-white shadow-xs'
+              : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
+              }`}
+          >
+            <FileText size={15} />
+            <span>Rencana ({batches.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('checker')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors relative ${activeTab === 'checker'
+              ? 'bg-amber-700 text-white shadow-xs'
+              : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
+              }`}
+          >
+            <ShieldCheck size={15} />
+            <span>Verifikasi</span>
+            {pendingBatches.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 bg-red-500 text-white rounded-full text-[10px] font-bold">
+                {pendingBatches.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 justify-end">
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="p-2 rounded-xl border border-gray-200 bg-white text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <button
+            onClick={() => { setShowPlanModal(true); setPlanError(''); }}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-blue hover:bg-brand-blue/90 text-white rounded-xl text-xs font-semibold shadow-xs transition-all"
+          >
+            <PlusCircle size={15} />
+            <span>Rencana Baru</span>
+          </button>
+        </div>
       </div>
 
       {/* TAB 1: PLANNER & BATCH LIST */}

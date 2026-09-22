@@ -455,7 +455,7 @@ export default function AdminDashboard() {
               {/* Dynamic Hover Indicator & Circles - Visible ONLY when hovering */}
               {hoveredPoint && (
                 <g key="hover-effects" className="pointer-events-none">
-                  {/* Vertical highlight band */}
+                  {/* Vertical highlight band
                   <rect
                     x={hoveredPoint.x - stepX / 2.8}
                     y={paddingTop - 10}
@@ -464,7 +464,7 @@ export default function AdminDashboard() {
                     rx="8"
                     fill="#4685ac"
                     fillOpacity="0.08"
-                  />
+                  /> */}
 
                   {/* Vertical guideline */}
                   <line
@@ -787,9 +787,8 @@ export default function AdminDashboard() {
                       {/* Mini Buffer Bar */}
                       <div className="w-full h-1.5 bg-gray-100 rounded-full mt-1.5 overflow-hidden">
                         <div
-                          className={`h-full rounded-full transition-all ${
-                            isCritical ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500'
-                          }`}
+                          className={`h-full rounded-full transition-all ${isCritical ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500'
+                            }`}
                           style={{ width: `${bufferPct}%` }}
                         />
                       </div>
