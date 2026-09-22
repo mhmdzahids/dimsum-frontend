@@ -312,7 +312,7 @@ export default function AdminDashboard() {
         <div className="bg-white p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
           <div className="flex items-start justify-between mb-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-              Pengeluaran Hari Ini
+              Stok Keluar Hari Ini
             </span>
             <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
               <ArrowUpRight size={18} />
@@ -437,7 +437,7 @@ export default function AdminDashboard() {
                   d={inLinePath}
                   fill="none"
                   stroke="#4685ac"
-                  strokeWidth="2.5"
+                  strokeWidth="2"
                   strokeLinecap="round"
                 />
               )}
@@ -449,7 +449,7 @@ export default function AdminDashboard() {
                   d={outLinePath}
                   fill="none"
                   stroke="#C9A23D"
-                  strokeWidth="2.5"
+                  strokeWidth="2"
                   strokeLinecap="round"
                 />
               )}
@@ -542,10 +542,10 @@ export default function AdminDashboard() {
                   <circle
                     cx={hoveredPoint.inPt.x}
                     cy={hoveredPoint.inPt.y}
-                    r="5.5"
+                    r="4"
                     fill="#FFFFFF"
                     stroke="#4685ac"
-                    strokeWidth="3.5"
+                    strokeWidth="2.5"
                     className="drop-shadow-sm"
                   />
 
@@ -553,10 +553,10 @@ export default function AdminDashboard() {
                   <circle
                     cx={hoveredPoint.outPt.x}
                     cy={hoveredPoint.outPt.y}
-                    r="5.5"
+                    r="4"
                     fill="#FFFFFF"
                     stroke="#C9A23D"
-                    strokeWidth="3.5"
+                    strokeWidth="2.5"
                     className="drop-shadow-sm"
                   />
                 </g>
@@ -594,7 +594,6 @@ export default function AdminDashboard() {
                     {/* Header */}
                     <div className="flex items-center justify-between border-b border-slate-700/80 pb-1.5 mb-2">
                       <span className="font-bold text-xs text-white tracking-wide">{hoveredPoint.day}</span>
-                      <span className="text-[9px] text-gray-400 font-mono tracking-widest leading-none">•••</span>
                     </div>
 
                     {/* Metrics Grid */}
