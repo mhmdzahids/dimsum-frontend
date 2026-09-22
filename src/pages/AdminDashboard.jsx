@@ -297,7 +297,7 @@ export default function AdminDashboard() {
       {/* 3. ANALYTICS SECTION (Two-Column SVG Charts) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left: 7-Day Stock Movement (Area/Line Chart) */}
-        <div className="lg:col-span-7 bg-white p-6 rounded-card border border-bg-cream-dark/80 shadow-card flex flex-col justify-between">
+        <div className="lg:col-span-7 bg-white p-4 sm:p-6 rounded-card border border-bg-cream-dark/80 shadow-card flex flex-col justify-between">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-base font-bold text-text-primary font-heading">
@@ -322,10 +322,10 @@ export default function AdminDashboard() {
 
           {/* SVG Line / Area Chart */}
           <div
-            className="relative w-full h-60 select-none"
+            className="relative w-full aspect-[500/220] sm:aspect-[500/200] select-none"
             onMouseLeave={() => setHoveredPoint(null)}
           >
-            <svg viewBox="0 0 500 200" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+            <svg viewBox="0 0 500 200" className="w-full h-full overflow-visible">
               <defs>
                 {/* Brand Blue for 'Masuk' - subtle transparency matching design system */}
                 <linearGradient id="gradBlue" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -357,7 +357,7 @@ export default function AdminDashboard() {
                       x={padX - 8}
                       y={y + 3}
                       textAnchor="end"
-                      fontSize="9"
+                      fontSize="10"
                       fill="#A8A29E"
                       fontWeight="600"
                     >
@@ -366,32 +366,6 @@ export default function AdminDashboard() {
                   </g>
                 );
               })}
-
-              {/* Average Reference Line */}
-              {avgOut > 0 && (
-                <g key="avg-ref">
-                  <line
-                    x1={padX}
-                    y1={getYPos(avgOut)}
-                    x2={chartWidth - padX}
-                    y2={getYPos(avgOut)}
-                    stroke="#D4B55A"
-                    strokeWidth="1"
-                    strokeDasharray="3 3"
-                    opacity="0.6"
-                  />
-                  <text
-                    x={chartWidth - padX}
-                    y={getYPos(avgOut) - 4}
-                    textAnchor="end"
-                    fontSize="8"
-                    fill="#A8862E"
-                    fontWeight="600"
-                  >
-                    Rata-rata: {avgOut} pcs
-                  </text>
-                </g>
-              )}
 
               {/* Dynamic SVG Curves: In (Brand Blue) */}
               {inAreaPath && <path d={inAreaPath} fill="url(#gradBlue)" />}
@@ -535,12 +509,14 @@ export default function AdminDashboard() {
               // Horizontal offset & arrow alignment to stay cleanly inside card
               let xTransform = '-50%';
               let arrowLeft = '50%';
-              if (hoveredPoint.index === 0) {
-                xTransform = '-18%';
-                arrowLeft = '18%';
-              } else if (hoveredPoint.index === nDays - 1) {
-                xTransform = '-82%';
-                arrowLeft = '82%';
+              if (hoveredPoint.index <= 1) {
+                const leftPct = hoveredPoint.index === 0 ? 16 : 28;
+                xTransform = `-${leftPct}%`;
+                arrowLeft = `${leftPct}%`;
+              } else if (hoveredPoint.index >= nDays - 2) {
+                const rightPct = hoveredPoint.index === nDays - 1 ? 84 : 72;
+                xTransform = `-${rightPct}%`;
+                arrowLeft = `${rightPct}%`;
               }
 
               return (
@@ -596,9 +572,12 @@ export default function AdminDashboard() {
           </div>
 
           {/* X-Axis Labels */}
-          <div className="flex justify-between text-[11px] font-semibold text-text-secondary/70 pt-3 border-t border-bg-cream px-6">
+          <div className="flex justify-between text-[10px] sm:text-[11px] font-semibold text-text-secondary/70 pt-2.5 sm:pt-3 border-t border-bg-cream px-2 sm:px-6">
             {chartDays.map((d) => (
-              <span key={d.day}>{d.day}</span>
+              <span key={d.day} className="text-center">
+                <span className="sm:hidden">{d.day.split(' ')[0]}</span>
+                <span className="hidden sm:inline">{d.day}</span>
+              </span>
             ))}
           </div>
         </div>
