@@ -17,7 +17,11 @@ import {
   Activity,
   Calendar,
   Box,
-  Ticket
+  Ticket,
+  Zap,
+  ClipboardList,
+  LogOut,
+  BarChart3
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -391,7 +395,7 @@ export default function AdminDashboard() {
                 />
               )}
 
-              {/* Spike Annotation Badge for High-Volume Production */}
+              {/* Spike Annotation Badge for High-Volume Production
               {chartDays.map((d, i) => {
                 if ((d.inQty || 0) >= 300) {
                   const pt = inPoints[i];
@@ -420,7 +424,7 @@ export default function AdminDashboard() {
                   );
                 }
                 return null;
-              })}
+              })} */}
 
               {/* Interactive Day Hover Zones */}
               {chartDays.map((d, i) => {
@@ -667,127 +671,151 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 4. OPERATIONAL OVERVIEW (Capacity & Stock Attention) */}
+      {/* 4. BOTTOM SECTION: Quick Actions + Stock Attention */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Production Capacity Gauge */}
-        <div className="lg:col-span-6 bg-white p-6 rounded-card border border-bg-cream-dark/80 shadow-card flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Factory className="text-brand-blue" size={20} />
-                <h2 className="text-base font-bold text-text-primary font-heading">
-                  Kapasitas Produksi
-                </h2>
-              </div>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-brand-gold/15 text-brand-gold-dark border border-brand-gold/30">
-                {completedLots} / {normalCapacity} Lot
-              </span>
+        {/* Left: Quick Actions Card */}
+        <div className="lg:col-span-5 bg-white p-6 rounded-card border border-bg-cream-dark/80 shadow-card flex flex-col">
+          <div className="flex items-center gap-2 mb-5">
+            <div className="w-8 h-8 rounded-xl bg-brand-blue/10 text-brand-blue flex items-center justify-center">
+              <Zap size={17} />
             </div>
-
-            {/* Visual Gauge Progress Bar */}
-            <div className="space-y-2 mt-4">
-              <div className="flex justify-between text-xs font-semibold text-text-secondary">
-                <span>0 Lot</span>
-                <span className="text-brand-gold-dark font-bold">20 Lot</span>
-                <span className="text-text-secondary/70">24 Maks</span>
-              </div>
-
-              <div className="w-full bg-bg-cream rounded-full h-4 relative overflow-hidden p-0.5 border border-bg-cream-dark/60">
-                <div
-                  className="bg-brand-gold h-full rounded-full transition-all duration-700 relative"
-                  style={{ width: `${Math.min(100, (completedLots / 24) * 100)}%` }}
-                >
-                  <div className="absolute inset-0 bg-white/20 animate-progress" />
-                </div>
-                {/* 20 Lot normal guideline indicator */}
-                <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-text-primary/40 z-10"
-                  style={{ left: `${(20 / 24) * 100}%` }}
-                  title="Target batas normal 20 Lot"
-                />
-              </div>
-            </div>
+            <h2 className="text-base font-bold text-text-primary font-heading">Aksi Cepat</h2>
           </div>
 
-          {/* Breakdown Stats */}
-          <div className="grid grid-cols-3 gap-3 pt-5 mt-4 border-t border-bg-cream">
-            <div className="p-3 bg-bg-cream/40 rounded-2xl border border-bg-cream-dark/50 text-center">
-              <div className="text-[10px] uppercase font-bold text-text-secondary">Direncanakan</div>
-              <div className="text-lg font-black font-heading text-brand-blue mt-0.5">{plannedLots} Lot</div>
-              <div className="text-[10px] text-text-secondary">~{plannedLots * 25} pcs</div>
-            </div>
-            <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-100 text-center">
-              <div className="text-[10px] uppercase font-bold text-emerald-800">Terverifikasi</div>
-              <div className="text-lg font-black font-heading text-emerald-700 mt-0.5">{completedLots} Lot</div>
-              <div className="text-[10px] text-emerald-800/80">Masuk Freezer</div>
-            </div>
-            <div className="p-3 bg-bg-cream/40 rounded-2xl border border-bg-cream-dark/50 text-center">
-              <div className="text-[10px] uppercase font-bold text-text-secondary">Sisa Target</div>
-              <div className="text-lg font-black font-heading text-text-primary mt-0.5">{remainingNormalLots} Lot</div>
-              <div className="text-[10px] text-text-secondary">Belum Selesai</div>
-            </div>
+          <div className="space-y-3 flex-1">
+            {/* Action 1: Schedule Production */}
+            <Link
+              to="/admin/production"
+              className="flex items-center gap-4 p-4 rounded-2xl border border-bg-cream-dark/70 hover:border-brand-blue/40 hover:bg-brand-blue/5 transition-all group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-brand-gold/15 text-brand-gold-dark flex items-center justify-center shrink-0 group-hover:bg-brand-gold/25 transition-colors">
+                <Factory size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-bold text-text-primary">Jadwalkan Produksi</div>
+                <div className="text-[11px] text-text-secondary mt-0.5">Buat rencana lot produksi baru untuk hari ini</div>
+              </div>
+              <ChevronRight size={16} className="text-text-secondary/50 group-hover:text-brand-blue transition-colors shrink-0" />
+            </Link>
+
+            {/* Action 2: Input Stock Out */}
+            <Link
+              to="/admin/stock-out"
+              className="flex items-center gap-4 p-4 rounded-2xl border border-bg-cream-dark/70 hover:border-orange-300 hover:bg-orange-50/40 transition-all group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0 group-hover:bg-orange-200 transition-colors">
+                <LogOut size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-bold text-text-primary">Input Stok Keluar</div>
+                <div className="text-[11px] text-text-secondary mt-0.5">Catat pengeluaran stok dari freezer ke kanal penjualan</div>
+              </div>
+              <ChevronRight size={16} className="text-text-secondary/50 group-hover:text-orange-600 transition-colors shrink-0" />
+            </Link>
+
+            {/* Action 3: View Inventory */}
+            <Link
+              to="/admin/inventory"
+              className="flex items-center gap-4 p-4 rounded-2xl border border-bg-cream-dark/70 hover:border-emerald-300 hover:bg-emerald-50/40 transition-all group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-200 transition-colors">
+                <ClipboardList size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-bold text-text-primary">Ringkasan Stok Lengkap</div>
+                <div className="text-[11px] text-text-secondary mt-0.5">Pantau stok per produk, filter kritis & waspada</div>
+              </div>
+              <ChevronRight size={16} className="text-text-secondary/50 group-hover:text-emerald-700 transition-colors shrink-0" />
+            </Link>
+
+            {/* Action 4: View Orders */}
+            <Link
+              to="/admin/orders"
+              className="flex items-center gap-4 p-4 rounded-2xl border border-bg-cream-dark/70 hover:border-purple-300 hover:bg-purple-50/40 transition-all group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 group-hover:bg-purple-200 transition-colors">
+                <ShoppingBag size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-bold text-text-primary">Kelola Order</div>
+                <div className="text-[11px] text-text-secondary mt-0.5">Lihat dan proses pesanan yang masuk</div>
+              </div>
+              <ChevronRight size={16} className="text-text-secondary/50 group-hover:text-purple-700 transition-colors shrink-0" />
+            </Link>
           </div>
         </div>
 
         {/* Right: Stock Attention List ("Perlu Perhatian") */}
-        <div className="lg:col-span-6 bg-white p-6 rounded-card border border-bg-cream-dark/80 shadow-card flex flex-col justify-between">
+        <div className="lg:col-span-7 bg-white p-6 rounded-card border border-bg-cream-dark/80 shadow-card flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <AlertTriangle className="text-brand-gold" size={20} />
               <h2 className="text-base font-bold text-text-primary font-heading">
-                Perlu Perhatian
+                Kondisi Stok Produk
               </h2>
             </div>
             <Link
               to="/admin/inventory"
               className="text-xs font-bold text-brand-blue hover:underline flex items-center gap-0.5"
             >
-              <span>Lihat Semua</span>
+              <span>Tabel Lengkap</span>
               <ChevronRight size={13} />
             </Link>
           </div>
 
-          <div className="space-y-2.5 overflow-y-auto max-h-60 pr-1">
+          <div className="space-y-2.5 overflow-y-auto max-h-72 pr-1">
             {allProducts.length === 0 ? (
               <div className="text-center py-8 text-xs text-text-secondary">
                 Memuat data stok per varian...
               </div>
             ) : (
-              allProducts.slice(0, 4).map((p) => {
+              allProducts.slice(0, 6).map((p) => {
                 const isCritical = p.buffer_status === 'critical' || p.stock_qty < 70;
                 const isWarning = p.buffer_status === 'warning' || (p.stock_qty >= 70 && p.stock_qty <= 100);
+                const stockLots = p.stock_lots ?? Math.floor(p.stock_qty / 25);
+                const bufferPct = Math.min(100, Math.round((p.stock_qty / 100) * 100));
 
                 return (
                   <div
                     key={p.id}
-                    className="flex items-center justify-between p-3 rounded-2xl border border-bg-cream-dark/70 hover:border-bg-cream-dark bg-white transition-all"
+                    className="flex items-center gap-3 p-3 rounded-2xl border border-bg-cream-dark/70 hover:border-bg-cream-dark bg-white transition-all"
                   >
-                    <div className="min-w-0 flex-1 pr-3">
+                    {/* Left: Name & SKU */}
+                    <div className="min-w-0 flex-1">
                       <div className="text-xs font-bold text-text-primary truncate">{p.name}</div>
                       <div className="text-[10px] font-mono text-text-secondary">{p.sku}</div>
+                      {/* Mini Buffer Bar */}
+                      <div className="w-full h-1.5 bg-gray-100 rounded-full mt-1.5 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            isCritical ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${bufferPct}%` }}
+                        />
+                      </div>
                     </div>
 
+                    {/* Right: Stock + Badge */}
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="text-right">
                         <div className="text-xs font-black font-heading text-text-primary">
                           {p.stock_qty} pcs
                         </div>
                         <div className="text-[10px] text-text-secondary">
-                          ~{p.stock_lots ?? Math.floor(p.stock_qty / 25)} Lot
+                          ~{stockLots} Lot
                         </div>
                       </div>
 
-                      {/* Status Badge */}
                       {isCritical ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-brand-red border border-red-200">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-brand-red border border-red-200 whitespace-nowrap">
                           KRITIS
                         </span>
                       ) : isWarning ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
                           WASPADA
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 whitespace-nowrap">
                           AMAN
                         </span>
                       )}
@@ -798,10 +826,10 @@ export default function AdminDashboard() {
             )}
           </div>
 
-          <div className="pt-3 border-t border-bg-cream flex justify-between items-center text-xs">
-            <span className="text-text-secondary text-[11px]">Min. buffer: <strong>70 pcs</strong></span>
-            <Link to="/admin/production" className="text-brand-blue font-bold hover:underline">
-              Produksi &rarr;
+          <div className="pt-3 border-t border-bg-cream flex justify-between items-center text-xs mt-3">
+            <span className="text-text-secondary text-[11px]">Buffer minimum: <strong>70 pcs</strong> per varian • <strong>{criticalProducts.length}</strong> kritis, <strong>{warningProducts.length}</strong> waspada</span>
+            <Link to="/admin/inventory" className="text-brand-blue font-bold hover:underline whitespace-nowrap">
+              Detail lengkap &rarr;
             </Link>
           </div>
         </div>

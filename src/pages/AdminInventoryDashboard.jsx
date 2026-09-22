@@ -106,47 +106,6 @@ export default function AdminInventoryDashboard() {
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-gold/10 text-brand-gold border border-brand-gold/20">
-              Freezer & Production Control
-            </span>
-            <span className="text-xs text-text-secondary">Standar 1 Lot = 25 Pcs</span>
-          </div>
-          <h1 className="text-2xl font-bold text-text-primary font-heading">
-            Ringkasan Inventaris & Buffer Stock
-          </h1>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={fetchSummary}
-            disabled={loading}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-btn border border-bg-cream-dark/90 bg-white text-text-secondary hover:text-text-primary hover:bg-bg-cream/60 text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
-            title="Refresh"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <Link
-            to="/admin/production"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-btn bg-brand-blue hover:bg-brand-blue-dark text-white text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer"
-          >
-            <PlusCircle size={15} />
-            <span>Produksi</span>
-          </Link>
-
-          <Link
-            to="/admin/stock-out"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-btn bg-brand-gold hover:bg-brand-gold-dark text-white text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer"
-          >
-            <ArrowUpRight size={15} />
-            <span>Stok Keluar</span>
-          </Link>
-        </div>
-      </div>
-
       {error && (
         <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center justify-between">
           <div className="flex items-center gap-2">
