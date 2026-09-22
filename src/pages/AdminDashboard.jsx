@@ -189,44 +189,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      {/* 1. PAGE HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-text-primary font-heading tracking-tight">
-            Dashboard
-          </h1>
-          <p className="text-xs sm:text-sm text-text-secondary mt-1">
-            {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}
-          </p>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={fetchDashboardData}
-            disabled={loading}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-btn border border-bg-cream-dark/90 bg-white text-text-secondary hover:text-text-primary hover:bg-bg-cream/60 text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
-            title="Refresh"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-
-          <Link
-            to="/admin/production"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-btn bg-brand-blue hover:bg-brand-blue-dark text-white text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer"
-          >
-            <PlusCircle size={15} />
-            <span>Produksi</span>
-          </Link>
-
-          <Link
-            to="/admin/stock-out"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-btn bg-brand-gold hover:bg-brand-gold-dark text-white text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer"
-          >
-            <ArrowUpRight size={15} />
-            <span>Stok Keluar</span>
-          </Link>
-        </div>
-      </div>
 
       {/* 2. KPI METRIC CARDS (5 Cards) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
@@ -780,9 +743,9 @@ export default function AdminDashboard() {
               <div className="text-[10px] text-emerald-800/80">Masuk Freezer</div>
             </div>
             <div className="p-3 bg-bg-cream/40 rounded-2xl border border-bg-cream-dark/50 text-center">
-              <div className="text-[10px] uppercase font-bold text-text-secondary">Sisa Kuota Normal</div>
+              <div className="text-[10px] uppercase font-bold text-text-secondary">Sisa Target</div>
               <div className="text-lg font-black font-heading text-text-primary mt-0.5">{remainingNormalLots} Lot</div>
-              <div className="text-[10px] text-text-secondary">Tersedia</div>
+              <div className="text-[10px] text-text-secondary">Belum Selesai</div>
             </div>
           </div>
         </div>

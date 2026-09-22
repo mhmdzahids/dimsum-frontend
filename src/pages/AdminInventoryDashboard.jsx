@@ -309,23 +309,8 @@ export default function AdminInventoryDashboard() {
                   <h2 className="text-base font-bold text-text-primary font-heading">
                     Kapasitas Dapur Produksi Hari Ini
                   </h2>
-                  <p className="text-xs text-text-secondary">Target harian normal 20 Lot (500 pcs) • Maks lembur 24 Lot</p>
                 </div>
               </div>
-              <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${todayProd.completed_lots > 20
-                ? 'bg-amber-100 text-amber-800 border-amber-200'
-                : todayProd.completed_lots === 0
-                  ? 'bg-gray-100 text-gray-600 border-gray-200'
-                  : todayProd.completed_lots >= 15
-                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                    : 'bg-blue-100 text-blue-800 border-blue-200'
-                }`}>
-                {todayProd.completed_lots > 20
-                  ? 'Mode Lembur'
-                  : todayProd.completed_lots === 0
-                    ? 'Belum Ada Produksi'
-                    : `${capacityPct}% Tercapai`}
-              </span>
             </div>
 
             {/* Gauge Progress Bar */}
@@ -376,12 +361,16 @@ export default function AdminInventoryDashboard() {
                 </div>
               </div>
               <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-center">
-                <div className="text-xs text-text-secondary">Sisa Kuota Normal</div>
+                <div className="text-xs text-text-secondary">Sisa Target</div>
                 <div className="text-base font-bold text-brand-blue font-heading mt-0.5">
                   {Math.max(0, todayProd.capacity_lots - todayProd.completed_lots)} Lot
                 </div>
               </div>
             </div>
+
+            <p className="text-xs text-text-secondary mt-3">
+              Target harian normal 20 Lot (500 pcs) • Maks lembur 24 Lot
+            </p>
           </div>
 
           <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between">
