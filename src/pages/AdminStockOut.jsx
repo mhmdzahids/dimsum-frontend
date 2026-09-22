@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ArrowUpRight, 
-  ShoppingBag, 
-  Video, 
-  Briefcase, 
-  Store, 
-  Trash2, 
-  CheckCircle2, 
-  AlertCircle, 
-  RefreshCw, 
-  X, 
-  Layers, 
-  History, 
+import {
+  ArrowUpRight,
+  ShoppingBag,
+  Video,
+  Briefcase,
+  Store,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  X,
+  Layers,
+  History,
   Search,
   Sparkles,
   ArrowRight,
@@ -187,11 +187,10 @@ export default function AdminStockOut() {
                       type="button"
                       key={ch.id}
                       onClick={() => setSelectedChannel(ch.id)}
-                      className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all ${
-                        isSelected 
-                          ? 'border-orange-500 bg-orange-50 text-orange-950 ring-1 ring-orange-400 font-bold' 
+                      className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all ${isSelected
+                          ? 'border-orange-500 bg-orange-50 text-orange-950 ring-1 ring-orange-400 font-bold'
                           : 'border-gray-200 bg-white text-text-secondary hover:bg-gray-50 font-medium'
-                      }`}
+                        }`}
                     >
                       <Icon size={16} className={isSelected ? 'text-orange-600' : 'text-gray-400'} />
                       <span className="text-[11px] leading-tight line-clamp-1">{ch.name}</span>
@@ -226,11 +225,10 @@ export default function AdminStockOut() {
                       {selectedProduct.stock_qty} Pcs (~{Math.floor(selectedProduct.stock_qty / 25)} Lot)
                     </span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold ${
-                    selectedProduct.buffer_status === 'critical' ? 'bg-red-100 text-red-800 border-red-200' :
-                    selectedProduct.buffer_status === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                    'bg-emerald-100 text-emerald-800 border-emerald-200'
-                  }`}>
+                  <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold ${selectedProduct.buffer_status === 'critical' ? 'bg-red-100 text-red-800 border-red-200' :
+                      selectedProduct.buffer_status === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                        'bg-emerald-100 text-emerald-800 border-emerald-200'
+                    }`}>
                     {selectedProduct.buffer_label}
                   </span>
                 </div>
@@ -311,9 +309,8 @@ export default function AdminStockOut() {
             {selectedProduct && (
               <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex justify-between items-center text-xs">
                 <span className="text-text-secondary">Estimasi Sisa Stok:</span>
-                <span className={`font-bold ${
-                  (selectedProduct.stock_qty - calculatedQty) < 70 ? 'text-red-600 font-extrabold' : 'text-emerald-700'
-                }`}>
+                <span className={`font-bold ${(selectedProduct.stock_qty - calculatedQty) < 70 ? 'text-red-600 font-extrabold' : 'text-emerald-700'
+                  }`}>
                   {selectedProduct.stock_qty - calculatedQty} Pcs
                   {(selectedProduct.stock_qty - calculatedQty) < 70 && ' (Akan Kritis!)'}
                 </span>
@@ -342,12 +339,6 @@ export default function AdminStockOut() {
             </span>
           </div>
 
-          <div className="mb-4 p-3 rounded-2xl bg-blue-50/70 border border-blue-100 flex items-start gap-2.5 text-[11px] text-blue-900 leading-relaxed">
-            <Info size={15} className="shrink-0 text-blue-600 mt-0.5" />
-            <span>
-              <strong>Alokasi Lot Otomatis (FIFO):</strong> Pengeluaran stok memotong dari Lot tertua di freezer. Jika satu pesanan mengambil dari beberapa Lot berbeda, sistem menampilkan rincian alokasi per-Lot agar fisik tiap batch tetap terlacak.
-            </span>
-          </div>
 
           {loading ? (
             <div className="p-12 text-center text-text-secondary text-xs flex flex-col items-center gap-2">
@@ -375,47 +366,47 @@ export default function AdminStockOut() {
                     {transactions
                       .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
                       .map((tx) => {
-                      const channelMeta = CHANNELS.find(c => c.id === tx.channel) || {
-                        name: tx.channel || 'Lainnya',
-                        badge: 'bg-gray-100 text-gray-700'
-                      };
+                        const channelMeta = CHANNELS.find(c => c.id === tx.channel) || {
+                          name: tx.channel || 'Lainnya',
+                          badge: 'bg-gray-100 text-gray-700'
+                        };
 
-                      return (
-                        <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="py-3 px-3 text-text-secondary text-[11px]">
-                            {tx.created_at ? new Date(tx.created_at).toLocaleDateString('id-ID', {
-                              day: 'numeric',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            }) : '-'}
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-bold ${channelMeta.badge}`}>
-                              {channelMeta.name}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 font-semibold text-text-primary">
-                            <div>{tx.product_name}</div>
-                            {tx.batch_code ? (
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <span className="text-[10px] font-mono font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
-                                  Lot: {tx.batch_code}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-[10px] text-gray-400 italic">Stok Awal (Non-Lot)</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-3 text-right font-extrabold text-red-600">
-                            -{tx.quantity} pcs
-                          </td>
-                          <td className="py-3 px-3 text-text-secondary text-[11px] italic max-w-xs truncate">
-                            {tx.notes || '-'}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                        return (
+                          <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="py-3 px-3 text-text-secondary text-[11px]">
+                              {tx.created_at ? new Date(tx.created_at).toLocaleDateString('id-ID', {
+                                day: 'numeric',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              }) : '-'}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-bold ${channelMeta.badge}`}>
+                                {channelMeta.name}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 font-semibold text-text-primary">
+                              <div>{tx.product_name}</div>
+                              {tx.batch_code ? (
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <span className="text-[10px] font-mono font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                                    Lot: {tx.batch_code}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-gray-400 italic">Stok Awal (Non-Lot)</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right font-extrabold text-red-600">
+                              -{tx.quantity} pcs
+                            </td>
+                            <td className="py-3 px-3 text-text-secondary text-[11px] italic max-w-xs truncate">
+                              {tx.notes || '-'}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -434,8 +425,8 @@ export default function AdminStockOut() {
               )}
             </>
           )}
-          </div>
         </div>
+      </div>
     </div>
   );
 }

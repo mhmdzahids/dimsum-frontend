@@ -117,11 +117,14 @@ export default function AdminDashboard() {
 
   // Dynamic SVG Chart Geometry Calculations
   const chartWidth = 500;
+  const chartHeight = 200;
   const padX = 38;
   const usableWidth = chartWidth - padX * 2;
   const baselineY = 170;
   const paddingTop = 30;
   const heightRange = baselineY - paddingTop;
+  const nDays = chartDays.length;
+  const stepX = nDays > 1 ? usableWidth / (nDays - 1) : usableWidth;
 
   // Find max value in dataset to determine scale ceiling
   const rawMax = Math.max(50, ...chartDays.map(d => Math.max(d.inQty || 0, d.outQty || 0)));
@@ -133,8 +136,6 @@ export default function AdminDashboard() {
     const ratio = Math.sqrt(Math.min(val, scaleCeiling)) / Math.sqrt(scaleCeiling);
     return baselineY - ratio * heightRange;
   };
-
-  const nDays = chartDays.length;
   const inPoints = chartDays.map((d, i) => {
     const x = padX + (nDays > 1 ? (i / (nDays - 1)) * usableWidth : usableWidth / 2);
     const y = getYPos(d.inQty || 0);
@@ -357,7 +358,10 @@ export default function AdminDashboard() {
           </div>
 
           {/* SVG Line / Area Chart */}
-          <div className="relative w-full h-64 pt-2 select-none">
+          <div 
+            className="relative w-full h-64 pt-2 select-none"
+            onMouseLeave={() => setHoveredPoint(null)}
+          >
             <svg viewBox="0 0 500 200" className="w-full h-full overflow-visible">
               <defs>
                 {/* Brand Blue for 'Masuk' - subtle transparency matching design system */}
@@ -481,58 +485,152 @@ export default function AdminDashboard() {
                 return null;
               })}
 
-              {/* Dynamic Data Point Circles directly centered on spline */}
+              {/* Interactive Day Hover Zones */}
               {chartDays.map((d, i) => {
                 const inPt = inPoints[i];
                 const outPt = outPoints[i];
+                const halfStep = stepX / 2;
                 return (
-                  <g key={d.day}>
-                    {/* Blue In Circle */}
-                    <circle
-                      cx={inPt.x}
-                      cy={inPt.y}
-                      r="4"
-                      fill="#FFFFFF"
-                      stroke="#4685ac"
-                      strokeWidth="2"
-                      className="cursor-pointer hover:r-5 transition-all"
-                      onMouseEnter={() => setHoveredPoint({ ...d, x: inPt.x, inY: inPt.y, outY: outPt.y })}
-                      onMouseLeave={() => setHoveredPoint(null)}
-                    />
-                    {/* Gold Out Circle */}
-                    <circle
-                      cx={outPt.x}
-                      cy={outPt.y}
-                      r="4"
-                      fill="#FFFFFF"
-                      stroke="#C9A23D"
-                      strokeWidth="2"
-                      className="cursor-pointer hover:r-5 transition-all"
-                      onMouseEnter={() => setHoveredPoint({ ...d, x: outPt.x, inY: inPt.y, outY: outPt.y })}
-                      onMouseLeave={() => setHoveredPoint(null)}
-                    />
-                  </g>
+                  <rect
+                    key={`hover-zone-${d.day}`}
+                    x={inPt.x - halfStep}
+                    y={0}
+                    width={stepX}
+                    height={chartHeight}
+                    fill="transparent"
+                    className="cursor-pointer"
+                    onMouseEnter={() => setHoveredPoint({
+                      ...d,
+                      index: i,
+                      x: inPt.x,
+                      inPt,
+                      outPt,
+                      targetY: Math.min(inPt.y, outPt.y)
+                    })}
+                  />
                 );
               })}
+
+              {/* Dynamic Hover Indicator & Circles - Visible ONLY when hovering */}
+              {hoveredPoint && (
+                <g key="hover-effects" className="pointer-events-none">
+                  {/* Vertical highlight band */}
+                  <rect
+                    x={hoveredPoint.x - stepX / 2.8}
+                    y={paddingTop - 10}
+                    width={(stepX / 2.8) * 2}
+                    height={baselineY - paddingTop + 20}
+                    rx="8"
+                    fill="#4685ac"
+                    fillOpacity="0.08"
+                  />
+
+                  {/* Vertical guideline */}
+                  <line
+                    x1={hoveredPoint.x}
+                    y1={paddingTop - 5}
+                    x2={hoveredPoint.x}
+                    y2={baselineY + 5}
+                    stroke="#4685ac"
+                    strokeWidth="1.2"
+                    strokeDasharray="3 3"
+                    strokeOpacity="0.45"
+                  />
+
+                  {/* Circles appearing on hover */}
+                  {/* Blue circle on 'Masuk' curve */}
+                  <circle
+                    cx={hoveredPoint.inPt.x}
+                    cy={hoveredPoint.inPt.y}
+                    r="5.5"
+                    fill="#FFFFFF"
+                    stroke="#4685ac"
+                    strokeWidth="3.5"
+                    className="drop-shadow-sm"
+                  />
+
+                  {/* Gold circle on 'Stok Keluar' curve */}
+                  <circle
+                    cx={hoveredPoint.outPt.x}
+                    cy={hoveredPoint.outPt.y}
+                    r="5.5"
+                    fill="#FFFFFF"
+                    stroke="#C9A23D"
+                    strokeWidth="3.5"
+                    className="drop-shadow-sm"
+                  />
+                </g>
+              )}
             </svg>
 
-            {/* Tooltip Overlay */}
-            {hoveredPoint && (
-              <div
-                className="absolute -top-4 bg-text-primary text-white text-[11px] py-2 px-3 rounded-xl shadow-elevated pointer-events-none transform -translate-x-1/2 z-10"
-                style={{ left: `${(hoveredPoint.x / chartWidth) * 100}%` }}
-              >
-                <div className="font-bold border-b border-white/20 pb-0.5 mb-1">{hoveredPoint.day}</div>
-                <div className="text-brand-blue-light font-medium flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-brand-blue inline-block"></span>
-                  Masuk: +{hoveredPoint.inQty} pcs
+            {/* Tooltip Overlay positioned precisely above the hovered circle */}
+            {hoveredPoint && (() => {
+              const isSpike = (hoveredPoint.inQty || 0) >= 300;
+              const xPercent = (hoveredPoint.x / chartWidth) * 100;
+              const yPercent = (hoveredPoint.targetY / chartHeight) * 100;
+
+              // Horizontal offset & arrow alignment to stay cleanly inside card
+              let xTransform = '-50%';
+              let arrowLeft = '50%';
+              if (hoveredPoint.index === 0) {
+                xTransform = '-18%';
+                arrowLeft = '18%';
+              } else if (hoveredPoint.index === nDays - 1) {
+                xTransform = '-82%';
+                arrowLeft = '82%';
+              }
+
+              return (
+                <div
+                  className="absolute pointer-events-none z-20 transition-all duration-150 ease-out"
+                  style={{
+                    left: `${xPercent}%`,
+                    top: `${yPercent}%`,
+                    transform: `translate(${xTransform}, -100%)`,
+                    marginTop: isSpike ? '-32px' : '-12px'
+                  }}
+                >
+                  <div className="relative bg-[#182230] text-white py-2.5 px-3.5 rounded-2xl shadow-2xl border border-slate-700/80 min-w-[165px] select-none">
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-slate-700/80 pb-1.5 mb-2">
+                      <span className="font-bold text-xs text-white tracking-wide">{hoveredPoint.day}</span>
+                      <span className="text-[9px] text-gray-400 font-mono tracking-widest leading-none">•••</span>
+                    </div>
+
+                    {/* Metrics Grid */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-gray-300 font-medium">
+                          <span className="w-2 h-2 rounded-full bg-[#4685ac] inline-block shrink-0" />
+                          <span>Masuk</span>
+                        </div>
+                        <div className="text-sm font-extrabold text-white font-heading mt-0.5">
+                          +{hoveredPoint.inQty.toLocaleString('id-ID')}{' '}
+                          <span className="text-[10px] font-normal text-gray-400">pcs</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-gray-300 font-medium">
+                          <span className="w-2 h-2 rounded-full bg-[#C9A23D] inline-block shrink-0" />
+                          <span>Keluar</span>
+                        </div>
+                        <div className="text-sm font-extrabold text-white font-heading mt-0.5">
+                          -{hoveredPoint.outQty.toLocaleString('id-ID')}{' '}
+                          <span className="text-[10px] font-normal text-gray-400">pcs</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Downward Pointer Arrow */}
+                    <div
+                      className="absolute -bottom-1.5 w-3 h-3 bg-[#182230] border-r border-b border-slate-700/80 rotate-45"
+                      style={{ left: arrowLeft, transform: 'translateX(-50%) rotate(45deg)' }}
+                    />
+                  </div>
                 </div>
-                <div className="text-brand-gold-light font-medium flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-brand-gold inline-block"></span>
-                  Keluar: -{hoveredPoint.outQty} pcs
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* X-Axis Labels */}
@@ -802,7 +900,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="min-w-0">
                     <div className="text-xs font-bold text-text-primary flex items-center gap-2">
-                      <span>{isOut ? 'Pengeluaran Stok' : 'Produksi Lot Masuk'}</span>
+                      <span>{isOut ? 'Stok Keluar' : 'Produksi Stok Masuk'}</span>
                       {tx.batch_code && (
                         <span className="text-[10px] font-mono text-gray-500 bg-gray-100 px-1.5 py-0.2 rounded">
                           {tx.batch_code}
