@@ -358,11 +358,11 @@ export default function AdminDashboard() {
           </div>
 
           {/* SVG Line / Area Chart */}
-          <div 
-            className="relative w-full h-64 pt-2 select-none"
+          <div
+            className="relative w-full h-60 select-none"
             onMouseLeave={() => setHoveredPoint(null)}
           >
-            <svg viewBox="0 0 500 200" className="w-full h-full overflow-visible">
+            <svg viewBox="0 0 500 200" preserveAspectRatio="none" className="w-full h-full overflow-visible">
               <defs>
                 {/* Brand Blue for 'Masuk' - subtle transparency matching design system */}
                 <linearGradient id="gradBlue" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -587,10 +587,10 @@ export default function AdminDashboard() {
                     left: `${xPercent}%`,
                     top: `${yPercent}%`,
                     transform: `translate(${xTransform}, -100%)`,
-                    marginTop: isSpike ? '-32px' : '-12px'
+                    marginTop: isSpike ? '-40px' : '-28px'
                   }}
                 >
-                  <div className="relative bg-[#182230] text-white py-2.5 px-3.5 rounded-2xl shadow-2xl border border-slate-700/80 min-w-[165px] select-none">
+                  <div className="relative bg-[#182230] text-white py-2.5 px-3.5 rounded-2xl shadow-2xl border border-slate-700/80 min-w-[165px] select-none overflow-visible">
                     {/* Header */}
                     <div className="flex items-center justify-between border-b border-slate-700/80 pb-1.5 mb-2">
                       <span className="font-bold text-xs text-white tracking-wide">{hoveredPoint.day}</span>
@@ -624,7 +624,7 @@ export default function AdminDashboard() {
 
                     {/* Downward Pointer Arrow */}
                     <div
-                      className="absolute -bottom-1.5 w-3 h-3 bg-[#182230] border-r border-b border-slate-700/80 rotate-45"
+                      className="absolute -bottom-[7px] w-3.5 h-3.5 bg-[#182230] border-r border-b border-slate-700/80 pointer-events-none z-10"
                       style={{ left: arrowLeft, transform: 'translateX(-50%) rotate(45deg)' }}
                     />
                   </div>
