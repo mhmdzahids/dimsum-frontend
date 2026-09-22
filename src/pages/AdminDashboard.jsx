@@ -81,7 +81,7 @@ export default function AdminDashboard() {
 
   // Compute metrics from summaryData
   const totalStockPcs = summaryData?.total_stock_pcs ?? 2450;
-  const totalStockLots = Math.round(totalStockPcs / 25);
+  const totalStockLots = summaryData?.total_stock_lots ?? Math.floor(totalStockPcs / 25);
   const todayProd = summaryData?.today_production || {
     completed_lots: 16,
     planned_lots: 18,
@@ -794,7 +794,7 @@ export default function AdminDashboard() {
                           {p.stock_qty} pcs
                         </div>
                         <div className="text-[10px] text-text-secondary">
-                          ~{Math.round(p.stock_qty / 25)} Lot
+                          ~{p.stock_lots ?? Math.floor(p.stock_qty / 25)} Lot
                         </div>
                       </div>
 
