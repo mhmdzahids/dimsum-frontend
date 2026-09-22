@@ -18,10 +18,10 @@ import {
 import api from '../api/client';
 
 const ROLE_LABELS = {
-  admin: { title: 'Owner / Admin', badge: 'bg-purple-100 text-purple-700 border-purple-200' },
-  inventory: { title: 'Inventory Control (PPSI)', badge: 'bg-blue-100 text-blue-700 border-blue-200' },
-  checker: { title: 'Checker / QC Produksi', badge: 'bg-amber-100 text-amber-800 border-amber-200' },
-  staff: { title: 'Staff Kasir / Pickup', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' }
+  admin: { title: 'Owner', badge: 'bg-purple-100 text-purple-700 border-purple-200' },
+  inventory: { title: 'Inventory', badge: 'bg-blue-100 text-blue-700 border-blue-200' },
+  checker: { title: 'Checker', badge: 'bg-amber-100 text-amber-800 border-amber-200' },
+  staff: { title: 'Kasir', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' }
 };
 
 export default function AdminUsers() {
@@ -131,10 +131,10 @@ export default function AdminUsers() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary font-heading flex items-center gap-2.5">
             <Users className="text-brand-blue" size={26} />
-            <span>Manajemen Tim & Hak Akses</span>
+            <span>Tim</span>
           </h1>
           <p className="text-xs text-text-secondary mt-1">
-            Kelola hak akses operasional untuk Owner, Inventory Control, Checker Produksi, dan Kasir.
+            Kelola akun dan hak akses tim.
           </p>
         </div>
 
@@ -152,7 +152,7 @@ export default function AdminUsers() {
             className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-blue hover:bg-brand-blue/90 text-white rounded-xl text-xs font-semibold shadow-xs transition-all"
           >
             <UserPlus size={16} />
-            <span>Tambah Anggota Tim</span>
+            <span>Tambah Anggota</span>
           </button>
         </div>
       </div>
@@ -228,10 +228,10 @@ export default function AdminUsers() {
             <table className="w-full text-left border-collapse text-xs font-body">
               <thead>
                 <tr className="bg-gray-50/80 border-b border-gray-200 text-text-secondary font-semibold">
-                  <th className="py-3 px-4">Nama Lengkap</th>
-                  <th className="py-3 px-4">Kontak (Email / No. WA)</th>
-                  <th className="py-3 px-4">Peran (Role)</th>
-                  <th className="py-3 px-4 text-right">Tindakan</th>
+                  <th className="py-3 px-4">Nama</th>
+                  <th className="py-3 px-4">Kontak</th>
+                  <th className="py-3 px-4">Peran</th>
+                  <th className="py-3 px-4 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -262,10 +262,10 @@ export default function AdminUsers() {
                               disabled={updatingRole}
                               className="text-xs px-2 py-1 rounded-lg border border-brand-blue bg-white focus:outline-none"
                             >
-                              <option value="admin">Owner / Admin</option>
-                              <option value="inventory">Inventory Control (PPSI)</option>
-                              <option value="checker">Checker / QC Produksi</option>
-                              <option value="staff">Staff Kasir / Pickup</option>
+                              <option value="admin">Owner</option>
+                              <option value="inventory">Inventory</option>
+                              <option value="checker">Checker</option>
+                              <option value="staff">Kasir</option>
                             </select>
                             <button
                               onClick={() => {
@@ -316,7 +316,7 @@ export default function AdminUsers() {
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-base font-bold text-text-primary font-heading flex items-center gap-2">
                 <UserPlus size={18} className="text-brand-blue" />
-                <span>Tambah Anggota Tim Baru</span>
+                <span>Tambah Anggota Baru</span>
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -345,7 +345,7 @@ export default function AdminUsers() {
                     required
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    placeholder="Contoh: Ayu / Om Yosi"
+                    placeholder="Nama lengkap"
                     className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none"
                   />
                 </div>
@@ -362,7 +362,7 @@ export default function AdminUsers() {
                     required
                     value={formEmail}
                     onChange={(e) => setFormEmail(e.target.value)}
-                    placeholder="ayu@dimsum.id"
+                    placeholder="nama@dimsum.id"
                     className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none"
                   />
                 </div>
@@ -386,17 +386,17 @@ export default function AdminUsers() {
 
               <div>
                 <label className="block text-text-primary font-semibold mb-1">
-                  Peran / Tanggung Jawab *
+                  Peran *
                 </label>
                 <select
                   value={formRole}
                   onChange={(e) => setFormRole(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none font-semibold text-xs"
                 >
-                  <option value="inventory">Inventory Control (PPSI - Lala & Ayu: Rencana Produksi & Buffer)</option>
-                  <option value="checker">Checker / QC Produksi (Om Yosi: Validasi Hasil & Cetak Lot)</option>
-                  <option value="staff">Staff Kasir / Pickup (Verifikasi scan pengambilan order)</option>
-                  <option value="admin">Owner / Super Admin (Akses penuh ke semua fitur)</option>
+                  <option value="inventory">Inventory (Rencana produksi & stok)</option>
+                  <option value="checker">Checker (Verifikasi fisik & cetak label)</option>
+                  <option value="staff">Kasir (Scan pengambilan & pickup)</option>
+                  <option value="admin">Owner (Akses penuh)</option>
                 </select>
               </div>
 

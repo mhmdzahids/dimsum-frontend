@@ -1,24 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Factory, 
-  PlusCircle, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle, 
-  RefreshCw, 
-  Printer, 
-  X, 
-  Sparkles, 
-  Layers, 
-  Calendar, 
-  Check, 
-  ShieldCheck, 
-  FileText, 
-  Ban, 
+import {
+  Factory,
+  PlusCircle,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  RefreshCw,
+  Printer,
+  X,
+  Sparkles,
+  Layers,
+  Calendar,
+  Check,
+  ShieldCheck,
+  FileText,
+  Ban,
   ArrowRight
 } from 'lucide-react';
 import api from '../api/client';
 import LotStickerModal from '../components/inventory/LotStickerModal';
+import Pagination from '../components/ui/Pagination';
 
 const BATCH_STATUS_META = {
   planned: { label: 'Menunggu Verifikasi Checker', color: 'bg-amber-100 text-amber-800 border-amber-200' },
@@ -33,6 +34,8 @@ export default function AdminProduction() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   // Plan Modal State
   const [showPlanModal, setShowPlanModal] = useState(false);
@@ -98,7 +101,7 @@ export default function AdminProduction() {
       }, { auth: 'admin' });
 
       if (res.success) {
-        setSuccessMsg(`Rencana produksi ${res.data.batch_code} (${res.data.planned_lots} Lot = ${res.data.planned_lots * 25} Produk) berhasil dibuat! Menunggu verifikasi Om Yosi/Checker.`);
+        setSuccessMsg(`Rencana ${res.data.batch_code} berhasil dibuat.`);
         setShowPlanModal(false);
         fetchData();
       } else {
@@ -125,7 +128,7 @@ export default function AdminProduction() {
 
       if (res.success) {
         const completedBatch = res.data;
-        setSuccessMsg(`Produksi ${completedBatch.batch_code} berhasil diverifikasi! ${completedBatch.produced_qty} produk resmi masuk stok freezer.`);
+        setSuccessMsg(`Produksi ${completedBatch.batch_code} terverifikasi — ${completedBatch.produced_qty} pcs masuk stok.`);
         setConfirmingBatch(null);
         fetchData();
         // Immediately open sticker print modal for the checker!
@@ -166,18 +169,10 @@ export default function AdminProduction() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full bg-brand-gold/15 text-brand-gold border border-brand-gold/30 text-[11px] font-bold">
-              1 Lot = 25 Produk (Pcs/Mika)
-            </span>
-          </div>
           <h1 className="text-2xl font-bold text-text-primary font-heading flex items-center gap-2.5">
             <Factory className="text-brand-blue" size={26} />
-            <span>Portal Produksi Online</span>
+            <span>Produksi</span>
           </h1>
-          <p className="text-xs text-text-secondary mt-1">
-            Alur 2-Langkah: Perencanaan Harian (Ayu & Lala / PPSI) ➡️ Verifikasi Fisik & Cetak QR Lot (Om Yosi / Checker).
-          </p>
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -185,7 +180,7 @@ export default function AdminProduction() {
             onClick={fetchData}
             disabled={loading}
             className="p-2.5 rounded-xl border border-gray-200 bg-white text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-            title="Muat ulang data"
+            title="Refresh"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
@@ -194,7 +189,7 @@ export default function AdminProduction() {
             className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-blue hover:bg-brand-blue/90 text-white rounded-xl text-xs font-semibold shadow-xs transition-all"
           >
             <PlusCircle size={16} />
-            <span>Buat Rencana Lot Baru</span>
+            <span>Rencana Baru</span>
           </button>
         </div>
       </div>
@@ -228,25 +223,23 @@ export default function AdminProduction() {
       <div className="flex items-center gap-2 border-b border-gray-200 mb-6 pb-2">
         <button
           onClick={() => setActiveTab('planner')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
-            activeTab === 'planner'
-              ? 'bg-brand-blue text-white shadow-xs'
-              : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${activeTab === 'planner'
+            ? 'bg-brand-blue text-white shadow-xs'
+            : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
+            }`}
         >
           <FileText size={15} />
-          <span>Rencana Produksi & Riwayat ({batches.length})</span>
+          <span>Rencana ({batches.length})</span>
         </button>
         <button
           onClick={() => setActiveTab('checker')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors relative ${
-            activeTab === 'checker'
-              ? 'bg-amber-700 text-white shadow-xs'
-              : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors relative ${activeTab === 'checker'
+            ? 'bg-amber-700 text-white shadow-xs'
+            : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
+            }`}
         >
           <ShieldCheck size={15} />
-          <span>Verifikasi Checker (Om Yosi)</span>
+          <span>Verifikasi</span>
           {pendingBatches.length > 0 && (
             <span className="ml-1 px-1.5 py-0.2 bg-red-500 text-white rounded-full text-[10px] font-bold">
               {pendingBatches.length}
@@ -271,7 +264,7 @@ export default function AdminProduction() {
                 </span>
               </div>
               <span className="text-[10px] text-amber-700 font-semibold block mt-1">
-                Menunggu konfirmasi Checker
+                Menunggu verifikasi
               </span>
             </div>
 
@@ -286,7 +279,7 @@ export default function AdminProduction() {
                 </span>
               </div>
               <span className="text-[10px] text-emerald-700 font-semibold block mt-1">
-                Stok siap jual / pickup
+                Siap jual
               </span>
             </div>
 
@@ -297,19 +290,19 @@ export default function AdminProduction() {
                 <span className="text-xs text-text-secondary">(500 Pcs)</span>
               </div>
               <span className="text-[10px] text-text-secondary block mt-1">
-                Batas lembur maks: 24 Lot (600 Pcs)
+                Maks lembur: 24 Lot
               </span>
             </div>
           </div>
 
           {/* Batches Table */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-              <h3 className="text-sm font-bold text-text-primary font-heading">
+          <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-xs">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-base font-bold text-text-primary font-heading">
                 Daftar Batch Produksi
               </h3>
               <span className="text-xs text-text-secondary">
-                Menampilkan {batches.length} batch terakhir
+                {batches.length} batch tercatat
               </span>
             </div>
 
@@ -323,101 +316,118 @@ export default function AdminProduction() {
                 Belum ada batch produksi yang dibuat. Klik "Buat Rencana Lot Baru" untuk memulai.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs font-body">
-                  <thead>
-                    <tr className="bg-gray-50/80 border-b border-gray-200 text-text-secondary font-semibold">
-                      <th className="py-3 px-4">Kode Batch</th>
-                      <th className="py-3 px-4">Produk Dimsum</th>
-                      <th className="py-3 px-4 text-center">Rencana Lot</th>
-                      <th className="py-3 px-4 text-center">Hasil Aktual</th>
-                      <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4">Pencatat / Catatan</th>
-                      <th className="py-3 px-4 text-right">Tindakan</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {batches.map((batch) => {
-                      const statusMeta = BATCH_STATUS_META[batch.status] || { label: batch.status, color: 'bg-gray-100 text-gray-700' };
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs font-body">
+                    <thead>
+                      <tr className="bg-gray-50/80 border-b border-gray-200 text-text-secondary font-semibold">
+                        <th className="py-3 px-4">Kode Batch</th>
+                        <th className="py-3 px-4">Produk Dimsum</th>
+                        <th className="py-3 px-4 text-center">Rencana Lot</th>
+                        <th className="py-3 px-4 text-center">Hasil Aktual</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4">Pencatat / Catatan</th>
+                        <th className="py-3 px-4 text-right">Tindakan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {batches
+                        .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+                        .map((batch) => {
+                          const statusMeta = BATCH_STATUS_META[batch.status] || { label: batch.status, color: 'bg-gray-100 text-gray-700' };
 
-                      return (
-                        <tr key={batch.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="py-3.5 px-4 font-mono font-bold text-text-primary">
-                            {batch.batch_code}
-                          </td>
-                          <td className="py-3.5 px-4 font-semibold text-text-primary">
-                            <div>{batch.product_name || 'Dimsum'}</div>
-                            <span className="text-[10px] text-gray-600 font-mono">{batch.product_sku}</span>
-                          </td>
-                          <td className="py-3.5 px-4 text-center">
-                            <span className="font-bold text-text-primary">{batch.planned_lots} Lot</span>
-                            <span className="block text-[10px] text-text-secondary">({batch.planned_lots * 25} pcs)</span>
-                          </td>
-                          <td className="py-3.5 px-4 text-center">
-                            {batch.status === 'completed' ? (
-                              <div>
-                                <span className="font-bold text-emerald-700">{batch.produced_qty} Pcs</span>
-                                <span className="block text-[10px] text-emerald-600">
-                                  ({batch.actual_lots} Lot{batch.loose_qty > 0 ? ` + ${batch.loose_qty} ecer` : ''})
+                          return (
+                            <tr key={batch.id} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="py-3.5 px-4 font-mono font-bold text-text-primary">
+                                {batch.batch_code}
+                              </td>
+                              <td className="py-3.5 px-4 font-semibold text-text-primary">
+                                <div>{batch.product_name || 'Dimsum'}</div>
+                                <span className="text-[10px] text-gray-600 font-mono">{batch.product_sku}</span>
+                              </td>
+                              <td className="py-3.5 px-4 text-center">
+                                <span className="font-bold text-text-primary">{batch.planned_lots} Lot</span>
+                                <span className="block text-[10px] text-text-secondary">({batch.planned_lots * 25} pcs)</span>
+                              </td>
+                              <td className="py-3.5 px-4 text-center">
+                                {batch.status === 'completed' ? (
+                                  <div>
+                                    <span className="font-bold text-emerald-700">{batch.produced_qty} Pcs</span>
+                                    <span className="block text-[10px] text-emerald-600">
+                                      ({batch.actual_lots} Lot{batch.loose_qty > 0 ? ` + ${batch.loose_qty} ecer` : ''})
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-600">-</span>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-bold ${statusMeta.color}`}>
+                                  {statusMeta.label}
                                 </span>
-                              </div>
-                            ) : (
-                              <span className="text-gray-600">-</span>
-                            )}
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-bold ${statusMeta.color}`}>
-                              {statusMeta.label}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4 text-text-secondary text-[11px]">
-                            <div>Planner: <span className="font-semibold text-text-primary">{batch.creator_name || 'Admin'}</span></div>
-                            {batch.checker_name && <div>QC: <span className="font-semibold text-emerald-700">{batch.checker_name}</span></div>}
-                            {batch.notes && <div className="text-[10px] text-gray-600 italic mt-0.5">{batch.notes}</div>}
-                          </td>
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              {batch.status === 'completed' && (
-                                <button
-                                  onClick={() => setSelectedStickerBatch(batch)}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-brand-blue text-brand-blue hover:bg-brand-blue/10 text-[11px] font-semibold transition-colors"
-                                  title="Cetak Stiker QR Label"
-                                >
-                                  <Printer size={13} />
-                                  <span>Cetak QR Lot</span>
-                                </button>
-                              )}
-                              {batch.status === 'planned' && (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      setConfirmingBatch(batch);
-                                      setActualLots(batch.planned_lots);
-                                      setLooseQty(0);
-                                      setConfirmError('');
-                                    }}
-                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-[11px] font-semibold transition-colors shadow-xs"
-                                  >
-                                    <Check size={13} />
-                                    <span>QC / Konfirmasi</span>
-                                  </button>
-                                  <button
-                                    onClick={() => handleCancelBatch(batch.id)}
-                                    className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Batalkan Rencana"
-                                  >
-                                    <Ban size={14} />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                              </td>
+                              <td className="py-3.5 px-4 text-text-secondary text-[11px]">
+                                <div>Planner: <span className="font-semibold text-text-primary">{batch.creator_name || 'Admin'}</span></div>
+                                {batch.checker_name && <div>QC: <span className="font-semibold text-emerald-700">{batch.checker_name}</span></div>}
+                                {batch.notes && <div className="text-[10px] text-gray-600 italic mt-0.5">{batch.notes}</div>}
+                              </td>
+                              <td className="py-3.5 px-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  {batch.status === 'completed' && (
+                                    <button
+                                      onClick={() => setSelectedStickerBatch(batch)}
+                                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-brand-blue text-brand-blue hover:bg-brand-blue/10 text-[11px] font-semibold transition-colors"
+                                      title="Cetak Stiker QR Label"
+                                    >
+                                      <Printer size={13} />
+                                      <span>Cetak QR</span>
+                                    </button>
+                                  )}
+                                  {batch.status === 'planned' && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          setConfirmingBatch(batch);
+                                          setActualLots(batch.planned_lots);
+                                          setLooseQty(0);
+                                          setConfirmError('');
+                                        }}
+                                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-[11px] font-semibold transition-colors shadow-xs"
+                                      >
+                                        <Check size={13} />
+                                        <span>QC / Konfirmasi</span>
+                                      </button>
+                                      <button
+                                        onClick={() => handleCancelBatch(batch.id)}
+                                        className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Batalkan Rencana"
+                                      >
+                                        <Ban size={14} />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination footer */}
+                {batches.length > ITEMS_PER_PAGE && (
+                  <div className="mt-4 pt-3 border-t border-gray-100 flex justify-end">
+                    <Pagination
+                      currentPage={currentPage}
+                      totalItems={batches.length}
+                      pageSize={ITEMS_PER_PAGE}
+                      onPageChange={(p) => setCurrentPage(p)}
+                      showInfo={false}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

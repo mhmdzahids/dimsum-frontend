@@ -438,11 +438,8 @@ export default function AdminScanQR() {
           <div>
             <h1 className="text-2xl font-bold font-heading text-text-primary flex items-center gap-2">
               <QrCode className="text-brand-gold" size={24} />
-              Scan QR Kasir & Pengujian Stok Produk
+              Scan QR
             </h1>
-            <p className="text-xs text-text-secondary mt-1">
-              Verifikasi pengambilan pesanan buyer via kamera HP atau scanner, dan pantau pengurangan stok secara real-time.
-            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -452,21 +449,12 @@ export default function AdminScanQR() {
               className="flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-gray-50 shadow-xs transition-colors"
             >
               <RefreshCw size={14} className={stockLoading ? 'animate-spin' : ''} />
-              Segarkan Data
+              Refresh
             </button>
           </div>
         </div>
 
-        {/* Info Security Alert Banner */}
-        <div className="bg-brand-blue/10 border border-brand-blue/20 rounded-2xl p-4 mb-6 text-brand-blue-dark flex items-start gap-3 shadow-xs">
-          <ShieldCheck size={22} className="text-brand-blue shrink-0 mt-0.5" />
-          <div className="text-xs leading-relaxed">
-            <span className="font-bold text-brand-blue-dark block mb-0.5">
-              Prinsip Integritas Stok & Kasir (P0 Architecture)
-            </span>
-            Stok produk otomatis dipotong & diamankan di database saat pembeli membuat pesanan (*checkout*). Saat kasir memverifikasi kode QR di halaman ini, pesanan ditandai sebagai <strong>Selesai (Completed)</strong> dan stok tetap terjaga tanpa pemotongan ganda (*no double-decrement*).
-          </div>
-        </div>
+
 
         {/* 1. LIVE STOCK MONITOR (Papan Pantau Stok Terkini) */}
         <section className="bg-white rounded-3xl p-6 border border-gray-200 shadow-xs mb-8">
@@ -474,11 +462,8 @@ export default function AdminScanQR() {
             <div>
               <h2 className="text-base font-bold font-heading text-text-primary flex items-center gap-2">
                 <Package size={18} className="text-brand-blue" />
-                Pemantau Stok Nyata Database (Live Stock)
+                Stok Terkini
               </h2>
-              <p className="text-xs text-text-secondary">
-                Jumlah stok aktual yang tersimpan di database saat ini.
-              </p>
             </div>
             <span className="text-xs px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-semibold flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -541,7 +526,7 @@ export default function AdminScanQR() {
                   </span>
                 </div>
                 <p className="text-xs text-text-secondary mb-4">
-                  Buat pesanan berbayar seketika untuk menguji bahwa stok berkurang saat checkout dan menghasilkan QR code pembeli untuk discan oleh kamera HP Anda.
+                  Buat pesanan tes untuk menguji scan QR.
                 </p>
 
                 {simError && (
@@ -602,7 +587,7 @@ export default function AdminScanQR() {
                     className="w-full py-2.5 bg-brand-gold hover:bg-brand-gold-dark text-white rounded-xl font-semibold text-xs transition-colors shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     <ShoppingBag size={15} />
-                    {simLoading ? 'Memproses Order...' : 'Buat Pesanan & Potong Stok (Test)'}
+                    {simLoading ? 'Memproses...' : 'Buat Pesanan Tes'}
                   </button>
                 </form>
 
@@ -622,7 +607,7 @@ export default function AdminScanQR() {
                     {/* Bukti Pengurangan Stok */}
                     <div className="bg-white p-3 rounded-xl border border-gray-200 mb-3 text-xs">
                       <div className="font-semibold text-text-primary mb-1">
-                        Hasil Bukti Uji Pengurangan Stok:
+                        Perubahan Stok:
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-center pt-1">
                         <div className="p-2 bg-gray-50 rounded-lg">
@@ -648,11 +633,8 @@ export default function AdminScanQR() {
 
                     {/* QR Code Pembeli Tampil Langsung untuk Discan Kamera HP */}
                     <div className="bg-white p-4 rounded-xl border border-gray-200 text-center flex flex-col items-center">
-                      <p className="text-xs font-bold text-brand-blue mb-1">
-                        Arahkan Kamera HP Anda ke QR Code Ini:
-                      </p>
-                      <p className="text-[11px] text-text-secondary mb-3">
-                        Tunjukkan QR Code ini langsung ke kamera HP kasir
+                      <p className="text-xs font-bold text-brand-blue mb-2">
+                        Scan QR ini untuk verifikasi:
                       </p>
                       <div className="p-3 bg-white rounded-2xl border-2 border-brand-blue/30 shadow-md">
                         <QRCodeSVG value={simResult.order.qr_token} size={150} />
@@ -695,7 +677,7 @@ export default function AdminScanQR() {
                 <div className="flex items-center justify-between mb-2">
                   <h2 className="text-base font-bold font-heading text-text-primary flex items-center gap-2">
                     <Camera size={18} className="text-brand-blue" />
-                    Meja Kasir: Scanner Kamera HP & Verifikasi
+                    Scanner & Verifikasi
                   </h2>
                   <span className="text-[10px] px-2 py-0.5 bg-brand-blue/10 text-brand-blue border border-brand-blue/20 rounded-md font-semibold uppercase">
                     Kamera Aktif

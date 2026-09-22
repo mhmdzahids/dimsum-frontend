@@ -102,17 +102,12 @@ export default function AdminBanners() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full bg-brand-gold/15 text-brand-gold-dark border border-brand-gold/30 text-[11px] font-bold">
-              Homepage Marketing
-            </span>
-          </div>
           <h1 className="text-2xl font-bold text-text-primary font-heading flex items-center gap-2.5">
             <ImageIcon className="text-brand-blue" size={26} />
-            <span>Banner Promosi Hero</span>
+            <span>Banner Promosi</span>
           </h1>
           <p className="text-xs text-text-secondary mt-1">
-            Kelola spanduk visual yang tampil pada korsel beranda pembeli (resolusi ideal rasio ~2.7:1 atau 1200x450).
+            Kelola banner promosi beranda.
           </p>
         </div>
 
@@ -145,7 +140,7 @@ export default function AdminBanners() {
       <div className="bg-white p-6 rounded-card border border-bg-cream-dark/80 shadow-card">
         <h2 className="text-base font-bold text-text-primary font-heading mb-3 flex items-center gap-2">
           <UploadCloud size={18} className="text-brand-blue" />
-          <span>Unggah Banner Promosi Baru</span>
+          <span>Unggah Banner Baru</span>
         </h2>
 
         <form onSubmit={addBanner} className="space-y-4">
@@ -211,7 +206,7 @@ export default function AdminBanners() {
               ) : (
                 <>
                   <UploadCloud size={15} />
-                  <span>Simpan &amp; Tayangkan di Beranda</span>
+                  <span>Simpan</span>
                 </>
               )}
             </button>
@@ -224,14 +219,11 @@ export default function AdminBanners() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-base font-bold text-text-primary font-heading">
-              Banner yang Sedang Tayang
+              Daftar Banner
             </h2>
-            <p className="text-xs text-text-secondary">
-              Banner ini otomatis tampil bergiliran pada korsel halaman muka pembeli.
-            </p>
           </div>
           <span className="text-xs font-bold text-brand-blue bg-brand-blue/10 px-2.5 py-1 rounded-full">
-            {banners.length} Banner Aktif
+            {banners.length} Aktif
           </span>
         </div>
 
@@ -259,7 +251,7 @@ export default function AdminBanners() {
                   />
                   <div className="absolute top-2.5 left-2.5">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white shadow-xs">
-                      Tayang di Beranda
+                      Tayang
                     </span>
                   </div>
                 </div>

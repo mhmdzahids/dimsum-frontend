@@ -3,6 +3,8 @@ import { useLocation, Link, useNavigate } from 'react-router-dom';
 import {
   Menu,
   Bell,
+  Search,
+  X,
   ExternalLink,
   ChevronDown,
   LogOut,
@@ -25,6 +27,18 @@ const ROUTE_META = {
   '/admin/users': { title: 'Manajemen Tim', section: 'Management' }
 };
 
+const QUICK_NAV = [
+  { label: 'Dashboard', path: '/admin', section: 'Overview', keywords: ['dashboard', 'ringkasan', 'overview'] },
+  { label: 'Ringkasan Stok', path: '/admin/inventory', section: 'Operations', keywords: ['stok', 'inventory', 'buffer', 'freezer'] },
+  { label: 'Produksi Lot', path: '/admin/production', section: 'Operations', keywords: ['produksi', 'lot', 'rencana', 'verifikasi'] },
+  { label: 'Pengeluaran Stok', path: '/admin/stock-out', section: 'Operations', keywords: ['keluar', 'stok keluar', 'shopee', 'tiktok', 'po', 'offline'] },
+  { label: 'Scan QR Kasir', path: '/admin/scan-qr', section: 'Operations', keywords: ['scan', 'qr', 'kasir', 'pickup'] },
+  { label: 'Produk & Menu', path: '/admin/products', section: 'Catalog', keywords: ['produk', 'menu', 'katalog', 'harga', 'diskon'] },
+  { label: 'Voucher Promo', path: '/admin/vouchers', section: 'Catalog', keywords: ['voucher', 'promo', 'kode', 'diskon'] },
+  { label: 'Banner Promosi', path: '/admin/banners', section: 'Catalog', keywords: ['banner', 'spanduk', 'gambar'] },
+  { label: 'Manajemen Tim', path: '/admin/users', section: 'Management', keywords: ['tim', 'user', 'pengguna', 'role', 'admin'] }
+];
+
 export default function AdminTopBar({ onToggleSidebar }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -34,18 +48,39 @@ export default function AdminTopBar({ onToggleSidebar }) {
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [criticalCount, setCriticalCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const searchRef = useRef(null);
+  const lastCheckRef = useRef(0);
 
   // Derive title & breadcrumbs
   const meta = ROUTE_META[location.pathname] || { title: 'Portal Admin', section: 'Admin' };
 
-  // Fetch quick notification status (critical buffer stock count)
+  // Filter matching routes for searchbar
+  const matchingRoutes = searchQuery.trim()
+    ? QUICK_NAV.filter(item => {
+        const q = searchQuery.toLowerCase();
+        return (
+          item.label.toLowerCase().includes(q) ||
+          item.section.toLowerCase().includes(q) ||
+          item.keywords.some(k => k.includes(q))
+        );
+      })
+    : [];
+
+  // Fetch quick notification status (critical buffer stock count) with 60s throttling to protect rate limiter
   useEffect(() => {
     let isMounted = true;
+    const now = Date.now();
+    if (now - lastCheckRef.current < 60000 && lastCheckRef.current > 0) {
+      return;
+    }
     const checkAlerts = async () => {
       try {
         const res = await api.get('/api/inventory/dashboard/summary', { auth: 'admin' });
         if (res.success && res.data && isMounted) {
+          lastCheckRef.current = Date.now();
           setCriticalCount(res.data.critical_products?.length || 0);
         }
       } catch {
@@ -56,11 +91,14 @@ export default function AdminTopBar({ onToggleSidebar }) {
     return () => { isMounted = false; };
   }, [location.pathname]);
 
-  // Close dropdown on outside click
+  // Close dropdown & search on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setDropdownOpen(false);
+      }
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setSearchOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -80,13 +118,13 @@ export default function AdminTopBar({ onToggleSidebar }) {
   };
 
   return (
-    <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-bg-cream-dark/80 px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between shadow-xs">
-      {/* Left: Mobile Toggle & Breadcrumbs */}
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-bg-cream-dark/80 px-4 sm:px-6 py-3 flex items-center justify-between transition-all">
+      {/* Left: Mobile Toggle & Breadcrumb Title */}
       <div className="flex items-center gap-3">
         <button
           onClick={onToggleSidebar}
-          className="lg:hidden p-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-bg-cream transition-colors"
-          aria-label="Buka Menu"
+          className="lg:hidden p-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-bg-cream transition-colors cursor-pointer"
+          title="Buka Menu"
         >
           <Menu size={20} />
         </button>
@@ -107,17 +145,64 @@ export default function AdminTopBar({ onToggleSidebar }) {
 
       {/* Right: Actions & User Pill */}
       <div className="flex items-center gap-3">
-        {/* Customer Menu Link (Desktop pill) */}
-        <a
-          href="/menu"
-          target="_blank"
-          rel="noreferrer"
-          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-brand-gold/30 bg-brand-gold/10 hover:bg-brand-gold/20 text-brand-gold-dark text-xs font-semibold transition-colors"
-          title="Buka Menu Pelanggan di Tab Baru"
-        >
-          <ExternalLink size={13} />
-          <span>Lihat Menu Pelanggan</span>
-        </a>
+        {/* TopBar Searchbar */}
+        <div className="relative hidden sm:block w-48 md:w-56 lg:w-64" ref={searchRef}>
+          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setSearchOpen(true);
+            }}
+            onFocus={() => { if (searchQuery.trim()) setSearchOpen(true); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && matchingRoutes.length > 0) {
+                navigate(matchingRoutes[0].path);
+                setSearchOpen(false);
+                setSearchQuery('');
+              } else if (e.key === 'Escape') {
+                setSearchOpen(false);
+              }
+            }}
+            placeholder="Cari menu / halaman..."
+            className="w-full pl-9 pr-7 py-1.5 text-xs rounded-full border border-bg-cream-dark/90 bg-bg-cream/40 focus:bg-white focus:border-brand-blue/50 focus:outline-none transition-all placeholder:text-text-secondary/60 text-text-primary"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => { setSearchQuery(''); setSearchOpen(false); }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary cursor-pointer"
+            >
+              <X size={12} />
+            </button>
+          )}
+
+          {/* Quick Search Dropdown */}
+          {searchOpen && searchQuery.trim() && (
+            <div className="absolute left-0 right-0 mt-2 bg-white rounded-xl shadow-elevated border border-bg-cream-dark/80 p-1.5 z-50 animate-scaleUp">
+              {matchingRoutes.length > 0 ? (
+                matchingRoutes.map((item) => (
+                  <button
+                    key={item.path}
+                    onClick={() => {
+                      navigate(item.path);
+                      setSearchOpen(false);
+                      setSearchQuery('');
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-text-primary hover:bg-bg-cream/60 transition-colors flex items-center justify-between cursor-pointer"
+                  >
+                    <span>{item.label}</span>
+                    <span className="text-[10px] text-text-secondary font-medium">{item.section}</span>
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-2 text-[11px] text-text-secondary text-center">
+                  Tidak ada menu yang cocok
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Notifications / Critical Alert Icon */}
         <Link
@@ -140,14 +225,7 @@ export default function AdminTopBar({ onToggleSidebar }) {
             <div className="w-8 h-8 rounded-full bg-brand-blue text-white font-heading font-bold text-xs flex items-center justify-center shadow-xs">
               {(user?.full_name || 'A').charAt(0).toUpperCase()}
             </div>
-            <div className="hidden sm:block text-left">
-              <div className="text-xs font-bold text-text-primary leading-tight">
-                {user?.full_name || 'Administrator'}
-              </div>
-              <div className="text-[10px] text-text-secondary font-medium leading-none">
-                {roleConfig.label}
-              </div>
-            </div>
+
             <ChevronDown size={14} className="text-text-secondary hidden sm:block" />
           </button>
 

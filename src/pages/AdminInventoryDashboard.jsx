@@ -1,21 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  Layers, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Clock, 
-  Factory, 
-  ShoppingBag, 
-  Video, 
-  Briefcase, 
-  Store, 
-  Globe, 
-  Trash2, 
-  ArrowUpRight, 
-  ArrowRight, 
-  RefreshCw, 
-  ShieldAlert, 
+import {
+  Layers,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Factory,
+  ShoppingBag,
+  Video,
+  Briefcase,
+  Store,
+  Globe,
+  Trash2,
+  ArrowUpRight,
+  ArrowRight,
+  RefreshCw,
+  ShieldAlert,
   Sparkles,
   TrendingUp,
   Search,
@@ -23,14 +23,15 @@ import {
   Package
 } from 'lucide-react';
 import api from '../api/client';
+import Pagination from '../components/ui/Pagination';
 
 const CHANNELS_META = {
-  shopee: { name: 'Shopee Marketplace', icon: ShoppingBag, color: 'bg-orange-500', lightColor: 'bg-orange-50 text-orange-700 border-orange-200' },
-  tiktok: { name: 'TikTok Shop / Live', icon: Video, color: 'bg-pink-500', lightColor: 'bg-pink-50 text-pink-700 border-pink-200' },
-  po_b2b: { name: 'PO B2B Vacuum', icon: Briefcase, color: 'bg-blue-600', lightColor: 'bg-blue-50 text-blue-700 border-blue-200' },
-  offline: { name: 'Offline / Lapak', icon: Store, color: 'bg-emerald-600', lightColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  web: { name: 'Web Direct Order', icon: Globe, color: 'bg-indigo-600', lightColor: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-  waste: { name: 'Barang Rusak / Sample', icon: Trash2, color: 'bg-gray-500', lightColor: 'bg-gray-50 text-gray-700 border-gray-200' }
+  shopee: { name: 'Shopee', icon: ShoppingBag, color: 'bg-orange-500', lightColor: 'bg-orange-50 text-orange-700 border-orange-200' },
+  tiktok: { name: 'TikTok', icon: Video, color: 'bg-pink-500', lightColor: 'bg-pink-50 text-pink-700 border-pink-200' },
+  po_b2b: { name: 'PO B2B', icon: Briefcase, color: 'bg-blue-600', lightColor: 'bg-blue-50 text-blue-700 border-blue-200' },
+  offline: { name: 'Offline', icon: Store, color: 'bg-emerald-600', lightColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  web: { name: 'Web', icon: Globe, color: 'bg-indigo-600', lightColor: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  waste: { name: 'Rusak / Sample', icon: Trash2, color: 'bg-gray-500', lightColor: 'bg-gray-50 text-gray-700 border-gray-200' }
 };
 
 export default function AdminInventoryDashboard() {
@@ -39,6 +40,8 @@ export default function AdminInventoryDashboard() {
   const [error, setError] = useState('');
   const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'critical' | 'warning' | 'safe'
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   const fetchSummary = async () => {
     setLoading(true);
@@ -62,11 +65,15 @@ export default function AdminInventoryDashboard() {
     fetchSummary();
   }, []);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterStatus]);
+
   if (loading && !data) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
         <RefreshCw className="w-10 h-10 text-brand-blue animate-spin mb-4" />
-        <p className="text-text-secondary font-medium text-sm">Memuat data inventaris freezer & buffer stock...</p>
+        <p className="text-text-secondary font-medium text-sm">Memuat data...</p>
       </div>
     );
   }
@@ -80,8 +87,8 @@ export default function AdminInventoryDashboard() {
 
   // Filter products for the table
   const filteredProducts = products.filter(p => {
-    const matchesQuery = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesQuery = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()));
     if (!matchesQuery) return false;
 
     if (filterStatus === 'critical') return p.buffer_status === 'critical';
@@ -89,6 +96,11 @@ export default function AdminInventoryDashboard() {
     if (filterStatus === 'safe') return p.buffer_status === 'safe';
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / ITEMS_PER_PAGE));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedProducts = filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   const capacityPct = Math.min(100, Math.round((todayProd.completed_lots / todayProd.capacity_lots) * 100));
 
@@ -106,34 +118,31 @@ export default function AdminInventoryDashboard() {
           <h1 className="text-2xl font-bold text-text-primary font-heading">
             Ringkasan Inventaris & Buffer Stock
           </h1>
-          <p className="text-sm text-text-secondary mt-0.5">
-            Pantau stok fisik freezer, peringatan batas minimum (70 pack), dan utilisasi dapur produksi harian.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={fetchSummary}
             disabled={loading}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-gray-200 text-text-secondary hover:text-text-primary hover:bg-gray-50 text-xs font-semibold transition-colors disabled:opacity-50"
-            title="Muat ulang data terkini"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-btn border border-bg-cream-dark/90 bg-white text-text-secondary hover:text-text-primary hover:bg-bg-cream/60 text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+            title="Refresh"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh</span>
           </button>
           <Link
-            to="/admin/stock-out"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-xs font-bold transition-all shadow-xs"
-          >
-            <ArrowUpRight size={15} />
-            <span>Keluarkan Stok (Shopee/TikTok/PO)</span>
-          </Link>
-          <Link
             to="/admin/production"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue hover:bg-brand-blue-dark text-white text-xs font-bold transition-all shadow-xs hover:shadow-md"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-btn bg-brand-blue hover:bg-brand-blue-dark text-white text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer"
           >
             <PlusCircle size={15} />
-            <span>Jadwalkan Produksi Lot</span>
+            <span>Produksi</span>
+          </Link>
+
+          <Link
+            to="/admin/stock-out"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-btn bg-brand-gold hover:bg-brand-gold-dark text-white text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer"
+          >
+            <ArrowUpRight size={15} />
+            <span>Stok Keluar</span>
           </Link>
         </div>
       </div>
@@ -208,55 +217,49 @@ export default function AdminInventoryDashboard() {
         </div>
 
         {/* Metric 2: Buffer Kritis */}
-        <div className={`p-5 rounded-2xl border shadow-xs relative overflow-hidden transition-all ${
-          (data?.critical_count || 0) > 0 
-            ? 'bg-red-50/50 border-red-200' 
-            : 'bg-white border-gray-200'
-        }`}>
+        <div className={`p-5 rounded-2xl border shadow-xs relative overflow-hidden transition-all ${(data?.critical_count || 0) > 0
+          ? 'bg-red-50/50 border-red-200'
+          : 'bg-white border-gray-200'
+          }`}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Status Kritis (&lt;70 pcs)</span>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-              (data?.critical_count || 0) > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'
-            }`}>
+            <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Stock Kritis</span>
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${(data?.critical_count || 0) > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'
+              }`}>
               <AlertTriangle size={18} />
             </div>
           </div>
           <div className="mt-3">
-            <div className={`text-3xl font-extrabold font-heading ${
-              (data?.critical_count || 0) > 0 ? 'text-red-700' : 'text-text-primary'
-            }`}>
+            <div className={`text-3xl font-extrabold font-heading ${(data?.critical_count || 0) > 0 ? 'text-red-700' : 'text-text-primary'
+              }`}>
               {data?.critical_count || 0}
               <span className="text-sm font-normal text-text-secondary ml-1.5">varian</span>
             </div>
             <p className="mt-1 text-xs text-text-secondary">
-              Wajib segera dijadwalkan ke dapur
+              Stock kurang dari 70 pcs
             </p>
           </div>
         </div>
 
         {/* Metric 3: Buffer Waspada */}
-        <div className={`p-5 rounded-2xl border shadow-xs relative overflow-hidden ${
-          (data?.warning_count || 0) > 0 
-            ? 'bg-amber-50/50 border-amber-200' 
-            : 'bg-white border-gray-200'
-        }`}>
+        <div className={`p-5 rounded-2xl border shadow-xs relative overflow-hidden ${(data?.warning_count || 0) > 0
+          ? 'bg-amber-50/50 border-amber-200'
+          : 'bg-white border-gray-200'
+          }`}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Status Waspada (70-100)</span>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-              (data?.warning_count || 0) > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
-            }`}>
+            <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Stock Mulai Habis</span>
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${(data?.warning_count || 0) > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
+              }`}>
               <Clock size={18} />
             </div>
           </div>
           <div className="mt-3">
-            <div className={`text-3xl font-extrabold font-heading ${
-              (data?.warning_count || 0) > 0 ? 'text-amber-700' : 'text-text-primary'
-            }`}>
+            <div className={`text-3xl font-extrabold font-heading ${(data?.warning_count || 0) > 0 ? 'text-amber-700' : 'text-text-primary'
+              }`}>
               {data?.warning_count || 0}
               <span className="text-sm font-normal text-text-secondary ml-1.5">varian</span>
             </div>
             <p className="mt-1 text-xs text-text-secondary">
-              Mendekati ambang buffer minimum
+              Stock Antara 70-100 pcs
             </p>
           </div>
         </div>
@@ -265,7 +268,10 @@ export default function AdminInventoryDashboard() {
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Produksi Hari Ini</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${todayProd.completed_lots > 0
+              ? 'bg-emerald-50 text-emerald-700'
+              : 'bg-gray-100 text-gray-500'
+              }`}>
               <Factory size={18} />
             </div>
           </div>
@@ -274,10 +280,17 @@ export default function AdminInventoryDashboard() {
               {todayProd.completed_lots}
               <span className="text-sm font-normal text-text-secondary ml-1.5">/ {todayProd.capacity_lots} Lot</span>
             </div>
-            <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-700 font-semibold">
-              <CheckCircle2 size={13} />
-              <span>{todayProd.completed_pcs} pcs fisik disetujui QC</span>
-            </div>
+            {todayProd.completed_pcs > 0 ? (
+              <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-700 font-semibold">
+                <CheckCircle2 size={13} />
+                <span>{todayProd.completed_pcs} pcs fisik disetujui QC</span>
+              </div>
+            ) : (
+              <div className="mt-1 flex items-center gap-1.5 text-xs text-text-secondary">
+                <Clock size={13} className="text-gray-400" />
+                <span>Belum ada produksi</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -299,14 +312,19 @@ export default function AdminInventoryDashboard() {
                   <p className="text-xs text-text-secondary">Target harian normal 20 Lot (500 pcs) • Maks lembur 24 Lot</p>
                 </div>
               </div>
-              <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
-                todayProd.completed_lots > 20 
-                  ? 'bg-amber-100 text-amber-800 border-amber-200'
+              <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${todayProd.completed_lots > 20
+                ? 'bg-amber-100 text-amber-800 border-amber-200'
+                : todayProd.completed_lots === 0
+                  ? 'bg-gray-100 text-gray-600 border-gray-200'
                   : todayProd.completed_lots >= 15
-                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                  : 'bg-blue-100 text-blue-800 border-blue-200'
-              }`}>
-                {todayProd.completed_lots > 20 ? 'Mode Lembur' : `${capacityPct}% Tercapai`}
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                    : 'bg-blue-100 text-blue-800 border-blue-200'
+                }`}>
+                {todayProd.completed_lots > 20
+                  ? 'Mode Lembur'
+                  : todayProd.completed_lots === 0
+                    ? 'Belum Ada Produksi'
+                    : `${capacityPct}% Tercapai`}
               </span>
             </div>
 
@@ -318,20 +336,19 @@ export default function AdminInventoryDashboard() {
                 <span>24 Lot (Maks Lembur)</span>
               </div>
               <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden p-0.5 border border-gray-200 relative">
-                <div 
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    todayProd.completed_lots > 24 
-                      ? 'bg-red-500' 
-                      : todayProd.completed_lots > 20 
-                      ? 'bg-amber-500' 
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${todayProd.completed_lots > 24
+                    ? 'bg-red-500'
+                    : todayProd.completed_lots > 20
+                      ? 'bg-amber-500'
                       : 'bg-brand-blue'
-                  }`}
+                    }`}
                   style={{ width: `${Math.min(100, (todayProd.completed_lots / 24) * 100)}%` }}
                 />
                 {/* 20 Lot Normal Marker */}
-                <div 
-                  className="absolute top-0 bottom-0 w-0.5 bg-gray-400 z-10" 
-                  style={{ left: `${(20 / 24) * 100}%` }} 
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-gray-400 z-10"
+                  style={{ left: `${(20 / 24) * 100}%` }}
                   title="Target Normal (20 Lot)"
                 />
               </div>
@@ -345,9 +362,16 @@ export default function AdminInventoryDashboard() {
                   {todayProd.planned_lots} Lot
                 </div>
               </div>
-              <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-100 text-center">
-                <div className="text-xs text-emerald-800 font-semibold">Disetujui QC Om Yosi</div>
-                <div className="text-base font-bold text-emerald-700 font-heading mt-0.5">
+              <div className={`p-3 rounded-xl border text-center ${todayProd.completed_lots > 0
+                ? 'bg-emerald-50/60 border-emerald-100'
+                : 'bg-gray-50 border-gray-100'
+                }`}>
+                <div className={`text-xs ${todayProd.completed_lots > 0 ? 'text-emerald-800 font-semibold' : 'text-text-secondary'
+                  }`}>
+                  Disetujui QC
+                </div>
+                <div className={`text-base font-bold font-heading mt-0.5 ${todayProd.completed_lots > 0 ? 'text-emerald-700' : 'text-text-secondary'
+                  }`}>
                   {todayProd.completed_lots} Lot
                 </div>
               </div>
@@ -361,8 +385,7 @@ export default function AdminInventoryDashboard() {
           </div>
 
           <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between">
-            <span className="text-xs text-text-secondary">PIC Planner: Lala & Ayu</span>
-            <Link 
+            <Link
               to="/admin/production"
               className="text-xs font-bold text-brand-blue hover:text-brand-blue-dark inline-flex items-center gap-1"
             >
@@ -382,18 +405,11 @@ export default function AdminInventoryDashboard() {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-text-primary font-heading">
-                    Distribusi Kanal Pengeluaran Stok
+                    Distribusi Pengeluaran Stok
                   </h2>
                   <p className="text-xs text-text-secondary">Total {totalOutPcs.toLocaleString('id-ID')} pcs dialokasikan keluar dari freezer</p>
                 </div>
               </div>
-              <Link 
-                to="/admin/stock-out"
-                className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 inline-flex items-center gap-1"
-              >
-                <span>Catat Pengeluaran</span>
-                <ArrowRight size={13} />
-              </Link>
             </div>
 
             {/* Visual Multi-Channel Progress Bar */}
@@ -445,7 +461,7 @@ export default function AdminInventoryDashboard() {
           </div>
 
           <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-text-secondary">
-            <span>Sistem FIFO otomatis mendahulukan batch tertua</span>
+
             <Link to="/admin/stock-out" className="text-xs font-semibold text-brand-blue hover:underline">
               Lihat Riwayat Transaksi &rarr;
             </Link>
@@ -454,16 +470,13 @@ export default function AdminInventoryDashboard() {
       </div>
 
       {/* Product Stock Table & Buffer Control */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-xs">
         {/* Table Header & Controls */}
-        <div className="p-5 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
           <div>
             <h2 className="text-base font-bold text-text-primary font-heading">
               Monitoring Buffer Stock per Produk
             </h2>
-            <p className="text-xs text-text-secondary mt-0.5">
-              Ambang batas: <span className="text-red-700 font-bold">&lt; 70 pcs (Kritis)</span>, <span className="text-amber-700 font-bold">70-100 pcs (Waspada)</span>, <span className="text-emerald-700 font-bold">&gt; 100 pcs (Aman)</span>
-            </p>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-3">
@@ -483,33 +496,29 @@ export default function AdminInventoryDashboard() {
             <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
               <button
                 onClick={() => setFilterStatus('all')}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  filterStatus === 'all' ? 'bg-white text-text-primary shadow-xs font-bold' : 'text-text-secondary hover:text-text-primary'
-                }`}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filterStatus === 'all' ? 'bg-white text-text-primary shadow-xs font-bold' : 'text-text-secondary hover:text-text-primary'
+                  }`}
               >
                 Semua ({products.length})
               </button>
               <button
                 onClick={() => setFilterStatus('critical')}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  filterStatus === 'critical' ? 'bg-red-600 text-white shadow-xs font-bold' : 'text-red-700 hover:bg-red-50'
-                }`}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filterStatus === 'critical' ? 'bg-red-600 text-white shadow-xs font-bold' : 'text-red-700 hover:bg-red-50'
+                  }`}
               >
                 Kritis ({criticalProducts.length})
               </button>
               <button
                 onClick={() => setFilterStatus('warning')}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  filterStatus === 'warning' ? 'bg-amber-500 text-white shadow-xs font-bold' : 'text-amber-800 hover:bg-amber-50'
-                }`}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filterStatus === 'warning' ? 'bg-amber-500 text-white shadow-xs font-bold' : 'text-amber-800 hover:bg-amber-50'
+                  }`}
               >
                 Waspada ({warningProducts.length})
               </button>
               <button
                 onClick={() => setFilterStatus('safe')}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  filterStatus === 'safe' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-emerald-800 hover:bg-emerald-50'
-                }`}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filterStatus === 'safe' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-emerald-800 hover:bg-emerald-50'
+                  }`}
               >
                 Aman
               </button>
@@ -522,12 +531,12 @@ export default function AdminInventoryDashboard() {
           <table className="w-full text-left text-xs">
             <thead className="bg-gray-50/80 text-text-secondary border-b border-gray-200 uppercase tracking-wider font-semibold">
               <tr>
-                <th className="py-3.5 px-4">Produk & SKU</th>
+                <th className="py-3.5 px-4 text-center">Produk & SKU</th>
                 <th className="py-3.5 px-4 text-center">Stok Freezer</th>
                 <th className="py-3.5 px-4 text-center">Konversi Lot</th>
-                <th className="py-3.5 px-4">Tingkat Keterisian Buffer</th>
+                <th className="py-3.5 px-4 text-center">Tingkat Keterisian Buffer</th>
                 <th className="py-3.5 px-4 text-center">Status</th>
-                <th className="py-3.5 px-4 text-right">Aksi Cepat</th>
+                <th className="py-3.5 px-4 text-center">Tindakan Lanjut</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -539,13 +548,13 @@ export default function AdminInventoryDashboard() {
                   </td>
                 </tr>
               ) : (
-                filteredProducts.map((prod) => {
+                paginatedProducts.map((prod) => {
                   const stock = prod.stock_qty || 0;
                   const lots = prod.stock_lots || Math.floor(stock / 25);
                   const minBuffer = prod.min_buffer_stock || 70;
                   const safeTarget = 100;
                   const bufferRatio = Math.min(100, Math.round((stock / safeTarget) * 100));
-                  
+
                   let statusBadge = {
                     label: 'Aman',
                     bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -553,7 +562,7 @@ export default function AdminInventoryDashboard() {
                   };
                   if (prod.buffer_status === 'critical' || stock < minBuffer) {
                     statusBadge = {
-                      label: 'KRITIS (<70)',
+                      label: 'KRITIS',
                       bg: 'bg-red-100 text-red-800 border-red-200',
                       dot: 'bg-red-600'
                     };
@@ -597,9 +606,8 @@ export default function AdminInventoryDashboard() {
 
                       {/* Stock in Pcs */}
                       <td className="py-3.5 px-4 text-center">
-                        <span className={`text-sm font-extrabold font-heading ${
-                          stock < minBuffer ? 'text-red-700' : 'text-text-primary'
-                        }`}>
+                        <span className={`text-sm font-extrabold font-heading ${stock < minBuffer ? 'text-red-700' : 'text-text-primary'
+                          }`}>
                           {stock.toLocaleString('id-ID')}
                         </span>
                         <span className="text-[11px] text-text-secondary ml-1">pcs</span>
@@ -622,13 +630,12 @@ export default function AdminInventoryDashboard() {
                           </div>
                           <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
                             <div
-                              className={`h-full rounded-full transition-all ${
-                                stock < minBuffer 
-                                  ? 'bg-red-500' 
-                                  : stock <= safeTarget 
-                                  ? 'bg-amber-500' 
+                              className={`h-full rounded-full transition-all ${stock < minBuffer
+                                ? 'bg-red-500'
+                                : stock <= safeTarget
+                                  ? 'bg-amber-500'
                                   : 'bg-emerald-500'
-                              }`}
+                                }`}
                               style={{ width: `${bufferRatio}%` }}
                             />
                           </div>
@@ -651,7 +658,7 @@ export default function AdminInventoryDashboard() {
                             className="px-2.5 py-1.5 rounded-lg bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white font-bold text-[11px] transition-colors"
                             title="Jadwalkan Produksi Lot"
                           >
-                            + Produksi
+                            Produksi
                           </Link>
                           <Link
                             to="/admin/stock-out"
@@ -670,10 +677,10 @@ export default function AdminInventoryDashboard() {
           </table>
         </div>
 
-        {/* Table Footer */}
-        <div className="p-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between text-xs text-text-secondary gap-2">
-          <span>Menampilkan {filteredProducts.length} dari {products.length} varian produk terdaftar</span>
-          <div className="flex items-center gap-4">
+        {/* Table Footer / Summary & Legend */}
+        <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between text-xs text-text-secondary gap-3">
+          <span>Total produk di inventaris: <strong>{products.length}</strong> varian</span>
+          <div className="flex flex-wrap items-center gap-4">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Kritis (&lt;70 pcs)
             </span>
@@ -685,6 +692,18 @@ export default function AdminInventoryDashboard() {
             </span>
           </div>
         </div>
+
+        {totalPages > 1 && (
+          <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end">
+            <Pagination
+              currentPage={safeCurrentPage}
+              totalItems={filteredProducts.length}
+              pageSize={ITEMS_PER_PAGE}
+              onPageChange={(page) => setCurrentPage(page)}
+              showInfo={false}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

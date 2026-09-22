@@ -18,13 +18,14 @@ import {
   Info
 } from 'lucide-react';
 import api from '../api/client';
+import Pagination from '../components/ui/Pagination';
 
 const CHANNELS = [
-  { id: 'shopee', name: 'Shopee Marketplace', icon: ShoppingBag, badge: 'bg-orange-100 text-orange-800 border-orange-200' },
-  { id: 'tiktok', name: 'TikTok Shop / Live', icon: Video, badge: 'bg-pink-100 text-pink-800 border-pink-200' },
-  { id: 'po_b2b', name: 'PO B2B / Partai Besar Vacuum', icon: Briefcase, badge: 'bg-blue-100 text-blue-800 border-blue-200' },
-  { id: 'offline', name: 'Offline / Reseller / Lapak', icon: Store, badge: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
-  { id: 'waste', name: 'Barang Rusak / Sample', icon: Trash2, badge: 'bg-gray-100 text-gray-700 border-gray-200' }
+  { id: 'shopee', name: 'Shopee', icon: ShoppingBag, badge: 'bg-orange-100 text-orange-800 border-orange-200' },
+  { id: 'tiktok', name: 'TikTok', icon: Video, badge: 'bg-pink-100 text-pink-800 border-pink-200' },
+  { id: 'po_b2b', name: 'PO B2B', icon: Briefcase, badge: 'bg-blue-100 text-blue-800 border-blue-200' },
+  { id: 'offline', name: 'Offline', icon: Store, badge: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+  { id: 'waste', name: 'Rusak / Sample', icon: Trash2, badge: 'bg-gray-100 text-gray-700 border-gray-200' }
 ];
 
 export default function AdminStockOut() {
@@ -34,6 +35,8 @@ export default function AdminStockOut() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   // Form State
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -356,66 +359,83 @@ export default function AdminStockOut() {
               Belum ada riwayat pengeluaran stok yang dicatat.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs font-body">
-                <thead>
-                  <tr className="bg-gray-50/80 border-b border-gray-200 text-text-secondary font-semibold">
-                    <th className="py-2.5 px-3">Waktu</th>
-                    <th className="py-2.5 px-3">Saluran</th>
-                    <th className="py-2.5 px-3">Produk & Lot Terpotong</th>
-                    <th className="py-2.5 px-3 text-right">Jumlah Keluar</th>
-                    <th className="py-2.5 px-3">Catatan</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {transactions.slice(0, 15).map((tx) => {
-                    const channelMeta = CHANNELS.find(c => c.id === tx.channel) || {
-                      name: tx.channel || 'Lainnya',
-                      badge: 'bg-gray-100 text-gray-700'
-                    };
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs font-body">
+                  <thead>
+                    <tr className="bg-gray-50/80 border-b border-gray-200 text-text-secondary font-semibold">
+                      <th className="py-2.5 px-3">Waktu</th>
+                      <th className="py-2.5 px-3">Saluran</th>
+                      <th className="py-2.5 px-3">Produk & Lot Terpotong</th>
+                      <th className="py-2.5 px-3 text-right">Jumlah Keluar</th>
+                      <th className="py-2.5 px-3">Catatan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {transactions
+                      .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+                      .map((tx) => {
+                      const channelMeta = CHANNELS.find(c => c.id === tx.channel) || {
+                        name: tx.channel || 'Lainnya',
+                        badge: 'bg-gray-100 text-gray-700'
+                      };
 
-                    return (
-                      <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="py-3 px-3 text-text-secondary text-[11px]">
-                          {tx.created_at ? new Date(tx.created_at).toLocaleDateString('id-ID', {
-                            day: 'numeric',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          }) : '-'}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-bold ${channelMeta.badge}`}>
-                            {channelMeta.name}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 font-semibold text-text-primary">
-                          <div>{tx.product_name}</div>
-                          {tx.batch_code ? (
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <span className="text-[10px] font-mono font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
-                                Lot: {tx.batch_code}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-gray-400 italic">Stok Awal (Non-Lot)</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 text-right font-extrabold text-red-600">
-                          -{tx.quantity} pcs
-                        </td>
-                        <td className="py-3 px-3 text-text-secondary text-[11px] italic max-w-xs truncate">
-                          {tx.notes || '-'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      return (
+                        <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="py-3 px-3 text-text-secondary text-[11px]">
+                            {tx.created_at ? new Date(tx.created_at).toLocaleDateString('id-ID', {
+                              day: 'numeric',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            }) : '-'}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-bold ${channelMeta.badge}`}>
+                              {channelMeta.name}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-semibold text-text-primary">
+                            <div>{tx.product_name}</div>
+                            {tx.batch_code ? (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-[10px] font-mono font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                                  Lot: {tx.batch_code}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-gray-400 italic">Stok Awal (Non-Lot)</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-right font-extrabold text-red-600">
+                            -{tx.quantity} pcs
+                          </td>
+                          <td className="py-3 px-3 text-text-secondary text-[11px] italic max-w-xs truncate">
+                            {tx.notes || '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination footer */}
+              {transactions.length > ITEMS_PER_PAGE && (
+                <div className="mt-4 pt-3 border-t border-gray-100 flex justify-end">
+                  <Pagination
+                    currentPage={currentPage}
+                    totalItems={transactions.length}
+                    pageSize={ITEMS_PER_PAGE}
+                    onPageChange={(p) => setCurrentPage(p)}
+                    showInfo={false}
+                  />
+                </div>
+              )}
+            </>
           )}
+          </div>
         </div>
-      </div>
     </div>
   );
 }

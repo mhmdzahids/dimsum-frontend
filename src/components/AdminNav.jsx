@@ -50,14 +50,14 @@ export default function AdminNav({ activeTab }) {
   };
 
   const allNavItems = [
-    { id: 'inventory', label: 'Ringkasan Stok', path: '/admin/inventory', icon: BarChart3 },
-    { id: 'production', label: 'Portal Produksi Lot', path: '/admin/production', icon: Factory },
-    { id: 'stock-out', label: 'Pengeluaran Stok', path: '/admin/stock-out', icon: ArrowUpRight },
-    { id: 'products', label: 'Produk & Menu', path: '/admin/products', icon: Package },
+    { id: 'inventory', label: 'Stok', path: '/admin/inventory', icon: BarChart3 },
+    { id: 'production', label: 'Produksi', path: '/admin/production', icon: Factory },
+    { id: 'stock-out', label: 'Stok Keluar', path: '/admin/stock-out', icon: ArrowUpRight },
+    { id: 'products', label: 'Produk', path: '/admin/products', icon: Package },
     { id: 'scan-qr', label: 'Scan QR', path: '/admin/scan-qr', icon: QrCode },
     { id: 'vouchers', label: 'Voucher', path: '/admin/vouchers', icon: Ticket },
     { id: 'banners', label: 'Banner', path: '/admin/banners', icon: ImageIcon },
-    { id: 'users', label: 'Manajemen Tim', path: '/admin/users', icon: Users },
+    { id: 'users', label: 'Tim', path: '/admin/users', icon: Users },
   ];
 
   const visibleNavItems = allNavItems.filter(item => allowedTabs.includes(item.id));
@@ -74,7 +74,7 @@ export default function AdminNav({ activeTab }) {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[11px] uppercase tracking-wider font-semibold text-brand-gold font-body block leading-none">
-                  Dimsum Kasir & POS
+                  Makan Dimsum
                 </span>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${roleConfig.badge}`}>
                   {roleConfig.label}

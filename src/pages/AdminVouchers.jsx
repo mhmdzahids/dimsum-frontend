@@ -182,10 +182,10 @@ export default function AdminVouchers() {
           <div>
             <h1 className="text-2xl font-bold font-heading text-text-primary flex items-center gap-2">
               <Ticket className="text-brand-gold" size={24} />
-              Manajemen Kode Voucher & Promo
+              Voucher
             </h1>
             <p className="text-xs text-text-secondary mt-1">
-              Buat dan atur kuota voucher belanja untuk pelanggan. Diskon dihitung dan divalidasi secara ketat oleh backend.
+              Kelola voucher dan kode diskon.
             </p>
           </div>
           <button
@@ -194,7 +194,7 @@ export default function AdminVouchers() {
             className="self-start sm:self-auto flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-gray-50 shadow-xs transition-colors"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Muat Ulang
+            Refresh
           </button>
         </div>
 
@@ -202,13 +202,10 @@ export default function AdminVouchers() {
           {/* Form Buat Voucher Baru (Left Column: 5/12) */}
           <div className="lg:col-span-5">
             <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-xs">
-              <h2 className="text-base font-bold font-heading text-text-primary mb-1 flex items-center gap-2">
+              <h2 className="text-base font-bold font-heading text-text-primary mb-4 flex items-center gap-2">
                 <Plus size={18} className="text-brand-blue" />
-                Buat Kode Promo Baru
+                Buat Voucher Baru
               </h2>
-              <p className="text-xs text-text-secondary mb-5">
-                Pastikan kode unik dan pengaturan batas pemakaian sesuai kebutuhan promo.
-              </p>
 
               {formSuccess && (
                 <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
@@ -240,9 +237,6 @@ export default function AdminVouchers() {
                       required
                       className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-bold uppercase tracking-wider text-brand-blue focus:outline-none focus:border-brand-blue"
                     />
-                    <span className="absolute right-3 top-2.5 text-xs text-gray-400 font-normal">
-                      Auto-Uppercase
-                    </span>
                   </div>
                 </div>
 
@@ -262,7 +256,7 @@ export default function AdminVouchers() {
                       }`}
                     >
                       <Percent size={14} />
-                      Persentase (%)
+                      Persentase
                     </button>
                     <button
                       type="button"
@@ -274,7 +268,7 @@ export default function AdminVouchers() {
                       }`}
                     >
                       <Coins size={14} />
-                      Nominal Tetap (Rp)
+                      Nominal (Rp)
                     </button>
                   </div>
                 </div>
@@ -348,10 +342,6 @@ export default function AdminVouchers() {
                     placeholder="Contoh: 50"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue"
                   />
-                  <p className="text-[11px] text-text-secondary mt-1 flex items-center gap-1">
-                    <Info size={12} />
-                    Sistem mengunci kuota voucher secara atomik di database (bebas race condition).
-                  </p>
                 </div>
 
                 {/* Periode Berlaku */}
@@ -380,44 +370,25 @@ export default function AdminVouchers() {
                   </div>
                 </div>
 
-                {/* Visibilitas Voucher (Publik vs Tersembunyi) */}
-                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div>
-                      <span className="text-xs font-bold text-text-primary block">Visibilitas Voucher</span>
-                      <span className="text-[11px] text-text-secondary">
-                        {isPublic ? 'Tampil di Halaman Voucher Pelanggan' : 'Voucher Tersembunyi (Klaim via Kode)'}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsPublic(!isPublic)}
-                      className="text-brand-blue hover:text-brand-blue-dark transition-colors"
-                      title={isPublic ? 'Ubah ke Tersembunyi' : 'Ubah ke Publik'}
-                    >
-                      {isPublic ? (
-                        <ToggleRight size={32} className="text-brand-blue" />
-                      ) : (
-                        <ToggleLeft size={32} className="text-gray-400" />
-                      )}
-                    </button>
+                {/* Visibilitas Voucher */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div>
+                    <span className="text-xs font-bold text-text-primary block">Visibilitas</span>
+                    <span className="text-[11px] text-text-secondary">
+                      {isPublic ? 'Publik (tampil di halaman promo)' : 'Khusus (hanya via kode)'}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-1.5 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsPublic(!isPublic)}
+                    className="text-brand-blue hover:text-brand-blue-dark transition-colors"
+                  >
                     {isPublic ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <Eye size={13} /> Terbuka untuk umum di halaman /vouchers
-                      </span>
+                      <ToggleRight size={32} className="text-brand-blue" />
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                        <EyeOff size={13} /> Rahasia / Khusus promosi manual
-                      </span>
+                      <ToggleLeft size={32} className="text-gray-400" />
                     )}
-                  </div>
-                  <p className="text-[11px] text-text-secondary mt-1.5 leading-relaxed">
-                    {isPublic
-                      ? 'Pelanggan dapat melihat promo ini secara publik dan langsung mengkliknya.'
-                      : 'Hanya pelanggan yang mengetahui dan mengetik kode promo ini yang dapat menggunakannya.'}
-                  </p>
+                  </button>
                 </div>
 
                 {/* Status Aktif */}
@@ -425,7 +396,7 @@ export default function AdminVouchers() {
                   <div>
                     <span className="text-xs font-bold text-text-primary block">Status Voucher</span>
                     <span className="text-[11px] text-text-secondary">
-                      {isActive ? 'Aktif dan dapat digunakan checkout' : 'Nonaktif (ditolak server)'}
+                      {isActive ? 'Aktif' : 'Nonaktif'}
                     </span>
                   </div>
                   <button
@@ -447,7 +418,7 @@ export default function AdminVouchers() {
                   className="w-full py-3 bg-brand-blue text-white rounded-xl font-semibold text-sm hover:bg-brand-blue-dark transition-all shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Plus size={16} />
-                  {formSubmitting ? 'Menyimpan Voucher...' : 'Simpan & Publikasikan Promo'}
+                  {formSubmitting ? 'Menyimpan...' : 'Simpan Voucher'}
                 </button>
               </form>
             </div>
@@ -459,11 +430,8 @@ export default function AdminVouchers() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
                 <div>
                   <h2 className="text-base font-bold font-heading text-text-primary">
-                    Daftar Voucher Aktif ({vouchers.length})
+                    Daftar Voucher ({vouchers.length})
                   </h2>
-                  <p className="text-xs text-text-secondary">
-                    Klik kode promo untuk menyalin kode langsung ke clipboard.
-                  </p>
                 </div>
                 {/* Search input */}
                 <div className="relative w-full sm:w-48">

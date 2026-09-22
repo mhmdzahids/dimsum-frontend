@@ -218,18 +218,10 @@ export default function AdminProducts() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full bg-brand-blue/15 text-brand-blue border border-brand-blue/30 text-[11px] font-bold">
-              Katalog &amp; Pricing
-            </span>
-          </div>
           <h1 className="text-2xl font-bold text-text-primary font-heading flex items-center gap-2.5">
             <Package className="text-brand-blue" size={26} />
-            <span>Katalog Produk &amp; Menu</span>
+            <span>Produk</span>
           </h1>
-          <p className="text-xs text-text-secondary mt-1">
-            Kelola menu dimsum, harga jual, promo diskon coret, dan batas maksimal pembelian pelanggan.
-          </p>
         </div>
       </div>
 
@@ -239,7 +231,7 @@ export default function AdminProducts() {
           <Settings size={18} /> Pengaturan Order Limit
         </h2>
         <p className="text-sm text-amber-700 mb-3">
-          Batas maksimum total item yang dapat dibeli customer dalam satu transaksi. (Saat ini: <strong>{orderLimit}</strong> item)
+          Maks. item per order: <strong>{orderLimit}</strong>
         </p>
         <form onSubmit={updateOrderLimit} className="flex items-center gap-2">
           <input
@@ -283,7 +275,7 @@ export default function AdminProducts() {
       <div className="flex flex-col gap-3">
         <div className="flex justify-between items-center mb-1">
           <h2 className="font-bold text-gray-800 text-lg">Daftar Menu ({products.length})</h2>
-          <span className="text-xs text-gray-500">Klik "Kelola Diskon" untuk mengatur promo dan badge diskon</span>
+          <span className="text-xs text-gray-500"></span>
         </div>
 
         {products.map(p => {
@@ -426,7 +418,7 @@ export default function AdminProducts() {
                     Aktifkan Diskon Promo
                   </label>
                   <span className="text-xs text-gray-500">
-                    {isDiscountActive ? 'Menu akan berstatus promo dengan badge diskon' : 'Menu dijual dengan harga normal biasa'}
+                    {isDiscountActive ? 'Menu berstatus promo' : 'Harga normal'}
                   </span>
                 </div>
                 <button
@@ -467,9 +459,7 @@ export default function AdminProducts() {
                         className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand-red/30 focus:border-brand-red"
                       />
                     </div>
-                    <span className="text-[11px] text-gray-400 mt-1 block">
-                      Harga sebelum diskon yang akan dicoret (strikethrough)
-                    </span>
+
                   </div>
 
                   {/* Discount Percentage Input & Presets */}
@@ -569,11 +559,8 @@ export default function AdminProducts() {
                 </>
               ) : (
                 <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 text-center space-y-2">
-                  <p className="text-xs text-gray-600 leading-relaxed">
-                    Diskon akan <strong>dinonaktifkan</strong> untuk menu ini.
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Menu akan kembali menampilkan harga normal tunggal (Rp{Number(selectedProductForDiscount.original_price || selectedProductForDiscount.price).toLocaleString('id-ID')}) tanpa badge promo dan tanpa outline merah.
+                  <p className="text-xs text-gray-600">
+                    Diskon akan <strong>dinonaktifkan</strong>.
                   </p>
                 </div>
               )}

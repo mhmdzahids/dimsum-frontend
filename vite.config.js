@@ -10,7 +10,8 @@ export default defineConfig({
   ],
   server: {
     allowedHosts: [
-      'unlinked-sappiness-freeway.ngrok-free.dev'
+      'unlinked-sappiness-freeway.ngrok-free.dev',
+      '.ngrok-free.dev'
     ],
     proxy: {
       '/api': {
