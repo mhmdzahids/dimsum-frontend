@@ -195,51 +195,51 @@ export default function AdminDashboard() {
     <div className="space-y-8 animate-fadeIn">
 
 
-      {/* 2. KPI METRIC CARDS (5 Cards) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+      {/* 2. KPI METRIC CARDS (4 Cards: 2x2 on mobile, 4 columns on desktop) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
         {/* Card 1: Total Stok */}
-        <div className="bg-white p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-          <div className="flex items-start justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">
               Total Stok Freezer
             </span>
-            <div className="w-9 h-9 rounded-xl bg-brand-blue/10 text-brand-blue flex items-center justify-center">
-              <Layers size={18} />
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0">
+              <Layers size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
           </div>
           <div>
-            <div className="text-2xl sm:text-3xl font-black font-heading text-text-primary">
+            <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
               {totalStockPcs.toLocaleString('id-ID')}{' '}
-              <span className="text-sm font-semibold text-text-secondary">pcs</span>
+              <span className="text-xs sm:text-sm font-semibold text-text-secondary">pcs</span>
             </div>
-            <div className="mt-1 text-xs font-semibold text-brand-blue">
+            <div className="mt-0.5 sm:mt-1 text-[11px] sm:text-xs font-semibold text-brand-blue">
               ≈ {totalStockLots} Lot
             </div>
           </div>
         </div>
 
         {/* Card 2: Produksi Hari Ini */}
-        <div className="bg-white p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-          <div className="flex items-start justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">
               Produksi Hari Ini
             </span>
-            <div className="w-9 h-9 rounded-xl bg-brand-gold/15 text-brand-gold-dark flex items-center justify-center">
-              <Factory size={18} />
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-brand-gold/15 text-brand-gold-dark flex items-center justify-center shrink-0">
+              <Factory size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
           </div>
           <div>
-            <div className="text-2xl sm:text-3xl font-black font-heading text-text-primary">
-              {completedLots} <span className="text-base font-bold text-text-secondary">/ {normalCapacity} Lot</span>
+            <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
+              {completedLots} <span className="text-xs sm:text-base font-bold text-text-secondary">/ {normalCapacity} Lot</span>
             </div>
             {/* Gold Progress Indicator */}
-            <div className="w-full bg-bg-cream rounded-full h-2 mt-2.5 overflow-hidden">
+            <div className="w-full bg-bg-cream rounded-full h-1.5 sm:h-2 mt-2 sm:mt-2.5 overflow-hidden">
               <div
                 className="bg-brand-gold h-full rounded-full transition-all duration-700"
                 style={{ width: `${capacityPercent}%` }}
               />
             </div>
-            <div className="mt-1 text-[11px] font-medium text-text-secondary flex justify-between">
+            <div className="mt-1 text-[10px] sm:text-[11px] font-medium text-text-secondary flex justify-between gap-1">
               <span>{capacityPercent}% Tercapai</span>
               <span className="text-brand-gold-dark font-bold">{remainingNormalLots} Lot Sisa</span>
             </div>
@@ -247,27 +247,27 @@ export default function AdminDashboard() {
         </div>
 
         {/* Card 3: Stok Kritis */}
-        <div className="bg-white p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-          <div className="flex items-start justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">
               Stok Kritis
             </span>
-            <div className="w-9 h-9 rounded-xl bg-red-100 text-brand-red flex items-center justify-center">
-              <AlertTriangle size={18} />
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-red-100 text-brand-red flex items-center justify-center shrink-0">
+              <AlertTriangle size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
           </div>
           <div>
-            <div className="text-2xl sm:text-3xl font-black font-heading text-text-primary flex items-baseline gap-1.5">
+            <div className="text-xl sm:text-3xl font-black font-heading text-text-primary flex items-baseline gap-1.5">
               <span>{criticalProducts.length}</span>
-              <span className="text-sm font-semibold text-text-secondary">Varian</span>
+              <span className="text-xs sm:text-sm font-semibold text-text-secondary">Varian</span>
             </div>
-            <div className="mt-2">
+            <div className="mt-1.5 sm:mt-2">
               {criticalProducts.length > 0 ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-brand-red border border-red-200">
+                <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-red-100 text-brand-red border border-red-200">
                   Perlu Produksi
                 </span>
               ) : (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                   Buffer Aman (&gt;70 pcs)
                 </span>
               )}
@@ -276,26 +276,25 @@ export default function AdminDashboard() {
         </div>
 
         {/* Card 4: Pengeluaran Hari Ini */}
-        <div className="bg-white p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-          <div className="flex items-start justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">
               Stok Keluar Hari Ini
             </span>
-            <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
-              <ArrowUpRight size={18} />
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+              <ArrowUpRight size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
           </div>
           <div>
-            <div className="text-2xl sm:text-3xl font-black font-heading text-text-primary">
+            <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
               {totalOutTodayPcs.toLocaleString('id-ID')}{' '}
-              <span className="text-sm font-semibold text-text-secondary">pcs</span>
+              <span className="text-xs sm:text-sm font-semibold text-text-secondary">pcs</span>
             </div>
-            <div className="mt-1 text-xs font-semibold text-orange-700">
+            <div className="mt-0.5 sm:mt-1 text-[11px] sm:text-xs font-semibold text-orange-700">
               {channelEntries.length} saluran
             </div>
           </div>
         </div>
-
       </div>
 
       {/* 3. ANALYTICS SECTION (Two-Column SVG Charts) */}

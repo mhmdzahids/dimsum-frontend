@@ -115,101 +115,101 @@ export default function AdminInventoryDashboard() {
           <button onClick={fetchSummary} className="underline text-xs font-semibold">Coba Lagi</button>
         </div>
       )}
-      {/* Top 4 KPI Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Top 4 KPI Metrics Grid (2x2 on mobile, 4 columns on desktop) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Metric 1: Total Stok Freezer */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Total Stok Freezer</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
-              <Layers size={18} />
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-gray-200 shadow-xs relative overflow-hidden flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-1">
+            <span className="text-[10px] sm:text-xs font-bold text-text-secondary uppercase tracking-wider leading-tight">Total Stok Freezer</span>
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+              <Layers size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-3xl font-extrabold text-text-primary font-heading">
+          <div className="mt-2 sm:mt-3">
+            <div className="text-xl sm:text-3xl font-extrabold text-text-primary font-heading">
               {data?.total_stock_pcs?.toLocaleString('id-ID') || 0}
-              <span className="text-sm font-normal text-text-secondary ml-1.5">pcs</span>
+              <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">pcs</span>
             </div>
-            <div className="mt-1 flex items-center gap-1.5 text-xs text-text-secondary">
+            <div className="mt-0.5 sm:mt-1 flex flex-wrap items-center gap-1 text-[10px] sm:text-xs text-text-secondary">
               <span className="font-semibold text-brand-blue">~{data?.total_stock_lots || 0} Lot Standar</span>
-              <span>(isi 25/mika)</span>
+              <span className="hidden xs:inline sm:inline">(isi 25/mika)</span>
             </div>
           </div>
         </div>
 
         {/* Metric 2: Buffer Kritis */}
-        <div className={`p-5 rounded-2xl border shadow-xs relative overflow-hidden transition-all ${(data?.critical_count || 0) > 0
+        <div className={`p-3.5 sm:p-5 rounded-2xl border shadow-xs relative overflow-hidden transition-all flex flex-col justify-between ${(data?.critical_count || 0) > 0
           ? 'bg-red-50/50 border-red-200'
           : 'bg-white border-gray-200'
           }`}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Stock Kritis</span>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${(data?.critical_count || 0) > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'
+          <div className="flex items-start justify-between gap-1">
+            <span className="text-[10px] sm:text-xs font-bold text-text-secondary uppercase tracking-wider leading-tight">Stock Kritis</span>
+            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${(data?.critical_count || 0) > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'
               }`}>
-              <AlertTriangle size={18} />
+              <AlertTriangle size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className={`text-3xl font-extrabold font-heading ${(data?.critical_count || 0) > 0 ? 'text-red-700' : 'text-text-primary'
+          <div className="mt-2 sm:mt-3">
+            <div className={`text-xl sm:text-3xl font-extrabold font-heading ${(data?.critical_count || 0) > 0 ? 'text-red-700' : 'text-text-primary'
               }`}>
               {data?.critical_count || 0}
-              <span className="text-sm font-normal text-text-secondary ml-1.5">varian</span>
+              <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">varian</span>
             </div>
-            <p className="mt-1 text-xs text-text-secondary">
-              Stock kurang dari 70 pcs
+            <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-text-secondary">
+              Kurang dari 70 pcs
             </p>
           </div>
         </div>
 
         {/* Metric 3: Buffer Waspada */}
-        <div className={`p-5 rounded-2xl border shadow-xs relative overflow-hidden ${(data?.warning_count || 0) > 0
+        <div className={`p-3.5 sm:p-5 rounded-2xl border shadow-xs relative overflow-hidden flex flex-col justify-between ${(data?.warning_count || 0) > 0
           ? 'bg-amber-50/50 border-amber-200'
           : 'bg-white border-gray-200'
           }`}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Stock Mulai Habis</span>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${(data?.warning_count || 0) > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
+          <div className="flex items-start justify-between gap-1">
+            <span className="text-[10px] sm:text-xs font-bold text-text-secondary uppercase tracking-wider leading-tight">Stock Mulai Habis</span>
+            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${(data?.warning_count || 0) > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
               }`}>
-              <Clock size={18} />
+              <Clock size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className={`text-3xl font-extrabold font-heading ${(data?.warning_count || 0) > 0 ? 'text-amber-700' : 'text-text-primary'
+          <div className="mt-2 sm:mt-3">
+            <div className={`text-xl sm:text-3xl font-extrabold font-heading ${(data?.warning_count || 0) > 0 ? 'text-amber-700' : 'text-text-primary'
               }`}>
               {data?.warning_count || 0}
-              <span className="text-sm font-normal text-text-secondary ml-1.5">varian</span>
+              <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">varian</span>
             </div>
-            <p className="mt-1 text-xs text-text-secondary">
-              Stock Antara 70-100 pcs
+            <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-text-secondary">
+              Antara 70-100 pcs
             </p>
           </div>
         </div>
 
         {/* Metric 4: Realisasi Produksi Hari Ini */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Produksi Hari Ini</span>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${todayProd.completed_lots > 0
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-gray-200 shadow-xs relative overflow-hidden flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-1">
+            <span className="text-[10px] sm:text-xs font-bold text-text-secondary uppercase tracking-wider leading-tight">Produksi Hari Ini</span>
+            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${todayProd.completed_lots > 0
               ? 'bg-emerald-50 text-emerald-700'
               : 'bg-gray-100 text-gray-500'
               }`}>
-              <Factory size={18} />
+              <Factory size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-3xl font-extrabold text-text-primary font-heading">
+          <div className="mt-2 sm:mt-3">
+            <div className="text-xl sm:text-3xl font-extrabold text-text-primary font-heading">
               {todayProd.completed_lots}
-              <span className="text-sm font-normal text-text-secondary ml-1.5">/ {todayProd.capacity_lots} Lot</span>
+              <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">/ {todayProd.capacity_lots} Lot</span>
             </div>
             {todayProd.completed_pcs > 0 ? (
-              <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-700 font-semibold">
-                <CheckCircle2 size={13} />
-                <span>{todayProd.completed_pcs} pcs fisik disetujui QC</span>
+              <div className="mt-0.5 sm:mt-1 flex items-center gap-1 text-[10px] sm:text-xs text-emerald-700 font-semibold truncate">
+                <CheckCircle2 size={12} className="shrink-0" />
+                <span>{todayProd.completed_pcs} pcs QC</span>
               </div>
             ) : (
-              <div className="mt-1 flex items-center gap-1.5 text-xs text-text-secondary">
-                <Clock size={13} className="text-gray-400" />
-                <span>Belum ada produksi</span>
+              <div className="mt-0.5 sm:mt-1 flex items-center gap-1 text-[10px] sm:text-xs text-text-secondary">
+                <Clock size={12} className="text-gray-400 shrink-0" />
+                <span>Belum ada</span>
               </div>
             )}
           </div>
