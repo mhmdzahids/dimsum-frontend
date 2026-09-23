@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import api from '../api/client';
 import Pagination from '../components/ui/Pagination';
+import { getAdminRole, canStockOut } from '../utils/adminAuth';
 
 const CHANNELS_META = {
   shopee: { name: 'Shopee', icon: ShoppingBag, color: 'bg-orange-500', lightColor: 'bg-orange-50 text-orange-700 border-orange-200' },
@@ -35,6 +36,9 @@ const CHANNELS_META = {
 };
 
 export default function AdminInventoryDashboard() {
+  const userRole = getAdminRole() || 'admin';
+  const hasStockOutAccess = canStockOut(userRole);
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -289,10 +293,6 @@ export default function AdminInventoryDashboard() {
                 </div>
               </div>
             </div>
-
-            <p className="text-xs text-text-secondary mt-3">
-              Target harian normal 20 Lot (500 pcs) • Maks lembur 24 Lot
-            </p>
           </div>
 
           <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between">
@@ -446,7 +446,6 @@ export default function AdminInventoryDashboard() {
                 <th className="py-3.5 px-4 text-center">Konversi Lot</th>
                 <th className="py-3.5 px-4 text-center">Tingkat Keterisian Buffer</th>
                 <th className="py-3.5 px-4 text-center">Status</th>
-                <th className="py-3.5 px-4 text-center">Tindakan Lanjut</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -504,11 +503,6 @@ export default function AdminInventoryDashboard() {
                             <div className="font-bold text-text-primary text-sm font-heading">{prod.name}</div>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="font-mono text-[11px] text-text-secondary">{prod.sku || 'NO-SKU'}</span>
-                              {prod.category && (
-                                <span className="px-2 py-0.5 rounded-md bg-gray-100 text-text-secondary text-[10px]">
-                                  {prod.category}
-                                </span>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -559,26 +553,6 @@ export default function AdminInventoryDashboard() {
                           <span>{statusBadge.label}</span>
                         </span>
                       </td>
-
-                      {/* Quick Action Links */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Link
-                            to="/admin/production"
-                            className="px-2.5 py-1.5 rounded-lg bg-brand-blue/10 hover:bg-brand-blue text-brand-blue hover:text-white font-bold text-[11px] transition-colors"
-                            title="Jadwalkan Produksi Lot"
-                          >
-                            Produksi
-                          </Link>
-                          <Link
-                            to="/admin/stock-out"
-                            className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 text-text-primary font-medium text-[11px] transition-colors"
-                            title="Keluarkan Stok"
-                          >
-                            Keluarkan
-                          </Link>
-                        </div>
-                      </td>
                     </tr>
                   );
                 })
@@ -590,17 +564,6 @@ export default function AdminInventoryDashboard() {
         {/* Table Footer / Summary & Legend */}
         <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between text-xs text-text-secondary gap-3">
           <span>Total produk di inventaris: <strong>{products.length}</strong> varian</span>
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Kritis (&lt;70 pcs)
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Waspada (70-100 pcs)
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Aman (&gt;100 pcs)
-            </span>
-          </div>
         </div>
 
         {totalPages > 1 && (

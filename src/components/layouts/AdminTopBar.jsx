@@ -28,15 +28,15 @@ const ROUTE_META = {
 };
 
 const QUICK_NAV = [
-  { label: 'Dashboard', path: '/admin', section: 'Overview', keywords: ['dashboard', 'ringkasan', 'overview'] },
-  { label: 'Ringkasan Stok', path: '/admin/inventory', section: 'Operations', keywords: ['stok', 'inventory', 'buffer', 'freezer'] },
-  { label: 'Produksi Lot', path: '/admin/production', section: 'Operations', keywords: ['produksi', 'lot', 'rencana', 'verifikasi'] },
-  { label: 'Pengeluaran Stok', path: '/admin/stock-out', section: 'Operations', keywords: ['keluar', 'stok keluar', 'shopee', 'tiktok', 'po', 'offline'] },
-  { label: 'Scan QR Kasir', path: '/admin/scan-qr', section: 'Operations', keywords: ['scan', 'qr', 'kasir', 'pickup'] },
-  { label: 'Produk & Menu', path: '/admin/products', section: 'Catalog', keywords: ['produk', 'menu', 'katalog', 'harga', 'diskon'] },
-  { label: 'Voucher Promo', path: '/admin/vouchers', section: 'Catalog', keywords: ['voucher', 'promo', 'kode', 'diskon'] },
-  { label: 'Banner Promosi', path: '/admin/banners', section: 'Catalog', keywords: ['banner', 'spanduk', 'gambar'] },
-  { label: 'Manajemen Tim', path: '/admin/users', section: 'Management', keywords: ['tim', 'user', 'pengguna', 'role', 'admin'] }
+  { id: 'dashboard', label: 'Dashboard', path: '/admin', section: 'Overview', keywords: ['dashboard', 'ringkasan', 'overview'] },
+  { id: 'inventory', label: 'Ringkasan Stok', path: '/admin/inventory', section: 'Operations', keywords: ['stok', 'inventory', 'buffer', 'freezer'] },
+  { id: 'production', label: 'Produksi Lot', path: '/admin/production', section: 'Operations', keywords: ['produksi', 'lot', 'rencana', 'verifikasi'] },
+  { id: 'stock-out', label: 'Pengeluaran Stok', path: '/admin/stock-out', section: 'Operations', keywords: ['keluar', 'stok keluar', 'shopee', 'tiktok', 'po', 'offline'] },
+  { id: 'scan-qr', label: 'Scan QR Kasir', path: '/admin/scan-qr', section: 'Operations', keywords: ['scan', 'qr', 'kasir', 'pickup'] },
+  { id: 'products', label: 'Produk & Menu', path: '/admin/products', section: 'Catalog', keywords: ['produk', 'menu', 'katalog', 'harga', 'diskon'] },
+  { id: 'vouchers', label: 'Voucher Promo', path: '/admin/vouchers', section: 'Catalog', keywords: ['voucher', 'promo', 'kode', 'diskon'] },
+  { id: 'banners', label: 'Banner Promosi', path: '/admin/banners', section: 'Catalog', keywords: ['banner', 'spanduk', 'gambar'] },
+  { id: 'users', label: 'Manajemen Tim', path: '/admin/users', section: 'Management', keywords: ['tim', 'user', 'pengguna', 'role', 'admin'] }
 ];
 
 export default function AdminTopBar({ onToggleSidebar }) {
@@ -45,6 +45,8 @@ export default function AdminTopBar({ onToggleSidebar }) {
   const user = getAdminUser();
   const role = user?.role || 'admin';
   const roleConfig = ROLE_CONFIG[role] || ROLE_CONFIG.admin;
+  const allowedTabs = roleConfig.allowedTabs || ['scan-qr'];
+  const hasInventoryAccess = allowedTabs.includes('inventory');
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [criticalCount, setCriticalCount] = useState(0);
@@ -57,9 +59,10 @@ export default function AdminTopBar({ onToggleSidebar }) {
   // Derive title & breadcrumbs
   const meta = ROUTE_META[location.pathname] || { title: 'Portal Admin', section: 'Admin' };
 
-  // Filter matching routes for searchbar
+  // Filter matching routes for searchbar against role permissions
+  const visibleQuickNav = QUICK_NAV.filter(item => allowedTabs.includes(item.id));
   const matchingRoutes = searchQuery.trim()
-    ? QUICK_NAV.filter(item => {
+    ? visibleQuickNav.filter(item => {
         const q = searchQuery.toLowerCase();
         return (
           item.label.toLowerCase().includes(q) ||
@@ -71,6 +74,7 @@ export default function AdminTopBar({ onToggleSidebar }) {
 
   // Fetch quick notification status (critical buffer stock count) with 60s throttling to protect rate limiter
   useEffect(() => {
+    if (!hasInventoryAccess) return;
     let isMounted = true;
     const now = Date.now();
     if (now - lastCheckRef.current < 60000 && lastCheckRef.current > 0) {
@@ -118,7 +122,7 @@ export default function AdminTopBar({ onToggleSidebar }) {
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-bg-cream-dark/80 px-4 sm:px-6 py-3 flex items-center justify-between transition-all">
+    <header className="h-16 sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-bg-cream-dark/80 px-4 sm:px-6 flex items-center justify-between transition-all">
       {/* Left: Mobile Toggle & Breadcrumb Title */}
       <div className="flex items-center gap-3">
         <button
@@ -204,17 +208,19 @@ export default function AdminTopBar({ onToggleSidebar }) {
           )}
         </div>
 
-        {/* Notifications / Critical Alert Icon */}
-        <Link
-          to="/admin/inventory"
-          title={criticalCount > 0 ? `${criticalCount} varian stok kritis di freezer!` : 'Semua stok dalam ambang aman'}
-          className="relative p-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-bg-cream transition-colors"
-        >
-          <Bell size={18} />
-          {criticalCount > 0 && (
-            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-brand-red rounded-full ring-2 ring-white animate-pulse" />
-          )}
-        </Link>
+        {/* Notifications / Critical Alert Icon (Only for inventory-permitted roles) */}
+        {hasInventoryAccess && (
+          <Link
+            to="/admin/inventory"
+            title={criticalCount > 0 ? `${criticalCount} varian stok kritis di freezer!` : 'Semua stok dalam ambang aman'}
+            className="relative p-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-bg-cream transition-colors"
+          >
+            <Bell size={18} />
+            {criticalCount > 0 && (
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-brand-red rounded-full ring-2 ring-white animate-pulse" />
+            )}
+          </Link>
+        )}
 
         {/* User Pill & Dropdown */}
         <div className="relative" ref={dropdownRef}>

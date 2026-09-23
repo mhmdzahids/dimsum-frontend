@@ -113,33 +113,6 @@ export default function AdminStockOut() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-800 border border-orange-200 text-[11px] font-bold">
-              Multi-Channel Dispatch
-            </span>
-          </div>
-          <h1 className="text-2xl font-bold text-text-primary font-heading flex items-center gap-2.5">
-            <ArrowUpRight className="text-orange-600" size={26} />
-            <span>Pengeluaran Stok Multi-Channel</span>
-          </h1>
-          <p className="text-xs text-text-secondary mt-1">
-            Catat pemotongan stok freezer untuk pesanan Shopee, TikTok Shop, PO B2B, dan Reguler secara FIFO.
-          </p>
-        </div>
-
-        <button
-          onClick={fetchData}
-          disabled={loading}
-          className="p-2.5 rounded-xl border border-gray-200 bg-white text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-          title="Muat ulang data"
-        >
-          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-        </button>
-      </div>
-
       {/* Notifications */}
       {successMsg && (
         <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800 animate-fadeIn">
@@ -188,8 +161,8 @@ export default function AdminStockOut() {
                       key={ch.id}
                       onClick={() => setSelectedChannel(ch.id)}
                       className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all ${isSelected
-                          ? 'border-orange-500 bg-orange-50 text-orange-950 ring-1 ring-orange-400 font-bold'
-                          : 'border-gray-200 bg-white text-text-secondary hover:bg-gray-50 font-medium'
+                        ? 'border-orange-500 bg-orange-50 text-orange-950 ring-1 ring-orange-400 font-bold'
+                        : 'border-gray-200 bg-white text-text-secondary hover:bg-gray-50 font-medium'
                         }`}
                     >
                       <Icon size={16} className={isSelected ? 'text-orange-600' : 'text-gray-400'} />
@@ -226,8 +199,8 @@ export default function AdminStockOut() {
                     </span>
                   </div>
                   <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold ${selectedProduct.buffer_status === 'critical' ? 'bg-red-100 text-red-800 border-red-200' :
-                      selectedProduct.buffer_status === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                        'bg-emerald-100 text-emerald-800 border-emerald-200'
+                    selectedProduct.buffer_status === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                      'bg-emerald-100 text-emerald-800 border-emerald-200'
                     }`}>
                     {selectedProduct.buffer_label}
                   </span>

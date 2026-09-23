@@ -116,3 +116,31 @@ export function isRoleAllowed(role, allowedRoles) {
   if (!allowedRoles || allowedRoles.length === 0) return true;
   return allowedRoles.includes(role);
 }
+
+/**
+ * Fine-grained UI permission checkers based on backend security policies
+ */
+export function canCreateProductionPlan(role) {
+  return ['admin', 'inventory'].includes(role);
+}
+
+export function canCancelProductionPlan(role) {
+  return ['admin', 'inventory'].includes(role);
+}
+
+export function canVerifyProduction(role) {
+  return ['admin', 'checker'].includes(role);
+}
+
+export function canStockOut(role) {
+  return ['admin', 'inventory'].includes(role);
+}
+
+export function canManageProducts(role) {
+  return role === 'admin';
+}
+
+export function canManageUsers(role) {
+  return role === 'admin';
+}
+

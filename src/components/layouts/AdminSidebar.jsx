@@ -79,30 +79,16 @@ export default function AdminSidebar({ mobileOpen, setMobileOpen }) {
   const sidebarContent = (
     <div className="flex flex-col h-full bg-white border-r border-bg-cream-dark/80 select-none">
       {/* Brand Header */}
-      <div className="p-5 border-b border-bg-cream-dark/60 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-bg-cream flex items-center justify-center p-1.5 border border-bg-cream-dark/70 shadow-xs">
-            <img src={logoImg} alt="Makan Dimsum Logo" className="w-full h-full object-contain" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] uppercase tracking-wider font-extrabold text-brand-blue font-body leading-none">
-                Dimsum Kasir & POS
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 mt-1">
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${roleConfig.badge}`}>
-                {roleConfig.label}
-              </span>
-            </div>
-          </div>
+      <div className="h-16 px-4 border-b border-bg-cream-dark/60 relative flex items-center justify-center">
+        <div className="h-[50px] flex items-center justify-center w-full">
+          <img src={logoImg} alt="Makan Dimsum Indonesia" className="h-full max-w-[90%] object-contain drop-shadow-sm mx-auto" />
         </div>
 
         {/* Mobile close button */}
         {setMobileOpen && (
           <button
             onClick={() => setMobileOpen(false)}
-            className="lg:hidden p-1.5 rounded-xl text-text-secondary hover:text-text-primary hover:bg-bg-cream"
+            className="lg:hidden absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-xl text-text-secondary hover:text-text-primary hover:bg-bg-cream cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -129,18 +115,16 @@ export default function AdminSidebar({ mobileOpen, setMobileOpen }) {
                     to={item.path}
                     end={item.exact}
                     onClick={() => setMobileOpen && setMobileOpen(false)}
-                    className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 group ${
-                      isActive
-                        ? 'bg-brand-blue text-white shadow-xs font-bold'
-                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-cream/70'
-                    }`}
+                    className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 group ${isActive
+                      ? 'bg-brand-blue text-white shadow-xs font-bold'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-cream/70'
+                      }`}
                   >
                     <div className="flex items-center gap-3">
                       <Icon
                         size={17}
-                        className={`transition-colors ${
-                          isActive ? 'text-white' : 'text-text-secondary group-hover:text-brand-blue'
-                        }`}
+                        className={`transition-colors ${isActive ? 'text-white' : 'text-text-secondary group-hover:text-brand-blue'
+                          }`}
                       />
                       <span>{item.label}</span>
                     </div>

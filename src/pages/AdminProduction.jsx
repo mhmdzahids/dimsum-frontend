@@ -20,15 +20,29 @@ import {
 import api from '../api/client';
 import LotStickerModal from '../components/inventory/LotStickerModal';
 import Pagination from '../components/ui/Pagination';
+import {
+  getAdminRole,
+  canCreateProductionPlan,
+  canVerifyProduction,
+  canCancelProductionPlan
+} from '../utils/adminAuth';
 
 const BATCH_STATUS_META = {
   planned: { label: 'Menunggu Verifikasi Checker', color: 'bg-amber-100 text-amber-800 border-amber-200' },
-  completed: { label: 'Selesai & Masuk Stok', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+  completed: { label: 'Selesai Produksi', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
   cancelled: { label: 'Dibatalkan', color: 'bg-gray-100 text-gray-600 border-gray-200' }
 };
 
 export default function AdminProduction() {
-  const [activeTab, setActiveTab] = useState('planner'); // 'planner' | 'checker'
+  const userRole = getAdminRole() || 'admin';
+  const canPlan = canCreateProductionPlan(userRole);
+  const canVerify = canVerifyProduction(userRole);
+  const canCancel = canCancelProductionPlan(userRole);
+
+  const [activeTab, setActiveTab] = useState(() => {
+    if (!canPlan && canVerify) return 'checker';
+    return 'planner';
+  });
   const [batches, setBatches] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,12 +132,23 @@ export default function AdminProduction() {
     e.preventDefault();
     if (!confirmingBatch) return;
     setConfirmError('');
+
+    const parsedLoose = looseQty === '' ? 0 : Number(looseQty);
+    if (parsedLoose > 24) {
+      setConfirmError('Sisa eceran lepas maksimal 24 pcs (25 pcs sudah dihitung sebagai 1 Lot).');
+      return;
+    }
+    if (parsedLoose < 0) {
+      setConfirmError('Sisa eceran lepas tidak boleh bernilai negatif.');
+      return;
+    }
+
     setSubmittingConfirm(true);
 
     try {
       const res = await api.post(`/api/inventory/production/${confirmingBatch.id}/confirm`, {
         actual_lots: Number(actualLots),
-        loose_qty: Number(looseQty)
+        loose_qty: parsedLoose
       }, { auth: 'admin' });
 
       if (res.success) {
@@ -164,6 +189,89 @@ export default function AdminProduction() {
   const pendingBatches = batches.filter(b => b.status === 'planned');
   const selectedProduct = products.find(p => p.id === selectedProductId);
 
+  // Helper cek apakah batch dibuat / dijadwalkan hari ini
+  const isBatchToday = (batch) => {
+    if (!batch) return false;
+    const dateStr = batch.created_at || batch.planned_at;
+    if (dateStr) {
+      const d = new Date(dateStr);
+      const now = new Date();
+      if (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      ) {
+        return true;
+      }
+    }
+    if (batch.batch_code) {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const todayTag = `${y}${m}${day}`;
+      if (batch.batch_code.includes(todayTag)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // 1. Antrean Menunggu QC (hanya status planned)
+  const pendingLots = pendingBatches.reduce((acc, b) => acc + (b.planned_lots || 0), 0);
+  const pendingPcs = pendingLots * 25;
+
+  // Batches hari ini
+  const todayBatches = batches.filter(isBatchToday);
+
+  // 2. Hasil Produksi Hari Ini (completed hari ini)
+  const todayCompletedBatches = todayBatches.filter(b => b.status === 'completed');
+  const todayProducedPcs = todayCompletedBatches.reduce((acc, b) => acc + (b.produced_qty || 0), 0);
+  const todayProducedLots = todayCompletedBatches.reduce((acc, b) => acc + (b.actual_lots || 0), 0);
+
+  // Total stok di freezer saat ini (seluruh batch / saldo berjalan)
+  const totalFreezerPcs = products && products.length > 0
+    ? products.reduce((acc, p) => acc + (p.stock_qty || 0), 0)
+    : batches.filter(b => b.status === 'completed').reduce((acc, b) => acc + (b.produced_qty || 0), 0);
+  const totalFreezerLots = Math.floor(totalFreezerPcs / 25);
+
+  // 3. Kapasitas Produksi Hari Ini (batch planned + completed hari ini)
+  const NORMAL_CAPACITY_LOTS = 20;
+  const MAX_CAPACITY_LOTS = 24;
+
+  const todayTotalLots = todayBatches
+    .filter(b => b.status !== 'cancelled')
+    .reduce((acc, b) => {
+      const lotVal = b.status === 'completed' ? (b.actual_lots || b.planned_lots || 0) : (b.planned_lots || 0);
+      return acc + lotVal;
+    }, 0);
+
+  const capacityPercentage = Math.round((todayTotalLots / NORMAL_CAPACITY_LOTS) * 100);
+  const progressWidth = Math.min(100, Math.round((todayTotalLots / NORMAL_CAPACITY_LOTS) * 100));
+
+  let capacityTheme = {
+    barColor: 'bg-emerald-500',
+    textColor: 'text-emerald-700',
+    badgeBg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    statusLabel: 'Kapasitas Normal'
+  };
+
+  if (todayTotalLots > NORMAL_CAPACITY_LOTS) {
+    capacityTheme = {
+      barColor: 'bg-rose-500',
+      textColor: 'text-rose-700',
+      badgeBg: 'bg-rose-50 text-rose-700 border-rose-200',
+      statusLabel: todayTotalLots >= MAX_CAPACITY_LOTS ? 'Kapasitas Penuh' : 'Zona Lembur'
+    };
+  } else if (todayTotalLots >= 17) {
+    capacityTheme = {
+      barColor: 'bg-amber-500',
+      textColor: 'text-amber-700',
+      badgeBg: 'bg-amber-50 text-amber-700 border-amber-200',
+      statusLabel: 'Mendekati Batas'
+    };
+  }
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Notifications */}
@@ -194,31 +302,35 @@ export default function AdminProduction() {
       {/* Tab Navigation */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 mb-6 pb-2">
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveTab('planner')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${activeTab === 'planner'
-              ? 'bg-brand-blue text-white shadow-xs'
-              : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
-              }`}
-          >
-            <FileText size={15} />
-            <span>Rencana ({batches.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('checker')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors relative ${activeTab === 'checker'
-              ? 'bg-amber-700 text-white shadow-xs'
-              : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
-              }`}
-          >
-            <ShieldCheck size={15} />
-            <span>Verifikasi</span>
-            {pendingBatches.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 bg-red-500 text-white rounded-full text-[10px] font-bold">
-                {pendingBatches.length}
-              </span>
-            )}
-          </button>
+          {canPlan && (
+            <button
+              onClick={() => setActiveTab('planner')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${activeTab === 'planner'
+                ? 'bg-brand-blue text-white shadow-xs'
+                : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
+                }`}
+            >
+              <FileText size={15} />
+              <span>Rencana ({batches.length})</span>
+            </button>
+          )}
+          {canVerify && (
+            <button
+              onClick={() => setActiveTab('checker')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors relative ${activeTab === 'checker'
+                ? 'bg-amber-700 text-white shadow-xs'
+                : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
+                }`}
+            >
+              <ShieldCheck size={15} />
+              <span>Verifikasi</span>
+              {pendingBatches.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 bg-red-500 text-white rounded-full text-[10px] font-bold">
+                  {pendingBatches.length}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2 justify-end">
@@ -230,60 +342,141 @@ export default function AdminProduction() {
           >
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
           </button>
-          <button
-            onClick={() => { setShowPlanModal(true); setPlanError(''); }}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-blue hover:bg-brand-blue/90 text-white rounded-xl text-xs font-semibold shadow-xs transition-all"
-          >
-            <PlusCircle size={15} />
-            <span>Rencana Baru</span>
-          </button>
+          {canPlan && (
+            <button
+              onClick={() => { setShowPlanModal(true); setPlanError(''); }}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-blue hover:bg-brand-blue/90 text-white rounded-xl text-xs font-semibold shadow-xs transition-all"
+            >
+              <PlusCircle size={15} />
+              <span>Rencana Baru</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* TAB 1: PLANNER & BATCH LIST */}
-      {activeTab === 'planner' && (
+      {activeTab === 'planner' && canPlan && (
         <div className="space-y-6">
-          {/* Quick Stats / Capacity Card */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs">
-              <span className="text-[11px] text-text-secondary font-medium block">Total Rencana Hari Ini</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-bold text-text-primary font-heading">
-                  {batches.filter(b => b.status === 'planned').reduce((acc, b) => acc + (b.planned_lots || 0), 0)} Lot
+          {/* Top 3 KPI Metrics Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+            {/* Metric 1: Antrean Menunggu QC */}
+            <div className={`p-3.5 sm:p-5 rounded-2xl border shadow-xs relative overflow-hidden transition-all flex flex-col justify-between ${
+              pendingLots > 0 ? 'bg-amber-50/40 border-amber-200' : 'bg-white border-gray-200'
+            }`}>
+              <div className="flex items-start justify-between gap-1">
+                <span className="text-[10px] sm:text-xs font-bold text-text-secondary uppercase tracking-wider leading-tight">
+                  Antrean Menunggu QC
                 </span>
-                <span className="text-xs text-text-secondary">
-                  (~{batches.filter(b => b.status === 'planned').reduce((acc, b) => acc + (b.planned_lots || 0), 0) * 25} Pcs)
-                </span>
+                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                  pendingLots > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  <Clock size={16} className="sm:w-[18px] sm:h-[18px]" />
+                </div>
               </div>
-              <span className="text-[10px] text-amber-700 font-semibold block mt-1">
-                Menunggu verifikasi
-              </span>
+              <div className="mt-2 sm:mt-3">
+                <div className={`text-xl sm:text-3xl font-extrabold font-heading ${
+                  pendingLots > 0 ? 'text-amber-700' : 'text-text-primary'
+                }`}>
+                  {pendingLots}
+                  <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">Lot</span>
+                </div>
+                <div className="mt-0.5 sm:mt-1 flex flex-wrap items-center gap-1 text-[10px] sm:text-xs text-text-secondary">
+                  {pendingLots > 0 ? (
+                    <>
+                      <span className="font-semibold text-amber-700">~{pendingPcs} pcs</span>
+                      <span>• {pendingBatches.length} batch dapur</span>
+                    </>
+                  ) : (
+                    <span className="font-semibold text-emerald-700 flex items-center gap-1">
+                      <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
+                      <span>Semua batch lolos QC</span>
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs">
-              <span className="text-[11px] text-text-secondary font-medium block">Selesai Masuk Freezer</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-bold text-emerald-700 font-heading">
-                  {batches.filter(b => b.status === 'completed').reduce((acc, b) => acc + (b.produced_qty || 0), 0)} Pcs
+            {/* Metric 2: Hasil Produksi Hari Ini */}
+            <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-gray-200 shadow-xs relative overflow-hidden flex flex-col justify-between">
+              <div className="flex items-start justify-between gap-1">
+                <span className="text-[10px] sm:text-xs font-bold text-text-secondary uppercase tracking-wider leading-tight">
+                  Produksi Selesai (Hari Ini)
                 </span>
-                <span className="text-xs text-text-secondary">
-                  ({batches.filter(b => b.status === 'completed').reduce((acc, b) => acc + (b.actual_lots || 0), 0)} Lot)
-                </span>
+                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                  todayProducedLots > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  <Factory size={16} className="sm:w-[18px] sm:h-[18px]" />
+                </div>
               </div>
-              <span className="text-[10px] text-emerald-700 font-semibold block mt-1">
-                Siap jual
-              </span>
+              <div className="mt-2 sm:mt-3">
+                <div className={`text-xl sm:text-3xl font-extrabold font-heading ${
+                  todayProducedPcs > 0 ? 'text-emerald-700' : 'text-text-primary'
+                }`}>
+                  {todayProducedPcs}
+                  <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">pcs</span>
+                </div>
+                <div className="mt-0.5 sm:mt-1 flex flex-wrap items-center gap-1 text-[10px] sm:text-xs text-text-secondary">
+                  <span className="font-semibold text-emerald-700 flex items-center gap-1">
+                    <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
+                    <span>{todayProducedLots} Lot lolos QC</span>
+                  </span>
+                  <span className="text-gray-300">•</span>
+                  <span>Total freezer: {totalFreezerPcs} pcs</span>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs">
-              <span className="text-[11px] text-text-secondary font-medium block">Kapasitas Produksi Normal</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-bold text-brand-blue font-heading">20 Lot / Hari</span>
-                <span className="text-xs text-text-secondary">(500 Pcs)</span>
+            {/* Metric 3: Kapasitas Produksi Hari Ini */}
+            <div className={`p-3.5 sm:p-5 rounded-2xl border shadow-xs relative overflow-hidden transition-all flex flex-col justify-between ${
+              todayTotalLots > NORMAL_CAPACITY_LOTS ? 'bg-rose-50/40 border-rose-200' : 'bg-white border-gray-200'
+            }`}>
+              <div className="flex items-start justify-between gap-1">
+                <span className="text-[10px] sm:text-xs font-bold text-text-secondary uppercase tracking-wider leading-tight">
+                  Kapasitas Produksi Hari Ini
+                </span>
+                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                  todayTotalLots > NORMAL_CAPACITY_LOTS
+                    ? 'bg-rose-100 text-rose-700'
+                    : todayTotalLots >= 17
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-blue-50 text-blue-700'
+                }`}>
+                  <Layers size={16} className="sm:w-[18px] sm:h-[18px]" />
+                </div>
               </div>
-              <span className="text-[10px] text-text-secondary block mt-1">
-                Maks lembur: 24 Lot
-              </span>
+              <div className="mt-2 sm:mt-3">
+                <div className={`text-xl sm:text-3xl font-extrabold font-heading ${
+                  todayTotalLots > NORMAL_CAPACITY_LOTS
+                    ? 'text-rose-700'
+                    : todayTotalLots >= 17
+                    ? 'text-amber-700'
+                    : 'text-text-primary'
+                }`}>
+                  {todayTotalLots}
+                  <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">
+                    / {NORMAL_CAPACITY_LOTS} Lot
+                  </span>
+                </div>
+                <div className="mt-1.5">
+                  <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${capacityTheme.barColor}`}
+                      style={{ width: `${progressWidth}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] sm:text-xs text-text-secondary">
+                    {todayTotalLots <= NORMAL_CAPACITY_LOTS ? (
+                      <span>
+                        <strong className="text-text-primary">{capacityPercentage}%</strong> terpakai • sisa ruang <strong className="text-emerald-700">{NORMAL_CAPACITY_LOTS - todayTotalLots} Lot</strong>
+                      </span>
+                    ) : (
+                      <span className="text-rose-700 font-medium">
+                        Zona lembur (+{todayTotalLots - NORMAL_CAPACITY_LOTS} Lot) • sisa {MAX_CAPACITY_LOTS - todayTotalLots} Lot maks
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -316,8 +509,8 @@ export default function AdminProduction() {
                         <th className="py-3 px-4">Kode Batch</th>
                         <th className="py-3 px-4">Produk Dimsum</th>
                         <th className="py-3 px-4 text-center">Rencana Lot</th>
-                        <th className="py-3 px-4 text-center">Hasil Aktual</th>
-                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4 text-center">Hasil Akhir</th>
+                        <th className="py-3 px-4 text-center">Status</th>
                         <th className="py-3 px-4">Pencatat / Catatan</th>
                         <th className="py-3 px-4 text-right">Tindakan</th>
                       </tr>
@@ -377,25 +570,29 @@ export default function AdminProduction() {
                                   )}
                                   {batch.status === 'planned' && (
                                     <>
-                                      <button
-                                        onClick={() => {
-                                          setConfirmingBatch(batch);
-                                          setActualLots(batch.planned_lots);
-                                          setLooseQty(0);
-                                          setConfirmError('');
-                                        }}
-                                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-[11px] font-semibold transition-colors shadow-xs"
-                                      >
-                                        <Check size={13} />
-                                        <span>QC / Konfirmasi</span>
-                                      </button>
-                                      <button
-                                        onClick={() => handleCancelBatch(batch.id)}
-                                        className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                        title="Batalkan Rencana"
-                                      >
-                                        <Ban size={14} />
-                                      </button>
+                                      {canVerify && (
+                                        <button
+                                          onClick={() => {
+                                            setConfirmingBatch(batch);
+                                            setActualLots(batch.planned_lots);
+                                            setLooseQty(0);
+                                            setConfirmError('');
+                                          }}
+                                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-[11px] font-semibold transition-colors shadow-xs"
+                                        >
+                                          <Check size={13} />
+                                          <span>QC / Konfirmasi</span>
+                                        </button>
+                                      )}
+                                      {canCancel && (
+                                        <button
+                                          onClick={() => handleCancelBatch(batch.id)}
+                                          className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                          title="Batalkan Rencana"
+                                        >
+                                          <Ban size={14} />
+                                        </button>
+                                      )}
                                     </>
                                   )}
                                 </div>
@@ -426,14 +623,11 @@ export default function AdminProduction() {
       )}
 
       {/* TAB 2: CHECKER QUEUE (OM YOSI) */}
-      {activeTab === 'checker' && (
+      {activeTab === 'checker' && canVerify && (
         <div className="space-y-4">
           <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl flex items-start gap-3">
             <ShieldCheck size={20} className="text-amber-700 shrink-0 mt-0.5" />
             <div>
-              <h4 className="font-bold text-xs text-amber-900">
-                Area Kerja Checker & QC Produksi (Om Yosi)
-              </h4>
               <p className="text-xs text-amber-800 mt-0.5">
                 Pastikan kualitas dimsum sesuai standar ukuran (tidak terlalu kecil/peyot dan tidak kebesaran). Konfirmasi jumlah lot fisik yang selesai dan tempel stiker QR pada setiap krat.
               </p>
@@ -496,13 +690,13 @@ export default function AdminProduction() {
       )}
 
       {/* MODAL: CREATE PLAN */}
-      {showPlanModal && (
+      {showPlanModal && canPlan && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 animate-scaleUp">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-base font-bold text-text-primary font-heading flex items-center gap-2">
                 <PlusCircle size={18} className="text-brand-blue" />
-                <span>Buat Rencana Lot Produksi (PPSI)</span>
+                <span>Rencana Produksi Stok</span>
               </h3>
               <button
                 onClick={() => setShowPlanModal(false)}
@@ -522,7 +716,7 @@ export default function AdminProduction() {
             <form onSubmit={handleCreatePlan} className="space-y-4 text-xs font-body">
               <div>
                 <label className="block text-text-primary font-semibold mb-1">
-                  Pilih Produk Dimsum *
+                  Pilih Varian Produk
                 </label>
                 <select
                   value={selectedProductId}
@@ -539,7 +733,7 @@ export default function AdminProduction() {
 
               <div>
                 <label className="block text-text-primary font-semibold mb-1">
-                  Jumlah Lot Yang Diproduksi * (1 Lot = 25 Produk)
+                  Jumlah Lot Yang Diproduksi (1 Lot = 25 Produk)
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -560,28 +754,18 @@ export default function AdminProduction() {
 
               <div>
                 <label className="block text-text-primary font-semibold mb-1">
-                  Kategori / Alasan Produksi *
+                  Kategori / Alasan Produksi
                 </label>
                 <select
                   value={planNotes}
                   onChange={(e) => setPlanNotes(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none"
                 >
-                  <option value="Produksi Harian Reguler">Produksi Harian Reguler</option>
-                  <option value="Lembur: Menjaga Buffer Stock Freezer">Lembur: Menjaga Buffer Stock Freezer (Stok Aman)</option>
-                  <option value="Lembur: Pemenuhan Order PO B2B">Lembur: Pemenuhan Order PO B2B / Partai Besar</option>
-                  <option value="Lembur: Stok Campaign TikTok & Shopee">Lembur: Stok Campaign TikTok & Shopee</option>
+                  <option value="Produksi Harian Reguler">Produksi Rutin Harian</option>
+                  <option value="Lembur: Menjaga Buffer Stock Freezer">Tambah Stok Cadangan di Freezer</option>
+                  <option value="Lembur: Pemenuhan Order PO B2B">Penuhi Pesanan Borongan</option>
+                  <option value="Lembur: Stok Campaign TikTok & Shopee">Stok untuk Promo TikTok & Shopee</option>
                 </select>
-              </div>
-
-              <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 space-y-1 text-[11px] text-text-secondary">
-                <div className="font-semibold text-text-primary flex items-center gap-1.5">
-                  <Sparkles size={13} className="text-brand-gold" />
-                  <span>Prinsip Keamanan Stok:</span>
-                </div>
-                <p>
-                  Stok freezer baru akan bertambah secara resmi setelah Om Yosi (Checker) mengonfirmasi fisik barang jadi.
-                </p>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
@@ -606,13 +790,13 @@ export default function AdminProduction() {
       )}
 
       {/* MODAL: CHECKER CONFIRMATION */}
-      {confirmingBatch && (
+      {confirmingBatch && canVerify && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 animate-scaleUp">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-base font-bold text-text-primary font-heading flex items-center gap-2">
                 <ShieldCheck size={18} className="text-amber-700" />
-                <span>Verifikasi Hasil Fisik (QC Om Yosi)</span>
+                <span>Verifikasi Hasil</span>
               </h3>
               <button
                 onClick={() => setConfirmingBatch(null)}
@@ -654,21 +838,68 @@ export default function AdminProduction() {
               </div>
 
               <div>
-                <label className="block text-text-primary font-semibold mb-1">
-                  Sisa Eceran Lepas / Di Luar Lot (Loose Pcs)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-text-primary font-semibold">
+                    Sisa Eceran Lepas / Di Luar Lot (Loose Pcs)
+                  </label>
+                  <span className={`text-[10px] font-bold ${Number(looseQty || 0) > 24 ? 'text-amber-700' : 'text-text-secondary'}`}>
+                    Maks. 24 Pcs
+                  </span>
+                </div>
                 <input
                   type="number"
                   min="0"
                   max="24"
                   value={looseQty}
-                  onChange={(e) => setLooseQty(e.target.value)}
+                  onChange={(e) => {
+                    setLooseQty(e.target.value);
+                    if (confirmError) setConfirmError('');
+                  }}
                   placeholder="0 jika pas per lot"
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-700 focus:ring-1 focus:ring-amber-700 outline-none font-bold text-sm"
+                  className={`w-full px-3 py-2 rounded-xl border outline-none font-bold text-sm transition-all ${Number(looseQty || 0) > 24
+                    ? 'border-amber-500 bg-amber-50/30 text-amber-950 focus:border-amber-600 focus:ring-1 focus:ring-amber-500'
+                    : Number(looseQty || 0) < 0
+                      ? 'border-red-400 bg-red-50/30 text-red-900 focus:border-red-500 focus:ring-1 focus:ring-red-400'
+                      : 'border-gray-200 focus:border-amber-700 focus:ring-1 focus:ring-amber-700'
+                    }`}
                 />
-                <span className="text-[10px] text-text-secondary mt-1 block">
-                  Contoh: Jika hasil adonan 105 pcs, masukkan 4 Lot + 5 loose pcs.
-                </span>
+
+                {Number(looseQty || 0) > 24 ? (
+                  <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] animate-fadeIn space-y-2">
+                    <div className="flex items-start gap-1.5">
+                      <AlertCircle size={15} className="text-amber-700 shrink-0 mt-0.5" />
+                      <div>
+                        Sisa eceran tidak boleh lebih dari <strong>24 pcs</strong> (karena setiap <strong>25 pcs</strong> sudah terhitung <strong>1 Lot utuh</strong>).
+                      </div>
+                    </div>
+                    <div className="pt-2 border-t border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span className="text-[10px] text-amber-800">
+                        Saran: {Number(looseQty)} pcs = +{Math.floor(Number(looseQty) / 25)} Lot utuh & {Number(looseQty) % 25} sisa eceran.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = Number(looseQty);
+                          const extraLots = Math.floor(val / 25);
+                          const remainder = val % 25;
+                          setActualLots(prev => Math.max(0, Number(prev || 0) + extraLots));
+                          setLooseQty(remainder);
+                        }}
+                        className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-bold text-[10px] shrink-0 transition-all shadow-xs cursor-pointer active:scale-95"
+                      >
+                        Sesuaikan Otomatis
+                      </button>
+                    </div>
+                  </div>
+                ) : Number(looseQty || 0) < 0 ? (
+                  <span className="text-[10px] text-red-600 font-semibold mt-1 block">
+                    Sisa eceran tidak boleh bernilai negatif.
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-text-secondary mt-1 block">
+                    Contoh: Jika hasil adonan 105 pcs, masukkan 4 Lot + 5 loose pcs.
+                  </span>
+                )}
               </div>
 
               <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 flex justify-between items-center">
@@ -693,8 +924,9 @@ export default function AdminProduction() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingConfirm}
-                  className="px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-semibold shadow-xs disabled:opacity-50 flex items-center gap-1.5"
+                  disabled={submittingConfirm || Number(looseQty || 0) > 24 || Number(looseQty || 0) < 0}
+                  title={Number(looseQty || 0) > 24 ? 'Perbaiki sisa eceran (maksimal 24) sebelum konfirmasi' : ''}
+                  className="px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-semibold shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-all"
                 >
                   {submittingConfirm ? 'Menyimpan...' : 'Konfirmasi & Masukkan Stok'}
                 </button>

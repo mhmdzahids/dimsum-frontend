@@ -31,8 +31,12 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import jsQR from 'jsqr';
 import api from '../api/client';
+import { getAdminRole, canStockOut } from '../utils/adminAuth';
 
 export default function AdminScanQR() {
+  const userRole = getAdminRole() || 'staff';
+  const hasStockOutAccess = canStockOut(userRole);
+  const hasProductionAccess = ['admin', 'inventory', 'checker'].includes(userRole);
   // Products & Stock Monitor State
   const [products, setProducts] = useState([]);
   const [stockLoading, setStockLoading] = useState(false);
@@ -433,17 +437,6 @@ export default function AdminScanQR() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* 1. LIVE STOCK MONITOR (Papan Pantau Stok Terkini) */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => { fetchProducts(); fetchOrders(); }}
-          disabled={stockLoading || ordersLoading}
-          className="flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-gray-50 shadow-xs transition-colors"
-        >
-          <RefreshCw size={14} className={stockLoading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
-      </div>
       <section className="bg-white rounded-3xl p-6 border border-gray-200 shadow-xs mb-8">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -452,10 +445,14 @@ export default function AdminScanQR() {
               Stok Terkini
             </h2>
           </div>
-          <span className="text-xs px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-semibold flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Live Database
-          </span>
+          <button
+            onClick={() => { fetchProducts(); fetchOrders(); }}
+            disabled={stockLoading || ordersLoading}
+            className="flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-gray-50 shadow-xs transition-colors"
+          >
+            <RefreshCw size={14} className={stockLoading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
@@ -937,22 +934,28 @@ export default function AdminScanQR() {
                   </div>
 
                   {/* Tombol Aksi Cepat */}
-                  <div className="pt-2 flex flex-col sm:flex-row gap-2">
-                    <Link
-                      to={`/admin/stock-out?product_id=${previewLot.product_id || ''}&lots=1`}
-                      className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5"
-                    >
-                      <ArrowUpRight size={15} />
-                      <span>Keluarkan Stok Lot Ini (Shopee/TikTok/PO)</span>
-                    </Link>
-                    <Link
-                      to="/admin/production"
-                      className="px-4 py-2.5 border border-gray-300 hover:bg-gray-100 text-text-primary rounded-xl font-medium text-xs transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <Factory size={14} />
-                      <span>Portal Produksi</span>
-                    </Link>
-                  </div>
+                  {(hasStockOutAccess || hasProductionAccess) && (
+                    <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                      {hasStockOutAccess && (
+                        <Link
+                          to={`/admin/stock-out?product_id=${previewLot.product_id || ''}&lots=1`}
+                          className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5"
+                        >
+                          <ArrowUpRight size={15} />
+                          <span>Keluarkan Stok Lot Ini (Shopee/TikTok/PO)</span>
+                        </Link>
+                      )}
+                      {hasProductionAccess && (
+                        <Link
+                          to="/admin/production"
+                          className="px-4 py-2.5 border border-gray-300 hover:bg-gray-100 text-text-primary rounded-xl font-medium text-xs transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <Factory size={14} />
+                          <span>Portal Produksi</span>
+                        </Link>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

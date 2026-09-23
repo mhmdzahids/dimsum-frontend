@@ -268,7 +268,7 @@ export default function AdminDashboard() {
                 </span>
               ) : (
                 <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  Buffer Aman (&gt;70 pcs)
+                  Cadangan Aman (&gt;70 pcs)
                 </span>
               )}
             </div>
@@ -825,10 +825,7 @@ export default function AdminDashboard() {
           </div>
 
           <div className="pt-3 border-t border-bg-cream flex justify-between items-center text-xs mt-3">
-            <span className="text-text-secondary text-[11px]">Buffer minimum: <strong>70 pcs</strong> per varian • <strong>{criticalProducts.length}</strong> kritis, <strong>{warningProducts.length}</strong> waspada</span>
-            <Link to="/admin/inventory" className="text-brand-blue font-bold hover:underline whitespace-nowrap">
-              Detail lengkap &rarr;
-            </Link>
+
           </div>
         </div>
       </div>

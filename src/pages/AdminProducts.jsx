@@ -1,25 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Flame, 
-  Tag, 
-  Percent, 
-  X, 
-  Check, 
-  CheckCircle2, 
-  Settings, 
-  Trash2, 
-  Image as ImageIcon, 
-  AlertCircle, 
+import {
+  Flame,
+  Tag,
+  Percent,
+  X,
+  Check,
+  CheckCircle2,
+  Settings,
+  Trash2,
+  Image as ImageIcon,
+  AlertCircle,
   ArrowRight,
   Plus,
   Package
 } from 'lucide-react';
 import api from '../api/client';
+import { getAdminRole, canManageProducts } from '../utils/adminAuth';
 
 export default function AdminProducts() {
-  
+  const userRole = getAdminRole() || 'admin';
+  const isAdmin = canManageProducts(userRole);
+
   const [products, setProducts] = useState([]);
-  
+
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [sku, setSku] = useState('');
@@ -119,7 +122,7 @@ export default function AdminProducts() {
     if (!file) return;
     const formData = new FormData();
     formData.append('image', file);
-    
+
     const res = await api.upload(`/api/products/${id}/image`, formData, { auth: 'admin' });
     if (res.success) {
       fetchProducts();
@@ -137,8 +140,8 @@ export default function AdminProducts() {
     const initialOriginal = product.original_price
       ? Number(product.original_price)
       : (active
-          ? Math.round(Number(product.price) / (1 - (product.discount_percent || 20) / 100))
-          : Number(product.price));
+        ? Math.round(Number(product.price) / (1 - (product.discount_percent || 20) / 100))
+        : Number(product.price));
 
     setOriginalPriceInput(initialOriginal || '');
     setDiscountPercentInput(product.discount_percent || 20);
@@ -186,15 +189,15 @@ export default function AdminProducts() {
     try {
       const payload = isDiscountActive
         ? {
-            is_discount: true,
-            original_price: numOriginal,
-            discount_percent: numPercent
-          }
+          is_discount: true,
+          original_price: numOriginal,
+          discount_percent: numPercent
+        }
         : {
-            is_discount: false,
-            original_price: null,
-            discount_percent: 0
-          };
+          is_discount: false,
+          original_price: null,
+          discount_percent: 0
+        };
 
       const res = await api.put(`/api/products/${selectedProductForDiscount.id}`, payload, { auth: 'admin' });
       if (res.success) {
@@ -215,61 +218,55 @@ export default function AdminProducts() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary font-heading flex items-center gap-2.5">
-            <Package className="text-brand-blue" size={26} />
-            <span>Produk</span>
-          </h1>
+      {/* Order Limit Settings (Admin only) */}
+      {isAdmin && (
+        <div className="bg-amber-50/70 border border-amber-200/80 p-5 rounded-card shadow-xs">
+          <h2 className="font-bold mb-2 text-amber-800 flex items-center gap-2">
+            <Settings size={18} /> Pengaturan Order Limit
+          </h2>
+          <p className="text-sm text-amber-700 mb-3">
+            Maks. item per order: <strong>{orderLimit}</strong>
+          </p>
+          <form onSubmit={updateOrderLimit} className="flex items-center gap-2">
+            <input
+              type="number"
+              min="1"
+              max="500"
+              value={orderLimitInput}
+              onChange={e => setOrderLimitInput(e.target.value)}
+              className="border border-amber-300 bg-white p-2 w-28 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
+              placeholder="Limit"
+            />
+            <button type="submit" className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 font-medium text-sm transition-colors">
+              Simpan Limit
+            </button>
+            {limitMsg.text && (
+              <span className={`text-sm ml-2 flex items-center gap-1 ${limitMsg.type === 'success' ? 'text-green-600 font-semibold' : 'text-red-500'}`}>
+                {limitMsg.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                {limitMsg.text}
+              </span>
+            )}
+          </form>
         </div>
-      </div>
+      )}
 
-      {/* Order Limit Settings */}
-      <div className="bg-amber-50/70 border border-amber-200/80 p-5 rounded-card shadow-xs">
-        <h2 className="font-bold mb-2 text-amber-800 flex items-center gap-2">
-          <Settings size={18} /> Pengaturan Order Limit
-        </h2>
-        <p className="text-sm text-amber-700 mb-3">
-          Maks. item per order: <strong>{orderLimit}</strong>
-        </p>
-        <form onSubmit={updateOrderLimit} className="flex items-center gap-2">
-          <input
-            type="number"
-            min="1"
-            max="500"
-            value={orderLimitInput}
-            onChange={e => setOrderLimitInput(e.target.value)}
-            className="border border-amber-300 bg-white p-2 w-28 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
-            placeholder="Limit"
-          />
-          <button type="submit" className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 font-medium text-sm transition-colors">
-            Simpan Limit
-          </button>
-          {limitMsg.text && (
-            <span className={`text-sm ml-2 flex items-center gap-1 ${limitMsg.type === 'success' ? 'text-green-600 font-semibold' : 'text-red-500'}`}>
-              {limitMsg.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-              {limitMsg.text}
-            </span>
-          )}
-        </form>
-      </div>
-
-      {/* Add Product Section */}
-      <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl mb-8 shadow-xs">
-        <h2 className="font-bold mb-3 text-gray-800 flex items-center gap-2">
-          <Plus size={18} /> Tambah Menu Baru
-        </h2>
-        <form onSubmit={addProduct} className="flex flex-wrap gap-2">
-          <input required className="border border-gray-300 bg-white p-2 flex-1 min-w-[180px] rounded-lg text-sm" placeholder="Nama Menu" value={name} onChange={e => setName(e.target.value)} />
-          <input required className="border border-gray-300 bg-white p-2 w-32 rounded-lg text-sm" type="number" placeholder="Harga Jual" value={price} onChange={e => setPrice(e.target.value)} />
-          <input required className="border border-gray-300 bg-white p-2 w-32 rounded-lg text-sm" placeholder="SKU" value={sku} onChange={e => setSku(e.target.value)} />
-          <input required className="border border-gray-300 bg-white p-2 w-24 rounded-lg text-sm" type="number" placeholder="Stok" value={stock} onChange={e => setStock(e.target.value)} />
-          <button type="submit" className="bg-green-600 text-white px-5 py-2 rounded-lg font-medium text-sm hover:bg-green-700 transition-colors">
-            Tambah
-          </button>
-        </form>
-      </div>
+      {/* Add Product Section (Admin only) */}
+      {isAdmin && (
+        <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl mb-8 shadow-xs">
+          <h2 className="font-bold mb-3 text-gray-800 flex items-center gap-2">
+            <Plus size={18} /> Tambah Menu Baru
+          </h2>
+          <form onSubmit={addProduct} className="flex flex-wrap gap-2">
+            <input required className="border border-gray-300 bg-white p-2 flex-1 min-w-[180px] rounded-lg text-sm" placeholder="Nama Menu" value={name} onChange={e => setName(e.target.value)} />
+            <input required className="border border-gray-300 bg-white p-2 w-32 rounded-lg text-sm" type="number" placeholder="Harga Jual" value={price} onChange={e => setPrice(e.target.value)} />
+            <input required className="border border-gray-300 bg-white p-2 w-32 rounded-lg text-sm" placeholder="SKU" value={sku} onChange={e => setSku(e.target.value)} />
+            <input required className="border border-gray-300 bg-white p-2 w-24 rounded-lg text-sm" type="number" placeholder="Stok" value={stock} onChange={e => setStock(e.target.value)} />
+            <button type="submit" className="bg-green-600 text-white px-5 py-2 rounded-lg font-medium text-sm hover:bg-green-700 transition-colors">
+              Tambah
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* Product List */}
       <div className="flex flex-col gap-3">
@@ -281,13 +278,12 @@ export default function AdminProducts() {
         {products.map(p => {
           const hasDiscount = Boolean(p.is_discount && p.discount_percent > 0);
           return (
-            <div 
-              key={p.id} 
-              className={`p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white shadow-xs rounded-xl border transition-all ${
-                hasDiscount 
-                  ? 'border-brand-red/30 bg-red-50/20' 
+            <div
+              key={p.id}
+              className={`p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white shadow-xs rounded-xl border transition-all ${hasDiscount
+                  ? 'border-brand-red/30 bg-red-50/20'
                   : 'border-gray-200'
-              }`}
+                }`}
             >
               <div className="flex gap-4 items-center min-w-0">
                 <div className="relative w-16 h-16 shrink-0">
@@ -349,36 +345,37 @@ export default function AdminProducts() {
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap md:flex-col gap-2 items-end shrink-0 w-full md:w-auto">
-                <button
-                  type="button"
-                  onClick={() => openDiscountModal(p)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all w-full md:w-32 cursor-pointer ${
-                    hasDiscount
-                      ? 'bg-brand-red text-white hover:bg-red-700 shadow-xs'
-                      : 'bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100'
-                  }`}
-                >
-                  <Flame size={13} className={hasDiscount ? "fill-white text-white -skew-x-[14deg] -rotate-[6deg] transform" : "text-amber-700"} />
-                  {hasDiscount ? 'Edit Diskon' : 'Pasang Diskon'}
-                </button>
+              {/* Action Buttons (Admin only) */}
+              {isAdmin && (
+                <div className="flex flex-wrap md:flex-col gap-2 items-end shrink-0 w-full md:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => openDiscountModal(p)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all w-full md:w-32 cursor-pointer ${hasDiscount
+                        ? 'bg-brand-red text-white hover:bg-red-700 shadow-xs'
+                        : 'bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100'
+                      }`}
+                  >
+                    <Flame size={13} className={hasDiscount ? "fill-white text-white -skew-x-[14deg] -rotate-[6deg] transform" : "text-amber-700"} />
+                    {hasDiscount ? 'Edit Diskon' : 'Pasang Diskon'}
+                  </button>
 
-                <label className="bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer hover:bg-blue-100 text-center flex items-center justify-center gap-1.5 w-full md:w-32 transition-colors">
-                  <ImageIcon size={13} />
-                  Thumbnail
-                  <input type="file" className="hidden" accept="image/*" onChange={(e) => uploadImage(p.id, e.target.files[0])} />
-                </label>
+                  <label className="bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer hover:bg-blue-100 text-center flex items-center justify-center gap-1.5 w-full md:w-32 transition-colors">
+                    <ImageIcon size={13} />
+                    Thumbnail
+                    <input type="file" className="hidden" accept="image/*" onChange={(e) => uploadImage(p.id, e.target.files[0])} />
+                  </label>
 
-                <button
-                  type="button"
-                  onClick={() => deleteProduct(p.id)}
-                  className="bg-gray-100 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-50 hover:border-red-300 flex items-center justify-center gap-1.5 w-full md:w-32 transition-colors"
-                >
-                  <Trash2 size={13} />
-                  Hapus
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => deleteProduct(p.id)}
+                    className="bg-gray-100 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-50 hover:border-red-300 flex items-center justify-center gap-1.5 w-full md:w-32 transition-colors"
+                  >
+                    <Trash2 size={13} />
+                    Hapus
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -425,14 +422,12 @@ export default function AdminProducts() {
                   id="discountToggle"
                   type="button"
                   onClick={() => setIsDiscountActive(!isDiscountActive)}
-                  className={`w-12 h-7 flex items-center rounded-full p-1 transition-colors cursor-pointer ${
-                    isDiscountActive ? 'bg-brand-red' : 'bg-gray-300'
-                  }`}
+                  className={`w-12 h-7 flex items-center rounded-full p-1 transition-colors cursor-pointer ${isDiscountActive ? 'bg-brand-red' : 'bg-gray-300'
+                    }`}
                 >
                   <div
-                    className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform ${
-                      isDiscountActive ? 'translate-x-5' : 'translate-x-0'
-                    }`}
+                    className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform ${isDiscountActive ? 'translate-x-5' : 'translate-x-0'
+                      }`}
                   />
                 </button>
               </div>
@@ -497,11 +492,10 @@ export default function AdminProducts() {
                           key={val}
                           type="button"
                           onClick={() => setDiscountPercentInput(val)}
-                          className={`px-2.5 py-1 text-xs rounded-lg font-bold border transition-colors cursor-pointer ${
-                            numPercent === val
+                          className={`px-2.5 py-1 text-xs rounded-lg font-bold border transition-colors cursor-pointer ${numPercent === val
                               ? 'bg-brand-red text-white border-brand-red'
                               : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                          }`}
+                            }`}
                         >
                           {val}%
                         </button>
