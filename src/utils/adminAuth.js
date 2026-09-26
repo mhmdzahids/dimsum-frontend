@@ -7,7 +7,7 @@ export const ROLE_CONFIG = {
   admin: {
     label: 'Owner / Super Admin',
     badge: 'bg-purple-100 text-purple-800 border-purple-200',
-    allowedTabs: ['dashboard', 'inventory', 'production', 'stock-out', 'products', 'scan-qr', 'vouchers', 'banners', 'users'],
+    allowedTabs: ['dashboard', 'pos', 'inventory', 'production', 'stock-out', 'products', 'scan-qr', 'vouchers', 'banners', 'users'],
     defaultRoute: '/admin',
     title: 'Portal Admin & Owner'
   },
@@ -28,9 +28,9 @@ export const ROLE_CONFIG = {
   staff: {
     label: 'Kasir & Meja Toko',
     badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    allowedTabs: ['scan-qr'],
-    defaultRoute: '/admin/scan-qr',
-    title: 'Meja Kasir & Scan QR'
+    allowedTabs: ['pos', 'scan-qr'],
+    defaultRoute: '/admin/pos',
+    title: 'Meja Kasir & POS'
   }
 };
 

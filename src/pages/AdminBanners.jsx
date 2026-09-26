@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Image as ImageIcon, 
-  UploadCloud, 
-  Trash2, 
-  CheckCircle2, 
-  AlertCircle, 
-  RefreshCw, 
+import {
+  Image as ImageIcon,
+  UploadCloud,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
   Sparkles,
   Eye,
   Calendar
@@ -56,7 +56,7 @@ export default function AdminBanners() {
       setErrorMsg('Silakan pilih file banner terlebih dahulu.');
       return;
     }
-    
+
     setUploading(true);
     setErrorMsg('');
     setSuccessMsg('');
@@ -99,27 +99,14 @@ export default function AdminBanners() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 sm:p-7 rounded-card border border-bg-cream-dark/80 shadow-card">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary font-heading flex items-center gap-2.5">
-            <ImageIcon className="text-brand-blue" size={26} />
-            <span>Banner Promosi</span>
-          </h1>
-          <p className="text-xs text-text-secondary mt-1">
-            Kelola banner promosi beranda.
-          </p>
-        </div>
-
-        <button
-          onClick={fetchBanners}
-          disabled={loading}
-          className="flex items-center gap-2 px-3.5 py-2.5 rounded-btn border border-bg-cream-dark/90 bg-white text-text-secondary hover:text-text-primary hover:bg-bg-cream/60 text-xs font-bold transition-all disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          <span>Refresh</span>
-        </button>
-      </div>
+      <button
+        onClick={fetchBanners}
+        disabled={loading}
+        className="self-start sm:self-auto flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-gray-50 shadow-xs transition-colors"
+      >
+        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        <span>Refresh</span>
+      </button>
 
       {/* Notifications */}
       {successMsg && (

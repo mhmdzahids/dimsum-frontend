@@ -12,7 +12,8 @@ import {
   Users,
   LogOut,
   X,
-  ExternalLink
+  ExternalLink,
+  Store
 } from 'lucide-react';
 import { getAdminUser, ROLE_CONFIG } from '../../utils/adminAuth';
 import api from '../../api/client';
@@ -48,6 +49,7 @@ export default function AdminSidebar({ mobileOpen, setMobileOpen }) {
     {
       title: 'OPERATIONS',
       items: [
+        { id: 'pos', label: 'Kasir Toko (POS)', path: '/admin/pos', icon: Store },
         { id: 'inventory', label: 'Ringkasan Stok', path: '/admin/inventory', icon: Layers },
         { id: 'production', label: 'Produksi Lot', path: '/admin/production', icon: Factory },
         { id: 'stock-out', label: 'Pengeluaran Stok', path: '/admin/stock-out', icon: ArrowUpRight },
@@ -141,20 +143,7 @@ export default function AdminSidebar({ mobileOpen, setMobileOpen }) {
 
       {/* Bottom User Card & Quick Actions */}
       <div className="p-4 border-t border-bg-cream-dark/70 bg-bg-cream/30 space-y-2">
-        <a
-          href="/menu"
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center justify-between w-full px-3 py-2 rounded-xl border border-brand-gold/30 bg-brand-gold/10 hover:bg-brand-gold/20 text-brand-gold-dark text-[11px] font-bold transition-colors"
-        >
-          <span className="flex items-center gap-1.5">
-            <ExternalLink size={13} />
-            <span>Lihat Menu Pelanggan</span>
-          </span>
-          <span className="text-[10px] bg-brand-gold/20 px-1.5 py-0.5 rounded text-brand-gold-dark font-mono">
-            Tab Baru
-          </span>
-        </a>
+
 
         <div className="flex items-center justify-between p-2.5 rounded-2xl bg-white border border-bg-cream-dark/80 shadow-xs">
           <div className="flex items-center gap-2.5 min-w-0">

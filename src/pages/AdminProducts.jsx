@@ -26,7 +26,6 @@ export default function AdminProducts() {
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [sku, setSku] = useState('');
-  const [stock, setStock] = useState(100);
 
   // Order Limit state
   const [orderLimit, setOrderLimit] = useState(50);
@@ -94,7 +93,6 @@ export default function AdminProducts() {
       name,
       price,
       sku,
-      stock_qty: stock,
       is_active: true,
       category: 'Dimsum'
     }, { auth: 'admin' });
@@ -256,14 +254,18 @@ export default function AdminProducts() {
           <h2 className="font-bold mb-3 text-gray-800 flex items-center gap-2">
             <Plus size={18} /> Tambah Menu Baru
           </h2>
-          <form onSubmit={addProduct} className="flex flex-wrap gap-2">
-            <input required className="border border-gray-300 bg-white p-2 flex-1 min-w-[180px] rounded-lg text-sm" placeholder="Nama Menu" value={name} onChange={e => setName(e.target.value)} />
-            <input required className="border border-gray-300 bg-white p-2 w-32 rounded-lg text-sm" type="number" placeholder="Harga Jual" value={price} onChange={e => setPrice(e.target.value)} />
-            <input required className="border border-gray-300 bg-white p-2 w-32 rounded-lg text-sm" placeholder="SKU" value={sku} onChange={e => setSku(e.target.value)} />
-            <input required className="border border-gray-300 bg-white p-2 w-24 rounded-lg text-sm" type="number" placeholder="Stok" value={stock} onChange={e => setStock(e.target.value)} />
-            <button type="submit" className="bg-green-600 text-white px-5 py-2 rounded-lg font-medium text-sm hover:bg-green-700 transition-colors">
-              Tambah
-            </button>
+          <form onSubmit={addProduct} className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <input required className="border border-gray-300 bg-white p-2 flex-1 min-w-[180px] rounded-lg text-sm" placeholder="Nama Menu" value={name} onChange={e => setName(e.target.value)} />
+              <input required className="border border-gray-300 bg-white p-2 w-36 rounded-lg text-sm" type="number" placeholder="Harga Jual" value={price} onChange={e => setPrice(e.target.value)} />
+              <input required className="border border-gray-300 bg-white p-2 w-36 rounded-lg text-sm" placeholder="SKU" value={sku} onChange={e => setSku(e.target.value)} />
+              <button type="submit" className="bg-green-600 text-white px-5 py-2 rounded-lg font-medium text-sm hover:bg-green-700 transition-colors">
+                Tambah Menu
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 flex items-center gap-1.5">
+              <span className="font-semibold text-gray-600">Catatan:</span> Stok menu baru otomatis <strong>0 pcs</strong>. Penambahan stok fisik dilakukan melalui menu <strong className="text-gray-700">Produksi Lot</strong> setelah diverifikasi Checker.
+            </p>
           </form>
         </div>
       )}

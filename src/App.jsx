@@ -30,6 +30,7 @@ const AdminProducts = lazy(() => import('./pages/AdminProducts'));
 const AdminBanners = lazy(() => import('./pages/AdminBanners'));
 const AdminVouchers = lazy(() => import('./pages/AdminVouchers'));
 const AdminScanQR = lazy(() => import('./pages/AdminScanQR'));
+const AdminPOS = lazy(() => import('./pages/AdminPOS'));
 const AdminUsers = lazy(() => import('./pages/AdminUsers'));
 const AdminProduction = lazy(() => import('./pages/AdminProduction'));
 const AdminInventoryDashboard = lazy(() => import('./pages/AdminInventoryDashboard'));
@@ -89,14 +90,20 @@ function App() {
 
                 {/* Admin Portal */}
                 <Route path="/admin/login" element={<AdminLogin />} />
+                {/* Standalone Full-Screen POS Kasir (tanpa Sidebar & Topbar CMS Admin) */}
+                <Route element={<AdminRoute allowedRoles={['admin', 'inventory', 'checker', 'staff']} />}>
+                  <Route path="/admin/pos" element={<AdminPOS />} />
+                </Route>
+
+                {/* Standard CMS Admin Layout (dengan Sidebar & TopBar) */}
                 <Route element={<AdminRoute />}>
                   <Route element={<AdminLayout />}>
                     <Route path="/admin" element={<AdminIndexRedirect />} />
-                    
-                    {/* All internal roles (including Cashier / Staff) */}
-                    <Route element={<AdminRoute allowedRoles={['admin', 'inventory', 'checker', 'staff']} />}>
-                      <Route path="/admin/scan-qr" element={<AdminScanQR />} />
-                    </Route>
+                  
+                  {/* All internal roles (including Cashier / Staff) */}
+                  <Route element={<AdminRoute allowedRoles={['admin', 'inventory', 'checker', 'staff']} />}>
+                    <Route path="/admin/scan-qr" element={<AdminScanQR />} />
+                  </Route>
 
                     {/* Production & Buffer stock monitoring (Checker, Inventory, Admin) */}
                     <Route element={<AdminRoute allowedRoles={['admin', 'inventory', 'checker']} />}>

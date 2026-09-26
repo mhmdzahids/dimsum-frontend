@@ -32,6 +32,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import jsQR from 'jsqr';
 import api from '../api/client';
 import { getAdminRole, canStockOut } from '../utils/adminAuth';
+import SwipeToConfirm from '../components/ui/SwipeToConfirm';
 
 export default function AdminScanQR() {
   const userRole = getAdminRole() || 'staff';
@@ -1038,24 +1039,26 @@ export default function AdminScanQR() {
                     </span>
                   </div>
 
-                  {/* TOMBOL VERIFIKASI PENGAMBILAN */}
+                  {/* TOMBOL VERIFIKASI PENGAMBILAN (SWIPE TO CONFIRM) */}
                   {previewOrder.status === 'paid' ? (
-                    <div className="pt-2">
+                    <div className="pt-2 space-y-2">
                       {verifyError && (
-                        <div className="mb-2 p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-1.5">
-                          <AlertCircle size={14} />
+                        <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-1.5 animate-fadeIn">
+                          <AlertCircle size={14} className="shrink-0" />
                           <span>{verifyError}</span>
                         </div>
                       )}
-                      <button
-                        type="button"
-                        onClick={handleVerifyPickup}
-                        disabled={verifyLoading}
-                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-xs transition-colors shadow-xs flex items-center justify-center gap-2"
-                      >
-                        <CheckCircle2 size={16} />
-                        {verifyLoading ? 'Memverifikasi...' : 'Verifikasi Pengambilan (Serahkan Pesanan)'}
-                      </button>
+                      <SwipeToConfirm
+                        onConfirm={handleVerifyPickup}
+                        loading={verifyLoading}
+                        text="Geser untuk Verifikasi (Serahkan Pesanan)"
+                        loadingText="Memverifikasi Pengambilan..."
+                        successText="Pengambilan Berhasil Diverifikasi!"
+                        resetTrigger={verifyError || previewOrder.id}
+                      />
+                      <p className="text-[11px] text-center text-text-secondary">
+                        Geser tombol slider ke kanan hingga penuh untuk menyelesaikan pesanan
+                      </p>
                     </div>
                   ) : previewOrder.status === 'completed' ? (
                     <div className="p-3 bg-gray-100 border border-gray-200 rounded-xl text-center text-xs text-gray-600 font-semibold flex items-center justify-center gap-2">
