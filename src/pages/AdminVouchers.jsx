@@ -177,7 +177,6 @@ export default function AdminVouchers() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-
       <button
         onClick={fetchVouchers}
         disabled={loading}

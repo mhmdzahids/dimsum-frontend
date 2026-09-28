@@ -912,7 +912,7 @@ export default function AdminProduction() {
           <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-xs">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-base font-bold text-text-primary font-heading">
-                Daftar Batch Produksi 2 (Finished Goods)
+                Daftar Batch Kemasan (Mika & Vakum)
               </h3>
               <span className="text-xs text-text-secondary">
                 {batches.length} batch tercatat
