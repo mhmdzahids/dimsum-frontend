@@ -5,7 +5,6 @@ import {
   Search,
   Menu as MenuIcon,
   ChevronRight,
-  ConciergeBell,
   ShoppingBasket,
   ShoppingBag,
   X,
@@ -15,7 +14,7 @@ import {
   Check,
   AlertCircle,
   Flame,
-  Utensils
+  Utensils,
 } from 'lucide-react';
 
 import imgWortel from '../assets/icon/wortel.webp';
@@ -605,7 +604,7 @@ function MenuPage() {
           {/* Bottom Row */}
           <div className="flex justify-between items-center p-4">
             <div className="flex items-center gap-3">
-              <ConciergeBell size={24} className="text-brand-blue" />
+              <ShoppingBag size={24} className="text-brand-blue" />
               <div className="flex flex-col">
                 <span className={`font-body font-bold text-[14px] ${confirmedTime ? 'text-text-primary' : 'text-text-secondary'}`}>
                   {confirmedTime || 'Pilih Waktu Pickup'}
@@ -644,11 +643,10 @@ function MenuPage() {
                 setSelectedProduct(product);
                 setQty(productQty || 1);
               }}
-              className={`bg-white rounded-[16px] shadow-sm flex p-3 cursor-pointer transition-all ${
-                productQty > 0
-                  ? 'border-[1.2px] border-brand-gold border-r-4 border-r-brand-gold'
-                  : 'border border-gray-100 border-r-4 border-r-transparent'
-              }`}
+              className={`bg-white rounded-[16px] shadow-sm flex p-3 cursor-pointer transition-all ${productQty > 0
+                ? 'border-[1.2px] border-brand-gold border-r-4 border-r-brand-gold'
+                : 'border border-gray-100 border-r-4 border-r-transparent'
+                }`}
             >
               {/* Product Image Box */}
               <div className="relative w-[84px] h-[84px] shrink-0">
@@ -1068,11 +1066,10 @@ function MenuPage() {
                     closeTimeModal();
                   }
                 }}
-                className={`w-full font-body font-black text-[15px] py-3.5 rounded-[16px] transition-all ${
-                  !selectedTime || availableTimes.length === 0
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
-                    : 'bg-brand-gold text-white shadow-elevated active:scale-95 cursor-pointer'
-                }`}
+                className={`w-full font-body font-black text-[15px] py-3.5 rounded-[16px] transition-all ${!selectedTime || availableTimes.length === 0
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
+                  : 'bg-brand-gold text-white shadow-elevated active:scale-95 cursor-pointer'
+                  }`}
               >
                 Save
               </button>

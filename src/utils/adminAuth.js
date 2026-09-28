@@ -7,21 +7,21 @@ export const ROLE_CONFIG = {
   admin: {
     label: 'Owner / Super Admin',
     badge: 'bg-purple-100 text-purple-800 border-purple-200',
-    allowedTabs: ['dashboard', 'pos', 'inventory', 'production', 'stock-out', 'products', 'scan-qr', 'vouchers', 'banners', 'users'],
+    allowedTabs: ['dashboard', 'transactions', 'pos', 'inventory', 'raw-materials', 'production', 'qc-history', 'stock-out', 'products', 'scan-qr', 'vouchers', 'banners', 'users'],
     defaultRoute: '/admin',
     title: 'Portal Admin & Owner'
   },
   inventory: {
     label: 'PPSI & Inventory',
     badge: 'bg-blue-100 text-blue-800 border-blue-200',
-    allowedTabs: ['inventory', 'production', 'stock-out', 'products', 'scan-qr'],
+    allowedTabs: ['inventory', 'raw-materials', 'production', 'stock-out', 'products'],
     defaultRoute: '/admin/inventory',
     title: 'Portal PPSI & Stok'
   },
   checker: {
     label: 'Checker & QC',
     badge: 'bg-amber-100 text-amber-800 border-amber-200',
-    allowedTabs: ['production', 'inventory', 'scan-qr'],
+    allowedTabs: ['production', 'qc-history', 'inventory'],
     defaultRoute: '/admin/production',
     title: 'Portal QC & Produksi'
   },
@@ -133,6 +133,10 @@ export function canVerifyProduction(role) {
 }
 
 export function canStockOut(role) {
+  return ['admin', 'inventory'].includes(role);
+}
+
+export function canManageRawMaterials(role) {
   return ['admin', 'inventory'].includes(role);
 }
 

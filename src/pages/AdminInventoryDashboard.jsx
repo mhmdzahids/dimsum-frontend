@@ -20,7 +20,9 @@ import {
   TrendingUp,
   Search,
   PlusCircle,
-  Package
+  Package,
+  ArrowLeftRight,
+  X
 } from 'lucide-react';
 import api from '../api/client';
 import Pagination from '../components/ui/Pagination';
@@ -46,6 +48,57 @@ export default function AdminInventoryDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
+
+  // Rebalance Quota Modal State
+  const [rebalanceModalOpen, setRebalanceModalOpen] = useState(false);
+  const [rebalanceTargetProduct, setRebalanceTargetProduct] = useState(null);
+  const [rebalanceFromPool, setRebalanceFromPool] = useState('offline');
+  const [rebalanceQty, setRebalanceQty] = useState(1);
+  const [rebalanceReason, setRebalanceReason] = useState('');
+  const [rebalanceSubmitting, setRebalanceSubmitting] = useState(false);
+  const [rebalanceError, setRebalanceError] = useState('');
+  const [rebalanceSuccessMsg, setRebalanceSuccessMsg] = useState('');
+
+  const handleOpenRebalance = (product = null) => {
+    const target = product || (data?.all_products?.[0] || null);
+    setRebalanceTargetProduct(target);
+    setRebalanceFromPool('offline');
+    setRebalanceQty(5);
+    setRebalanceReason('');
+    setRebalanceError('');
+    setRebalanceModalOpen(true);
+  };
+
+  const handleRebalanceSubmit = async (e) => {
+    e.preventDefault();
+    if (!rebalanceTargetProduct) return;
+    setRebalanceSubmitting(true);
+    setRebalanceError('');
+
+    const toPool = rebalanceFromPool === 'offline' ? 'online' : 'offline';
+    try {
+      const res = await api.post('/api/inventory/stock-rebalance', {
+        product_id: rebalanceTargetProduct.id,
+        from_pool: rebalanceFromPool,
+        to_pool: toPool,
+        quantity: Number(rebalanceQty),
+        reason: rebalanceReason || undefined
+      }, { auth: 'admin' });
+
+      if (res.success) {
+        setRebalanceSuccessMsg(res.message || 'Transfer kuota stok berhasil!');
+        setRebalanceModalOpen(false);
+        fetchSummary();
+        setTimeout(() => setRebalanceSuccessMsg(''), 5000);
+      } else {
+        setRebalanceError(res.error || 'Gagal memproses transfer kuota');
+      }
+    } catch {
+      setRebalanceError('Koneksi bermasalah saat memproses transfer kuota');
+    } finally {
+      setRebalanceSubmitting(false);
+    }
+  };
 
   const fetchSummary = async () => {
     setLoading(true);
@@ -110,6 +163,18 @@ export default function AdminInventoryDashboard() {
 
   return (
     <div className="space-y-8 animate-fadeIn">
+      {rebalanceSuccessMsg && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800 animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            <span className="font-semibold">{rebalanceSuccessMsg}</span>
+          </div>
+          <button onClick={() => setRebalanceSuccessMsg('')} className="text-emerald-600 hover:text-emerald-800">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {error && (
         <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -132,11 +197,20 @@ export default function AdminInventoryDashboard() {
           <div className="mt-2 sm:mt-3">
             <div className="text-xl sm:text-3xl font-extrabold text-text-primary font-heading">
               {data?.total_stock_pcs?.toLocaleString('id-ID') || 0}
-              <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">pcs</span>
+              <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">Pack</span>
             </div>
-            <div className="mt-0.5 sm:mt-1 flex flex-wrap items-center gap-1 text-[10px] sm:text-xs text-text-secondary">
-              <span className="font-semibold text-brand-blue">~{data?.total_stock_lots || 0} Lot Standar</span>
-              <span className="hidden xs:inline sm:inline">(isi 25/mika)</span>
+            {/* Dual Pool Quota Breakdown */}
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] sm:text-xs">
+              <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
+                Offline: {(data?.total_stock_offline || 0).toLocaleString('id-ID')} pk
+              </span>
+              <span className="px-1.5 py-0.5 rounded-md bg-pink-50 text-pink-800 font-bold border border-pink-200">
+                Online: {(data?.total_stock_online || 0).toLocaleString('id-ID')} pk
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] sm:text-xs text-text-secondary">
+              <span className="font-semibold text-brand-blue">~{(data?.total_stock_pieces || (data?.total_stock_pcs || 0) * 25).toLocaleString('id-ID')} Butir</span>
+              <span className="hidden xs:inline sm:inline">(Mika 50 / Vakum 25)</span>
             </div>
           </div>
         </div>
@@ -160,7 +234,7 @@ export default function AdminInventoryDashboard() {
               <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">varian</span>
             </div>
             <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-text-secondary">
-              Kurang dari 70 pcs
+              Kurang dari 70 pack
             </p>
           </div>
         </div>
@@ -184,7 +258,7 @@ export default function AdminInventoryDashboard() {
               <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">varian</span>
             </div>
             <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-text-secondary">
-              Antara 70-100 pcs
+              Antara 70-100 pack
             </p>
           </div>
         </div>
@@ -203,12 +277,12 @@ export default function AdminInventoryDashboard() {
           <div className="mt-2 sm:mt-3">
             <div className="text-xl sm:text-3xl font-extrabold text-text-primary font-heading">
               {todayProd.completed_lots}
-              <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">/ {todayProd.capacity_lots} Lot</span>
+              <span className="text-xs sm:text-sm font-normal text-text-secondary ml-1 sm:ml-1.5">/ {todayProd.capacity_lots || 450} Pack</span>
             </div>
             {todayProd.completed_pcs > 0 ? (
               <div className="mt-0.5 sm:mt-1 flex items-center gap-1 text-[10px] sm:text-xs text-emerald-700 font-semibold truncate">
                 <CheckCircle2 size={12} className="shrink-0" />
-                <span>{todayProd.completed_pcs} pcs QC</span>
+                <span>{todayProd.completed_pcs} butir lolos QC</span>
               </div>
             ) : (
               <div className="mt-0.5 sm:mt-1 flex items-center gap-1 text-[10px] sm:text-xs text-text-secondary">
@@ -232,7 +306,7 @@ export default function AdminInventoryDashboard() {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-text-primary font-heading">
-                    Kapasitas Dapur Produksi Hari Ini
+                    Kapasitas Pengemasan (P2) Hari Ini
                   </h2>
                 </div>
               </div>
@@ -243,25 +317,25 @@ export default function AdminInventoryDashboard() {
 
               <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden p-0.5 border border-gray-200 relative">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${todayProd.completed_lots > 24
+                  className={`h-full rounded-full transition-all duration-500 ${todayProd.completed_lots > (todayProd.max_capacity_lots || 520)
                     ? 'bg-red-500'
-                    : todayProd.completed_lots > 20
+                    : todayProd.completed_lots > (todayProd.capacity_lots || 450)
                       ? 'bg-amber-500'
                       : 'bg-brand-blue'
                     }`}
-                  style={{ width: `${Math.min(100, (todayProd.completed_lots / 24) * 100)}%` }}
+                  style={{ width: `${Math.min(100, (todayProd.completed_lots / (todayProd.max_capacity_lots || 520)) * 100)}%` }}
                 />
-                {/* 20 Lot Normal Marker */}
+                {/* 450 Pack Normal Marker */}
                 <div
                   className="absolute top-0 bottom-0 w-0.5 bg-gray-400 z-10"
-                  style={{ left: `${(20 / 24) * 100}%` }}
-                  title="Target Normal (20 Lot)"
+                  style={{ left: `${(450 / 520) * 100}%` }}
+                  title="Target Normal (450 Pack)"
                 />
               </div>
               <div className="flex justify-between text-xs text-text-secondary font-medium">
-                <span>0 Lot</span>
-                <span className="text-text-primary font-bold">20 Lot</span>
-                <span>24 Lot</span>
+                <span>0 Pack</span>
+                <span className="text-text-primary font-bold">{todayProd.capacity_lots || 450} Pack (Target)</span>
+                <span>{todayProd.max_capacity_lots || 520} Pack (Max)</span>
               </div>
             </div>
 
@@ -270,7 +344,7 @@ export default function AdminInventoryDashboard() {
               <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-center">
                 <div className="text-xs text-text-secondary">Direncanakan</div>
                 <div className="text-base font-bold text-text-primary font-heading mt-0.5">
-                  {todayProd.planned_lots} Lot
+                  {todayProd.planned_lots} Pack
                 </div>
               </div>
               <div className={`p-3 rounded-xl border text-center ${todayProd.completed_lots > 0
@@ -283,13 +357,13 @@ export default function AdminInventoryDashboard() {
                 </div>
                 <div className={`text-base font-bold font-heading mt-0.5 ${todayProd.completed_lots > 0 ? 'text-emerald-700' : 'text-text-secondary'
                   }`}>
-                  {todayProd.completed_lots} Lot
+                  {todayProd.completed_lots} Pack
                 </div>
               </div>
               <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-center">
                 <div className="text-xs text-text-secondary">Sisa Target</div>
                 <div className="text-base font-bold text-brand-blue font-heading mt-0.5">
-                  {Math.max(0, todayProd.capacity_lots - todayProd.completed_lots)} Lot
+                  {Math.max(0, (todayProd.capacity_lots || 450) - todayProd.completed_lots)} Pack
                 </div>
               </div>
             </div>
@@ -334,7 +408,7 @@ export default function AdminInventoryDashboard() {
                       key={ch}
                       className={`${meta.color} h-full transition-all`}
                       style={{ width: `${pct}%` }}
-                      title={`${meta.name || ch}: ${qty} pcs (${pct.toFixed(1)}%)`}
+                      title={`${meta.name || ch}: ${qty} pack (${pct.toFixed(1)}%)`}
                     />
                   );
                 })}
@@ -359,7 +433,7 @@ export default function AdminInventoryDashboard() {
                       <span className="truncate font-medium">{meta.name.split(' ')[0]}</span>
                     </div>
                     <div className="text-sm font-bold text-text-primary font-heading">
-                      {qty.toLocaleString('id-ID')} <span className="text-[10px] font-normal text-text-secondary">pcs</span>
+                      {qty.toLocaleString('id-ID')} <span className="text-[10px] font-normal text-text-secondary">pack</span>
                     </div>
                     <div className="text-[11px] text-text-secondary mt-0.5">
                       {pct}% kontribusi
@@ -402,6 +476,16 @@ export default function AdminInventoryDashboard() {
               />
             </div>
 
+            {/* Quick Rebalance Button */}
+            <button
+              type="button"
+              onClick={() => handleOpenRebalance(null)}
+              className="px-3.5 py-1.5 rounded-xl bg-brand-blue text-white text-xs font-bold hover:bg-brand-blue-hover transition-colors flex items-center gap-1.5 shadow-xs shrink-0"
+            >
+              <ArrowLeftRight size={14} />
+              <span>Transfer Kuota</span>
+            </button>
+
             {/* Filter Tabs */}
             <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
               <button
@@ -443,9 +527,10 @@ export default function AdminInventoryDashboard() {
               <tr>
                 <th className="py-3.5 px-4 text-center">Produk & SKU</th>
                 <th className="py-3.5 px-4 text-center">Stok Freezer</th>
-                <th className="py-3.5 px-4 text-center">Konversi Lot</th>
-                <th className="py-3.5 px-4 text-center">Tingkat Keterisian Buffer</th>
-                <th className="py-3.5 px-4 text-center">Status</th>
+                <th className="py-3.5 px-4 text-center">Alokasi Kuota</th>
+                <th className="py-3.5 px-4 text-center">Total Butir</th>
+                <th className="py-3.5 px-4 text-center">Buffer Status</th>
+                <th className="py-3.5 px-4 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -459,7 +544,9 @@ export default function AdminInventoryDashboard() {
               ) : (
                 paginatedProducts.map((prod) => {
                   const stock = prod.stock_qty || 0;
-                  const lots = prod.stock_lots || Math.floor(stock / 25);
+                  const isMika = (prod.sku || '').includes('MIKA') || (prod.name || '').toLowerCase().includes('mika');
+                  const packSize = prod.pack_size || (isMika ? 50 : 25);
+                  const totalPcs = stock * packSize;
                   const minBuffer = prod.min_buffer_stock || 70;
                   const safeTarget = 100;
                   const bufferRatio = Math.min(100, Math.round((stock / safeTarget) * 100));
@@ -508,29 +595,47 @@ export default function AdminInventoryDashboard() {
                         </div>
                       </td>
 
-                      {/* Stock in Pcs */}
+                      {/* Stock in Kemasan */}
                       <td className="py-3.5 px-4 text-center">
                         <span className={`text-sm font-extrabold font-heading ${stock < minBuffer ? 'text-red-700' : 'text-text-primary'
                           }`}>
                           {stock.toLocaleString('id-ID')}
                         </span>
-                        <span className="text-[11px] text-text-secondary ml-1">pcs</span>
+                        <span className="text-[11px] text-text-secondary ml-1">{prod.unit_label || (isMika ? 'mika' : 'pack')}</span>
                       </td>
 
-                      {/* Lots Conversion */}
+                      {/* Dual Pool Quota Allocation */}
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold text-[11px] border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            Offline: {prod.stock_offline ?? Math.round(stock * 0.6)} pk
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-pink-50 text-pink-800 font-bold text-[11px] border border-pink-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-pink-500" />
+                            Online: {prod.stock_online ?? Math.round(stock * 0.4)} pk
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Total Butir Dimsum */}
                       <td className="py-3.5 px-4 text-center">
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-brand-blue font-bold text-xs border border-blue-100">
                           <Layers size={13} />
-                          <span>{lots} Lot</span>
+                          <span>~{totalPcs.toLocaleString('id-ID')} butir</span>
                         </span>
+                        <span className="block text-[10px] text-gray-400 mt-0.5">({packSize} butir / {isMika ? 'mika' : 'pack'})</span>
                       </td>
 
-                      {/* Buffer Target Progress Bar */}
+                      {/* Buffer Target Progress Bar & Status */}
                       <td className="py-3.5 px-4 min-w-[160px]">
                         <div className="space-y-1">
-                          <div className="flex justify-between text-[11px] text-text-secondary">
-                            <span>{stock} / {safeTarget} pcs</span>
-                            <span className="font-bold">{bufferRatio}%</span>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge.bg}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`} />
+                              <span>{statusBadge.label}</span>
+                            </span>
+                            <span className="font-bold text-text-secondary">{bufferRatio}%</span>
                           </div>
                           <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
                             <div
@@ -546,12 +651,17 @@ export default function AdminInventoryDashboard() {
                         </div>
                       </td>
 
-                      {/* Status Badge */}
+                      {/* Action: Transfer Kuota */}
                       <td className="py-3.5 px-4 text-center">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${statusBadge.bg}`}>
-                          <span className={`w-2 h-2 rounded-full ${statusBadge.dot}`} />
-                          <span>{statusBadge.label}</span>
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRebalance(prod)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gray-100 hover:bg-brand-blue hover:text-white text-text-primary text-xs font-semibold transition-all border border-gray-200 shadow-2xs"
+                          title="Transfer Kuota Online ⇄ Offline"
+                        >
+                          <ArrowLeftRight size={13} />
+                          <span>Transfer</span>
+                        </button>
                       </td>
                     </tr>
                   );
@@ -578,6 +688,208 @@ export default function AdminInventoryDashboard() {
           </div>
         )}
       </div>
+
+      {/* Modal Rebalance Kuota Stok Online ⇄ Offline */}
+      {rebalanceModalOpen && rebalanceTargetProduct && (() => {
+        const stockOff = rebalanceTargetProduct.stock_offline ?? Math.round((rebalanceTargetProduct.stock_qty || 0) * 0.6);
+        const stockOn = rebalanceTargetProduct.stock_online ?? Math.round((rebalanceTargetProduct.stock_qty || 0) * 0.4);
+        const maxTransfer = rebalanceFromPool === 'offline' ? stockOff : stockOn;
+        const toPool = rebalanceFromPool === 'offline' ? 'online' : 'offline';
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 relative max-h-[90vh] overflow-y-auto">
+              <button
+                type="button"
+                onClick={() => setRebalanceModalOpen(false)}
+                className="absolute top-5 right-5 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-2xl bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0">
+                  <ArrowLeftRight size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-text-primary font-heading">
+                    Transfer Kuota Stok
+                  </h3>
+                  <p className="text-xs text-text-secondary">
+                    Menyeimbangkan kuota penjualan tanpa mengubah fisik stok di freezer.
+                  </p>
+                </div>
+              </div>
+
+              {rebalanceError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-center gap-2">
+                  <AlertTriangle size={16} className="shrink-0 text-red-600" />
+                  <span>{rebalanceError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleRebalanceSubmit} className="space-y-4 text-xs font-body">
+                {/* Product Select */}
+                <div>
+                  <label className="block text-text-primary font-semibold mb-1">
+                    Pilih Produk *
+                  </label>
+                  <select
+                    value={rebalanceTargetProduct.id}
+                    onChange={(e) => {
+                      const found = products.find(p => p.id === e.target.value);
+                      if (found) setRebalanceTargetProduct(found);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none font-semibold cursor-pointer"
+                  >
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (Total: {p.stock_qty} pack)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Current Stock Quotas Overview */}
+                <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-2xl border border-gray-100 text-center">
+                  <div className="p-2 bg-white rounded-xl border border-emerald-100">
+                    <span className="text-[10px] text-emerald-700 font-bold block uppercase tracking-wider">Kuota Offline</span>
+                    <span className="text-sm font-black text-emerald-800 font-heading">{stockOff}</span>
+                    <span className="text-[10px] text-gray-500 block">Kasir / Web / PO</span>
+                  </div>
+                  <div className="p-2 bg-white rounded-xl border border-pink-100">
+                    <span className="text-[10px] text-pink-700 font-bold block uppercase tracking-wider">Kuota Online</span>
+                    <span className="text-sm font-black text-pink-800 font-heading">{stockOn}</span>
+                    <span className="text-[10px] text-gray-500 block">Shopee / TikTok</span>
+                  </div>
+                  <div className="p-2 bg-white rounded-xl border border-blue-100">
+                    <span className="text-[10px] text-brand-blue font-bold block uppercase tracking-wider">Fisik Freezer</span>
+                    <span className="text-sm font-black text-text-primary font-heading">{rebalanceTargetProduct.stock_qty}</span>
+                    <span className="text-[10px] text-gray-500 block">Total Pack</span>
+                  </div>
+                </div>
+
+                {/* Transfer Direction */}
+                <div>
+                  <label className="block text-text-primary font-semibold mb-1.5">
+                    Arah Transfer Kuota *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRebalanceFromPool('offline')}
+                      className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${rebalanceFromPool === 'offline'
+                        ? 'border-brand-blue bg-blue-50/50 ring-1 ring-brand-blue text-brand-blue font-bold'
+                        : 'border-gray-200 bg-white text-text-secondary hover:bg-gray-50 font-medium'
+                        }`}
+                    >
+                      <span className="text-xs">Offline ➔ Online</span>
+                      <span className="text-[10px] font-normal text-text-secondary mt-0.5">Untuk Shopee / TikTok Live</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRebalanceFromPool('online')}
+                      className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${rebalanceFromPool === 'online'
+                        ? 'border-brand-blue bg-blue-50/50 ring-1 ring-brand-blue text-brand-blue font-bold'
+                        : 'border-gray-200 bg-white text-text-secondary hover:bg-gray-50 font-medium'
+                        }`}
+                    >
+                      <span className="text-xs">Online ➔ Offline</span>
+                      <span className="text-[10px] font-normal text-text-secondary mt-0.5">Untuk Toko Fisik & Katering MBG</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Transfer Quantity */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-text-primary font-semibold">
+                      Jumlah Pack Yang Ditransfer *
+                    </label>
+                    <span className="text-[11px] text-text-secondary">
+                      Tersedia di {rebalanceFromPool.toUpperCase()}: <strong>{maxTransfer} pack</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max={maxTransfer || 1}
+                      required
+                      value={rebalanceQty}
+                      onChange={(e) => setRebalanceQty(e.target.value)}
+                      className="w-32 px-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none font-bold text-sm"
+                    />
+                    <div className="flex items-center gap-1">
+                      {[5, 10, 25].map(n => (
+                        <button
+                          key={n}
+                          type="button"
+                          disabled={maxTransfer < n}
+                          onClick={() => setRebalanceQty(n)}
+                          className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-text-secondary"
+                        >
+                          +{n}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        disabled={maxTransfer <= 0}
+                        onClick={() => setRebalanceQty(maxTransfer)}
+                        className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Maksimal
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transfer Reason */}
+                <div>
+                  <label className="block text-text-primary font-semibold mb-1">
+                    Alasan / Catatan Transfer (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={rebalanceReason}
+                    onChange={(e) => setRebalanceReason(e.target.value)}
+                    placeholder="Contoh: Persiapan event TikTok Live atau PO Katering MBG"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none text-xs"
+                  />
+                </div>
+
+                {/* Modal Footer Buttons */}
+                <div className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRebalanceModalOpen(false)}
+                    className="px-4 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-text-secondary hover:bg-gray-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={rebalanceSubmitting || maxTransfer <= 0 || Number(rebalanceQty) <= 0}
+                    className="px-5 py-2 rounded-xl bg-brand-blue text-white text-xs font-bold hover:bg-brand-blue-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shadow-sm"
+                  >
+                    {rebalanceSubmitting ? (
+                      <>
+                        <RefreshCw size={13} className="animate-spin" />
+                        <span>Memproses...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ArrowLeftRight size={13} />
+                        <span>Transfer {rebalanceQty} Pack ke {toPool.toUpperCase()}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

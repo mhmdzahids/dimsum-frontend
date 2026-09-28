@@ -45,7 +45,7 @@ export default function LotStickerModal({ batch, onClose }) {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-text-primary font-heading">
-                  Stiker Label QR Lot Produksi
+                  Stiker Label QR Kemasan (Produksi 2)
                 </h3>
                 <p className="text-xs text-text-secondary">
                   Batch: <span className="font-mono font-bold text-brand-blue">{batch.batch_code}</span> ({batch.product_name || 'Dimsum'})
@@ -57,14 +57,14 @@ export default function LotStickerModal({ batch, onClose }) {
             <button
               onClick={handlePrint}
               disabled={loading || stickers.length === 0}
-              className="flex items-center gap-1.5 px-4 py-2 bg-brand-blue hover:bg-brand-blue/90 text-white rounded-xl text-xs font-semibold shadow-xs disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 bg-brand-blue hover:bg-brand-blue/90 text-white rounded-xl text-xs font-semibold shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
             >
               <Printer size={15} />
               <span>Cetak ({stickers.length} Label)</span>
             </button>
             <button
               onClick={onClose}
-              className="p-2 text-text-secondary hover:text-text-primary hover:bg-gray-100 rounded-xl transition-colors"
+              className="p-2 text-text-secondary hover:text-text-primary hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
             >
               <X size={18} />
             </button>
@@ -93,11 +93,11 @@ export default function LotStickerModal({ batch, onClose }) {
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-brand-blue shrink-0" />
                 <span>
-                  1 Lot = 25 Produk. Tempel 1 label stiker QR pada setiap krat/wadah bundle lot sebelum dimasukkan ke freezer.
+                  Tempel 1 label stiker QR pada setiap kemasan Mika (isi 50 pcs) atau Pack Vakum (isi 25 pcs) sebelum disimpan ke chiller/freezer.
                 </span>
               </div>
               <span className="font-bold text-xs bg-white px-2.5 py-1 rounded-lg border border-blue-200 shrink-0">
-                Total: {stickers.length} Wadah
+                Total: {stickers.length} Kemasan
               </span>
             </div>
 
@@ -119,7 +119,7 @@ export default function LotStickerModal({ batch, onClose }) {
                         </span>
                       </div>
                       <span className={`text-[11px] font-extrabold px-2 py-0.5 rounded-md ${stk.is_loose ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-brand-blue/10 text-brand-blue border border-brand-blue/20 print:border-black print:text-black'}`}>
-                        {stk.is_loose ? 'SISA ECERAN' : `LOT ${stk.lot_number} / ${stk.total_lots}`}
+                        {stk.is_loose ? 'SISA ECERAN' : `${stk.pack_type || 'PACK'} ${stk.lot_number} / ${stk.total_lots}`}
                       </span>
                     </div>
 
@@ -135,17 +135,17 @@ export default function LotStickerModal({ batch, onClose }) {
                   <div className="flex items-center justify-between gap-3 pt-2 border-t border-dashed border-gray-300">
                     <div className="space-y-1 text-[11px]">
                       <div>
-                        <span className="text-gray-500 block text-[10px] uppercase">Isi Wadah:</span>
+                        <span className="text-gray-500 block text-[10px] uppercase">Isi Kemasan:</span>
                         <span className="font-extrabold text-sm text-gray-900">
-                          {stk.lot_size} Pack / Mika
+                          {stk.lot_size} Butir / Kemasan
                         </span>
                       </div>
                       <div>
                         <span className="text-gray-500 block text-[10px] uppercase">Waktu Produksi:</span>
                         <span className="font-medium text-gray-700">{stk.produced_at || '-'}</span>
                       </div>
-                      <div className="text-[9px] font-semibold text-emerald-700 print:text-black uppercase">
-                        ❄ Simpan Beku -18°C
+                      <div className={`text-[9px] font-semibold ${stk.pack_type === 'MIKA' ? 'text-blue-700' : 'text-emerald-700'} print:text-black uppercase`}>
+                        {stk.storage_info || (stk.pack_type === 'MIKA' ? 'Suhu Chiller / Dingin' : '❄ Simpan Beku -18°C')}
                       </div>
                     </div>
 

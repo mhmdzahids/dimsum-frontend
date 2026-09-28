@@ -385,7 +385,7 @@ function Home() {
 
       {/* Floating Action Button "Ada Keluhan?" (Always floating on top, z-[70]) */}
       <button
-        onClick={() => window.open('https://wa.me/6281234567890?text=Halo%20Admin%20Makan%20Dimsum,%20saya%20butuh%20bantuan/ada%20keluhan%20pesanan...', '_blank')}
+        onClick={() => window.open('https://wa.me/60175511439?text=Halo%20Admin%20Makan%20Dimsum,%20saya%20butuh%20bantuan/ada%20keluhan%20pesanan...', '_blank', 'noopener,noreferrer')}
         className={`fixed ${pendingOrder && pendingOrder.orderId ? 'bottom-24' : 'bottom-6'
           } right-5 md:right-[calc(50%-240px+20px)] bg-brand-gold hover:bg-brand-gold-dark text-white border-none rounded-full py-3.5 px-5 flex items-center gap-2 shadow-elevated font-body font-bold text-[13px] cursor-pointer z-[70] hover:scale-105 active:scale-95 transition-all duration-200`}
         title="Hubungi Layanan Pelanggan"

@@ -162,16 +162,18 @@ export default function AdminScanQR() {
 
     const clean = rawToken.trim();
 
-    // Check if it's a LOT STICKER QR (BATCH:...|LOT:...)
-    if (clean.startsWith('BATCH:') || clean.includes('|LOT:')) {
+    // Check if it's a LOT/PACK STICKER QR (BATCH:...|LOT:... or |MIKA:... or |VAKUM:...)
+    if (clean.startsWith('BATCH:') || clean.includes('|LOT:') || clean.includes('|MIKA:') || clean.includes('|VAKUM:')) {
       try {
         let batchCode = '';
         let lotInfo = '';
-        let qtyInfo = '25';
+        let qtyInfo = '';
         let skuInfo = '';
         clean.split('|').forEach(part => {
           if (part.startsWith('BATCH:')) batchCode = part.replace('BATCH:', '');
-          if (part.startsWith('LOT:')) lotInfo = part.replace('LOT:', '');
+          if (part.startsWith('LOT:')) lotInfo = `Lot ${part.replace('LOT:', '')}`;
+          if (part.startsWith('MIKA:')) lotInfo = `Mika ${part.replace('MIKA:', '')}`;
+          if (part.startsWith('VAKUM:')) lotInfo = `Vakum ${part.replace('VAKUM:', '')}`;
           if (part.startsWith('QTY:')) qtyInfo = part.replace('QTY:', '');
           if (part.startsWith('SKU:')) skuInfo = part.replace('SKU:', '');
         });
@@ -180,15 +182,15 @@ export default function AdminScanQR() {
         if (res.success && res.data) {
           setPreviewLot({
             ...res.data,
-            scanned_lot_info: lotInfo,
-            scanned_lot_qty: qtyInfo,
+            scanned_lot_info: lotInfo || 'Kemasan Pack',
+            scanned_lot_qty: qtyInfo || `${res.data.lot_size || 25} Pcs`,
             scanned_sku: skuInfo
           });
         } else {
-          setPreviewError(res.error || 'Batch produksi dari stiker LOT tidak ditemukan di database.');
+          setPreviewError(res.error || 'Batch produksi dari stiker kemasan tidak ditemukan di database.');
         }
       } catch {
-        setPreviewError('Koneksi gagal saat memverifikasi stiker LOT produksi.');
+        setPreviewError('Koneksi gagal saat memverifikasi stiker kemasan produksi.');
       } finally {
         setCheckingOrder(false);
       }
@@ -438,217 +440,174 @@ export default function AdminScanQR() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      <section className="bg-white rounded-3xl p-6 border border-gray-200 shadow-xs mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-base font-bold font-heading text-text-primary flex items-center gap-2">
-              <Package size={18} className="text-brand-blue" />
-              Stok Terkini
-            </h2>
-          </div>
-          <button
-            onClick={() => { fetchProducts(); fetchOrders(); }}
-            disabled={stockLoading || ordersLoading}
-            className="flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-gray-50 shadow-xs transition-colors"
-          >
-            <RefreshCw size={14} className={stockLoading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-          {products.map((p) => {
-            const isLow = p.stock_qty <= 5;
-            const isOut = p.stock_qty <= 0;
-            return (
-              <div
-                key={p.id}
-                className={`p-3.5 rounded-2xl border text-center transition-all ${isOut
-                  ? 'bg-red-50/50 border-red-200'
-                  : isLow
-                    ? 'bg-amber-50/50 border-amber-200'
-                    : 'bg-gray-50/80 border-gray-200'
-                  }`}
-              >
-                <p className="text-xs font-semibold text-text-primary truncate" title={p.name}>
-                  {p.name}
-                </p>
-                <div className="text-2xl font-bold font-heading mt-1 text-brand-blue">
-                  {p.stock_qty}
-                </div>
-                <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md mt-1 inline-block ${isOut
-                    ? 'bg-red-100 text-red-700'
-                    : isLow
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-emerald-100 text-emerald-800'
-                    }`}
-                >
-                  {isOut ? 'Habis' : isLow ? 'Stok Kritis' : 'Tersedia'}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 2. DUA KOLOM: SIMULATOR PESANAN (Kiri) & SCANNER KAMERA HP / VERIFIKASI (Kanan) */}
+      {/* 1. DUA KOLOM: STOK TERKINI (Kiri 5/12) & SCANNER KAMERA HP / VERIFIKASI (Kanan 7/12) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
 
-        {/* A. TESTING SIMULATOR (5/12) */}
+        {/* A. STOK TERKINI (5/12) */}
         <div className="lg:col-span-5">
           <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-xs h-full flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-base font-bold font-heading text-text-primary flex items-center gap-2">
-                  <Sparkles size={18} className="text-brand-gold" />
-                  Simulasi Pesanan & Tes Stok
+                  <Package size={18} className="text-brand-blue" />
+                  Stok Terkini
                 </h2>
-                <span className="text-[10px] px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-md font-semibold uppercase">
-                  Testing Tool
-                </span>
+                <button
+                  onClick={() => { fetchProducts(); fetchOrders(); }}
+                  disabled={stockLoading || ordersLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-gray-50 shadow-xs transition-colors cursor-pointer"
+                  title="Segarkan Stok"
+                >
+                  <RefreshCw size={13} className={stockLoading ? 'animate-spin' : ''} />
+                  <span>Refresh</span>
+                </button>
               </div>
               <p className="text-xs text-text-secondary mb-4">
-                Buat pesanan tes untuk menguji scan QR.
+                Ketersediaan stok produk siap jual di outlet kasir.
               </p>
 
-              {simError && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
-                  <AlertCircle size={16} />
-                  <span>{simError}</span>
+              {/* Grid Produk Stok Terkini */}
+              {stockLoading ? (
+                <div className="p-8 text-center text-text-secondary space-y-2">
+                  <RefreshCw size={24} className="animate-spin mx-auto text-brand-gold" />
+                  <p className="text-xs font-medium">Memuat data stok...</p>
+                </div>
+              ) : products.length === 0 ? (
+                <div className="p-6 text-center text-text-secondary text-xs bg-gray-50 rounded-2xl border border-gray-100">
+                  Belum ada produk terdaftar
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1">
+                  {products.map((p) => {
+                    const isLow = p.stock_qty <= 5;
+                    const isOut = p.stock_qty <= 0;
+                    return (
+                      <div
+                        key={p.id}
+                        className={`p-3.5 rounded-2xl border text-center transition-all ${isOut
+                          ? 'bg-red-50/50 border-red-200'
+                          : isLow
+                            ? 'bg-amber-50/50 border-amber-200'
+                            : 'bg-gray-50/80 border-gray-200'
+                          }`}
+                      >
+                        <p className="text-xs font-semibold text-text-primary truncate" title={p.name}>
+                          {p.name}
+                        </p>
+                        <div className="text-2xl font-bold font-heading mt-1 text-brand-blue">
+                          {p.stock_qty}
+                        </div>
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md mt-1 inline-block ${isOut
+                            ? 'bg-red-100 text-red-700'
+                            : isLow
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                        >
+                          {isOut ? 'Habis' : isLow ? 'Stok Kritis' : 'Tersedia'}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
+            </div>
 
-              <form onSubmit={handleSimulateOrder} className="space-y-3.5">
-                <div>
-                  <label className="block text-xs font-semibold text-text-secondary mb-1">
-                    Pilih Produk Dimsum
-                  </label>
-                  <select
-                    value={simProduct}
-                    onChange={(e) => setSimProduct(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue bg-white"
-                  >
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id} disabled={p.stock_qty <= 0}>
-                        {p.name} (Stok: {p.stock_qty} pcs) - {formatCurrency(p.price)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-text-secondary mb-1">
-                      Jumlah Beli (Qty)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={simQty}
-                      onChange={(e) => setSimQty(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-text-secondary mb-1">
-                      Nama Pembeli
-                    </label>
-                    <input
-                      type="text"
-                      value={simCustomer}
-                      onChange={(e) => setSimCustomer(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-brand-blue"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={simLoading || products.length === 0}
-                  className="w-full py-2.5 bg-brand-gold hover:bg-brand-gold-dark text-white rounded-xl font-semibold text-xs transition-colors shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <ShoppingBag size={15} />
-                  {simLoading ? 'Memproses...' : 'Buat Pesanan Tes'}
-                </button>
-              </form>
-
-              {/* HASIL SIMULASI TEST */}
-              {simResult && (
-                <div className="mt-5 p-4 bg-gray-50 rounded-2xl border border-gray-200 animate-fadeIn">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-brand-blue flex items-center gap-1.5">
-                      <CheckCircle2 size={16} className="text-emerald-600" />
-                      Pesanan Siap Diambil Terbuat!
-                    </span>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                      Status: Paid
-                    </span>
-                  </div>
-
-                  {/* Bukti Pengurangan Stok */}
-                  <div className="bg-white p-3 rounded-xl border border-gray-200 mb-3 text-xs">
-                    <div className="font-semibold text-text-primary mb-1">
-                      Perubahan Stok:
+            {/* Quick Testing Tool Drawer for Super Admin / Owner */}
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <details className="group">
+                <summary className="text-[11px] font-semibold text-text-secondary hover:text-brand-blue cursor-pointer list-none flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-brand-gold" />
+                    <span>Alat Simulasi Uji Coba QR (Testing)</span>
+                  </span>
+                  <span className="text-[10px] group-open:rotate-180 transition-transform">▼</span>
+                </summary>
+                <div className="mt-3 pt-3 border-t border-dashed border-gray-200 space-y-3">
+                  {simError && (
+                    <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
+                      <AlertCircle size={15} />
+                      <span>{simError}</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-center pt-1">
-                      <div className="p-2 bg-gray-50 rounded-lg">
-                        <span className="text-[10px] text-text-secondary block">Stok Sebelum</span>
-                        <span className="text-sm font-bold text-gray-700">
-                          {simResult.stock_test.stock_before} pcs
-                        </span>
-                      </div>
-                      <div className="p-2 bg-red-50 rounded-lg">
-                        <span className="text-[10px] text-red-600 block">Dipotong</span>
-                        <span className="text-sm font-bold text-red-600">
-                          -{simResult.stock_test.decremented_by} pcs
-                        </span>
-                      </div>
-                      <div className="p-2 bg-emerald-50 rounded-lg">
-                        <span className="text-[10px] text-emerald-700 block">Stok Terkini</span>
-                        <span className="text-sm font-bold text-emerald-700">
-                          {simResult.stock_test.stock_after} pcs
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                  )}
 
-                  {/* QR Code Pembeli Tampil Langsung untuk Discan Kamera HP */}
-                  <div className="bg-white p-4 rounded-xl border border-gray-200 text-center flex flex-col items-center">
-                    <p className="text-xs font-bold text-brand-blue mb-2">
-                      Scan QR ini untuk verifikasi:
-                    </p>
-                    <div className="p-3 bg-white rounded-2xl border-2 border-brand-blue/30 shadow-md">
-                      <QRCodeSVG value={simResult.order.qr_token} size={150} />
-                    </div>
-                    <div className="mt-2 text-[11px] font-mono text-gray-500 flex items-center gap-1">
-                      <span>Token: {simResult.order.qr_token.substring(0, 16)}...</span>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(simResult.order.qr_token)}
-                        className="text-brand-blue hover:underline"
-                        title="Salin Token QR"
+                  <form onSubmit={handleSimulateOrder} className="space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-medium text-text-secondary mb-1">
+                        Pilih Produk
+                      </label>
+                      <select
+                        value={simProduct}
+                        onChange={(e) => setSimProduct(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-brand-blue bg-white"
                       >
-                        <Copy size={12} />
-                      </button>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id} disabled={p.stock_qty <= 0}>
+                            {p.name} (Stok: {p.stock_qty} pcs)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-medium text-text-secondary mb-1">
+                          Qty
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="20"
+                          value={simQty}
+                          onChange={(e) => setSimQty(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-brand-blue"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-text-secondary mb-1">
+                          Nama Tester
+                        </label>
+                        <input
+                          type="text"
+                          value={simCustomer}
+                          onChange={(e) => setSimCustomer(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-brand-blue"
+                        />
+                      </div>
                     </div>
 
                     <button
-                      type="button"
-                      onClick={() => {
-                        setQrTokenInput(simResult.order.qr_token);
-                        handleCheckQR(simResult.order.qr_token);
-                      }}
-                      className="mt-3 px-3 py-1.5 bg-brand-blue text-white rounded-xl text-xs font-semibold hover:bg-brand-blue-dark transition-colors flex items-center gap-1.5"
+                      type="submit"
+                      disabled={simLoading || products.length === 0}
+                      className="w-full py-2 bg-brand-gold hover:bg-brand-gold-dark text-white rounded-xl font-semibold text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
                     >
-                      <QrCode size={13} />
-                      Muat ke Kasir Scanner
-                      <ArrowRight size={13} />
+                      <ShoppingBag size={13} />
+                      {simLoading ? 'Memproses...' : 'Buat Pesanan Tes'}
                     </button>
-                  </div>
+                  </form>
+
+                  {simResult && (
+                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-center">
+                      <p className="text-xs font-bold text-emerald-700 mb-1">QR Uji Coba Terbuat:</p>
+                      <div className="p-2 bg-white rounded-xl border border-gray-200 inline-block shadow-xs">
+                        <QRCodeSVG value={simResult.order.qr_token} size={110} />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQrTokenInput(simResult.order.qr_token);
+                          handleCheckQR(simResult.order.qr_token);
+                        }}
+                        className="mt-2 w-full py-1.5 bg-brand-blue text-white rounded-lg text-xs font-semibold hover:bg-brand-blue-dark transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <QrCode size={12} />
+                        Muat ke Scanner
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
+              </details>
             </div>
           </div>
         </div>
@@ -847,7 +806,7 @@ export default function AdminScanQR() {
                       type="text"
                       value={qrTokenInput}
                       onChange={(e) => setQrTokenInput(e.target.value)}
-                      placeholder="Scan atau tempelkan QR token pembeli / stiker Lot (BATCH:...)..."
+                      placeholder="Scan atau tempelkan QR token pembeli / stiker kemasan (BATCH:...)..."
                       className="flex-1 px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-mono text-text-primary focus:outline-none focus:border-brand-blue"
                     />
                     <button
@@ -878,7 +837,7 @@ export default function AdminScanQR() {
                       <div className="flex items-center gap-1.5 mb-1">
                         <span className="px-2 py-0.5 rounded-md bg-brand-blue text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                           <Factory size={11} />
-                          Stiker Lot Fisik Terverifikasi
+                          Stiker Kemasan Fisik Terverifikasi (P2)
                         </span>
                         <span className="text-[11px] font-mono text-text-secondary">
                           {previewLot.batch_code}
@@ -902,27 +861,27 @@ export default function AdminScanQR() {
                   {/* Informasi Lot & Kapasitas Fisik */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
                     <div className="bg-white p-3 rounded-xl border border-blue-100">
-                      <span className="text-[10px] text-text-secondary block">Nomor Lot</span>
+                      <span className="text-[10px] text-text-secondary block">Identitas Kemasan</span>
                       <span className="font-bold text-brand-blue text-sm">
-                        {previewLot.scanned_lot_info ? `Lot ${previewLot.scanned_lot_info}` : 'Lot Standar'}
+                        {previewLot.scanned_lot_info ? previewLot.scanned_lot_info : 'Kemasan Standar'}
                       </span>
                     </div>
                     <div className="bg-white p-3 rounded-xl border border-blue-100">
-                      <span className="text-[10px] text-text-secondary block">Isi Mika / Lot</span>
+                      <span className="text-[10px] text-text-secondary block">Isi Per Kemasan</span>
                       <span className="font-bold text-text-primary text-sm">
-                        {previewLot.scanned_lot_qty || previewLot.lot_size || 25} pcs
+                        {previewLot.scanned_lot_qty || `${previewLot.lot_size || (previewLot.packaging_type === 'mika' ? 50 : 25)} butir`}
                       </span>
                     </div>
                     <div className="bg-white p-3 rounded-xl border border-blue-100">
                       <span className="text-[10px] text-text-secondary block">Total Batch</span>
                       <span className="font-bold text-text-primary text-sm">
-                        {previewLot.actual_lots || 0} Lot ({previewLot.produced_qty || 0} pcs)
+                        {previewLot.actual_lots || 0} Pack ({previewLot.produced_qty || 0} butir)
                       </span>
                     </div>
                     <div className="bg-white p-3 rounded-xl border border-blue-100">
-                      <span className="text-[10px] text-text-secondary block">Sisa Stok Batch</span>
+                      <span className="text-[10px] text-text-secondary block">Sisa Stok Kemasan</span>
                       <span className="font-bold text-emerald-700 text-sm">
-                        {previewLot.remaining_qty || 0} pcs
+                        {previewLot.remaining_qty || 0} pack
                       </span>
                     </div>
                   </div>
@@ -943,7 +902,7 @@ export default function AdminScanQR() {
                           className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5"
                         >
                           <ArrowUpRight size={15} />
-                          <span>Keluarkan Stok Lot Ini (Shopee/TikTok/PO)</span>
+                          <span>Keluarkan Kemasan Ini (Shopee/TikTok/PO)</span>
                         </Link>
                       )}
                       {hasProductionAccess && (

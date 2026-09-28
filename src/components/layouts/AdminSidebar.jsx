@@ -13,7 +13,10 @@ import {
   LogOut,
   X,
   ExternalLink,
-  Store
+  Store,
+  ShieldCheck,
+  ReceiptText,
+  Boxes
 } from 'lucide-react';
 import { getAdminUser, ROLE_CONFIG } from '../../utils/adminAuth';
 import api from '../../api/client';
@@ -51,9 +54,11 @@ export default function AdminSidebar({ mobileOpen, setMobileOpen }) {
       items: [
         { id: 'pos', label: 'Kasir Toko (POS)', path: '/admin/pos', icon: Store },
         { id: 'inventory', label: 'Ringkasan Stok', path: '/admin/inventory', icon: Layers },
-        { id: 'production', label: 'Produksi Lot', path: '/admin/production', icon: Factory },
+        { id: 'raw-materials', label: 'Bahan Baku & Kesiapan (P1)', path: '/admin/raw-materials', icon: Boxes },
+        { id: 'production', label: 'Produksi Kemasan (P2)', path: '/admin/production', icon: Factory },
+        { id: 'qc-history', label: 'Riwayat Selesai QC', path: '/admin/qc-history', icon: ShieldCheck },
         { id: 'stock-out', label: 'Pengeluaran Stok', path: '/admin/stock-out', icon: ArrowUpRight },
-        { id: 'scan-qr', label: 'Scan QR / Kasir', path: '/admin/scan-qr', icon: QrCode }
+        { id: 'scan-qr', label: 'Verifikasi QR Pickup', path: '/admin/scan-qr', icon: QrCode }
       ]
     },
     {
@@ -67,6 +72,7 @@ export default function AdminSidebar({ mobileOpen, setMobileOpen }) {
     {
       title: 'MANAGEMENT',
       items: [
+        { id: 'transactions', label: 'Riwayat Transaksi', path: '/admin/transactions', icon: ReceiptText },
         { id: 'users', label: 'Manajemen Tim', path: '/admin/users', icon: Users }
       ]
     }

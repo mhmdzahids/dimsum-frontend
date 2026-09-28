@@ -17,10 +17,13 @@ import api from '../../api/client';
 
 const ROUTE_META = {
   '/admin': { title: 'Dashboard', section: 'Overview' },
+  '/admin/dashboard': { title: 'Dashboard', section: 'Overview' },
   '/admin/inventory': { title: 'Ringkasan Stok', section: 'Operations' },
-  '/admin/production': { title: 'Produksi Lot', section: 'Operations' },
+  '/admin/raw-materials': { title: 'Bahan Baku & Kesiapan (P1)', section: 'Operations' },
+  '/admin/production': { title: 'Produksi Kemasan (P2)', section: 'Operations' },
+  '/admin/qc-history': { title: 'Riwayat Selesai QC', section: 'Operations' },
   '/admin/stock-out': { title: 'Pengeluaran Stok', section: 'Operations' },
-  '/admin/scan-qr': { title: 'Scan QR / Kasir', section: 'Operations' },
+  '/admin/scan-qr': { title: 'Verifikasi QR Pickup', section: 'Operations' },
   '/admin/products': { title: 'Produk & Menu', section: 'Catalog' },
   '/admin/vouchers': { title: 'Voucher Promo', section: 'Catalog' },
   '/admin/banners': { title: 'Banner Promosi', section: 'Catalog' },
@@ -29,10 +32,13 @@ const ROUTE_META = {
 
 const QUICK_NAV = [
   { id: 'dashboard', label: 'Dashboard', path: '/admin', section: 'Overview', keywords: ['dashboard', 'ringkasan', 'overview'] },
+  { id: 'pos', label: 'Kasir Toko (POS)', path: '/admin/pos', section: 'Operations', keywords: ['pos', 'kasir', 'transaksi', 'order', 'toko'] },
   { id: 'inventory', label: 'Ringkasan Stok', path: '/admin/inventory', section: 'Operations', keywords: ['stok', 'inventory', 'buffer', 'freezer'] },
-  { id: 'production', label: 'Produksi Lot', path: '/admin/production', section: 'Operations', keywords: ['produksi', 'lot', 'rencana', 'verifikasi'] },
+  { id: 'raw-materials', label: 'Bahan Baku & Kesiapan (P1)', path: '/admin/raw-materials', section: 'Operations', keywords: ['bahan', 'baku', 'daging', 'ayam', 'tepung', 'kulit', 'gilingan', 'h-1', 'kesiapan', 'ayu'] },
+  { id: 'production', label: 'Produksi Kemasan (P2)', path: '/admin/production', section: 'Operations', keywords: ['produksi', 'kemasan', 'p2', 'mika', 'vakum', 'pack', 'lot', 'rencana', 'verifikasi'] },
+  { id: 'qc-history', label: 'Riwayat Selesai QC', path: '/admin/qc-history', section: 'Operations', keywords: ['qc', 'checker', 'stiker', 'qr', 'lot', 'riwayat', 'verifikasi'] },
   { id: 'stock-out', label: 'Pengeluaran Stok', path: '/admin/stock-out', section: 'Operations', keywords: ['keluar', 'stok keluar', 'shopee', 'tiktok', 'po', 'offline'] },
-  { id: 'scan-qr', label: 'Scan QR Kasir', path: '/admin/scan-qr', section: 'Operations', keywords: ['scan', 'qr', 'kasir', 'pickup'] },
+  { id: 'scan-qr', label: 'Verifikasi QR Pickup', path: '/admin/scan-qr', section: 'Operations', keywords: ['scan', 'qr', 'pickup', 'verifikasi'] },
   { id: 'products', label: 'Produk & Menu', path: '/admin/products', section: 'Catalog', keywords: ['produk', 'menu', 'katalog', 'harga', 'diskon'] },
   { id: 'vouchers', label: 'Voucher Promo', path: '/admin/vouchers', section: 'Catalog', keywords: ['voucher', 'promo', 'kode', 'diskon'] },
   { id: 'banners', label: 'Banner Promosi', path: '/admin/banners', section: 'Catalog', keywords: ['banner', 'spanduk', 'gambar'] },

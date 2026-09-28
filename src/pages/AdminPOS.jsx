@@ -785,7 +785,7 @@ export default function AdminPOS() {
           {userRole === 'admin' && (
             <button
               type="button"
-              onClick={() => navigate('/admin/dashboard')}
+              onClick={() => navigate('/admin')}
               title="Kembali ke Dashboard Admin"
               className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
             >
@@ -1021,7 +1021,7 @@ export default function AdminPOS() {
                   <div className="flex items-center gap-2">
                     <ShoppingBag size={18} className="text-brand-red" />
                     <h2 className="font-heading font-black text-base text-text-primary">
-                      Order Details
+                      Detail Pemesanan
                     </h2>
                     <span className="bg-brand-red/10 text-brand-red text-xs font-bold px-2 py-0.5 rounded-full">
                       {cartItemCount}
@@ -1196,7 +1196,7 @@ export default function AdminPOS() {
                   className="w-full py-3.5 bg-gradient-to-r from-brand-red to-red-600 hover:from-red-700 hover:to-red-800 text-white font-extrabold text-sm rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-[0.99]"
                 >
                   <Coins size={17} />
-                  <span>Pay Now ({formatCurrency(totalAmount)})</span>
+                  <span>Checkout ({formatCurrency(totalAmount)})</span>
                 </button>
               </div>
             </div>
@@ -1518,7 +1518,6 @@ export default function AdminPOS() {
                       }}
                       placeholder="0"
                       className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-300 text-lg font-bold text-gray-800 focus:outline-none focus:border-brand-red font-mono"
-                      autoFocus
                     />
                   </div>
                 </div>

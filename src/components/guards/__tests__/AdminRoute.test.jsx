@@ -85,7 +85,7 @@ describe('AdminRoute guard', () => {
     expect(container.innerHTML).not.toContain('Inventory Page');
   });
 
-  it('redirects staff (cashier) from unauthorized page to /admin/scan-qr', () => {
+  it('redirects staff (cashier) from unauthorized page to default route /admin/pos', () => {
     localStorage.setItem('adminToken', 'dummy-token');
     localStorage.setItem('adminUser', JSON.stringify({ id: '2', role: 'staff' }));
 
@@ -93,7 +93,7 @@ describe('AdminRoute guard', () => {
       root.render(
         <MemoryRouter initialEntries={['/admin/inventory']}>
           <Routes>
-            <Route path="/admin/scan-qr" element={<div>Scan QR Cashier Page</div>} />
+            <Route path="/admin/pos" element={<div>POS Cashier Page</div>} />
             <Route element={<AdminRoute allowedRoles={['admin', 'inventory', 'checker']} />}>
               <Route path="/admin/inventory" element={<div>Inventory Page</div>} />
             </Route>
@@ -102,8 +102,29 @@ describe('AdminRoute guard', () => {
       );
     });
 
-    expect(container.innerHTML).toContain('Scan QR Cashier Page');
+    expect(container.innerHTML).toContain('POS Cashier Page');
     expect(container.innerHTML).not.toContain('Inventory Page');
+  });
+
+  it('rejects checker (QC) from /admin/pos and redirects to /admin/production', () => {
+    localStorage.setItem('adminToken', 'dummy-token');
+    localStorage.setItem('adminUser', JSON.stringify({ id: '3', role: 'checker' }));
+
+    act(() => {
+      root.render(
+        <MemoryRouter initialEntries={['/admin/pos']}>
+          <Routes>
+            <Route path="/admin/production" element={<div>Production QC Page</div>} />
+            <Route element={<AdminRoute allowedRoles={['admin', 'staff']} />}>
+              <Route path="/admin/pos" element={<div>POS Cashier Page</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+
+    expect(container.innerHTML).toContain('Production QC Page');
+    expect(container.innerHTML).not.toContain('POS Cashier Page');
   });
 
   it('allows staff (cashier) to access /admin/scan-qr', () => {
@@ -123,5 +144,27 @@ describe('AdminRoute guard', () => {
     });
 
     expect(container.innerHTML).toContain('Scan QR Cashier Page');
+  });
+
+  it('restricts /admin/transactions to admin only, redirecting staff or checker', () => {
+    // Checker tries to access transactions
+    localStorage.setItem('adminToken', 'dummy-token');
+    localStorage.setItem('adminUser', JSON.stringify({ id: '3', role: 'checker' }));
+
+    act(() => {
+      root.render(
+        <MemoryRouter initialEntries={['/admin/transactions']}>
+          <Routes>
+            <Route path="/admin/production" element={<div>Production Fallback</div>} />
+            <Route element={<AdminRoute allowedRoles={['admin']} />}>
+              <Route path="/admin/transactions" element={<div>Owner Transactions Page</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+
+    expect(container.innerHTML).not.toContain('Owner Transactions Page');
+    expect(container.innerHTML).toContain('Production Fallback');
   });
 });

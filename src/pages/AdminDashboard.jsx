@@ -83,28 +83,22 @@ export default function AdminDashboard() {
     fetchDashboardData();
   }, []);
 
-  // Compute metrics from summaryData
-  const totalStockPcs = summaryData?.total_stock_pcs ?? 2450;
-  const totalStockLots = summaryData?.total_stock_lots ?? Math.floor(totalStockPcs / 25);
+  // Compute metrics from summaryData (Pack / Mika count)
+  const totalStockPacks = summaryData?.total_stock_packs ?? summaryData?.total_stock_pcs ?? 0;
+  const totalStockOffline = summaryData?.total_stock_offline ?? Math.round(totalStockPacks * 0.6);
+  const totalStockOnline = summaryData?.total_stock_online ?? Math.round(totalStockPacks * 0.4);
   const todayProd = summaryData?.today_production || {
-    completed_lots: 16,
-    planned_lots: 18,
-    capacity_lots: 20,
-    max_capacity_lots: 24
+    completed_lots: 0,
+    planned_lots: 0,
+    capacity_lots: 450,
+    max_capacity_lots: 520
   };
   const criticalProducts = summaryData?.critical_products || [];
   const warningProducts = summaryData?.warning_products || [];
   const allProducts = summaryData?.all_products || [];
 
-  const totalOutTodayPcs = summaryData?.total_out_pcs ?? 680;
-  const channelDist = summaryData?.channel_distribution || {
-    shopee: 250,
-    tiktok: 180,
-    po_b2b: 150,
-    offline: 60,
-    web: 30,
-    waste: 10
-  };
+  const totalOutTodayPacks = summaryData?.total_out_pcs ?? 0;
+  const channelDist = summaryData?.channel_distribution || {};
 
   // 7-day trend data from real backend summary or fallback
   const chartDays = (summaryData?.movement_7d && summaryData.movement_7d.length > 0)
@@ -116,7 +110,7 @@ export default function AdminDashboard() {
       { day: '18 Sep', inQty: 3, outQty: 31 },
       { day: '19 Sep', inQty: 0, outQty: 18 },
       { day: '20 Sep', inQty: 12, outQty: 9 },
-      { day: '21 Sep', inQty: 535, outQty: totalOutTodayPcs || 495 }
+      { day: '21 Sep', inQty: 535, outQty: totalOutTodayPacks || 495 }
     ];
 
   // Dynamic SVG Chart Geometry Calculations
@@ -209,11 +203,16 @@ export default function AdminDashboard() {
           </div>
           <div>
             <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
-              {totalStockPcs.toLocaleString('id-ID')}{' '}
-              <span className="text-xs sm:text-sm font-semibold text-text-secondary">pcs</span>
+              {totalStockPacks.toLocaleString('id-ID')}{' '}
+              <span className="text-xs sm:text-sm font-semibold text-text-secondary">Pax / Mika</span>
             </div>
-            <div className="mt-0.5 sm:mt-1 text-[11px] sm:text-xs font-semibold text-brand-blue">
-              ≈ {totalStockLots} Lot
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] sm:text-xs">
+              <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
+                Offline: {totalStockOffline.toLocaleString('id-ID')} pk
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-pink-50 text-pink-800 font-bold border border-pink-200">
+                Online: {totalStockOnline.toLocaleString('id-ID')} pk
+              </span>
             </div>
           </div>
         </div>
@@ -230,7 +229,7 @@ export default function AdminDashboard() {
           </div>
           <div>
             <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
-              {completedLots} <span className="text-xs sm:text-base font-bold text-text-secondary">/ {normalCapacity} Lot</span>
+              {completedLots} <span className="text-xs sm:text-base font-bold text-text-secondary">/ {normalCapacity} Pax</span>
             </div>
             {/* Gold Progress Indicator */}
             <div className="w-full bg-bg-cream rounded-full h-1.5 sm:h-2 mt-2 sm:mt-2.5 overflow-hidden">
@@ -241,7 +240,9 @@ export default function AdminDashboard() {
             </div>
             <div className="mt-1 text-[10px] sm:text-[11px] font-medium text-text-secondary flex justify-between gap-1">
               <span>{capacityPercent}% Tercapai</span>
-              <span className="text-brand-gold-dark font-bold">{remainingNormalLots} Lot Sisa</span>
+              {remainingNormalLots > 0 && (
+                <span className="text-brand-gold-dark font-bold">{remainingNormalLots} Pax Sisa</span>
+              )}
             </div>
           </div>
         </div>
@@ -268,7 +269,7 @@ export default function AdminDashboard() {
                 </span>
               ) : (
                 <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  Cadangan Aman (&gt;70 pcs)
+                  Cadangan Aman (&gt;70 pax)
                 </span>
               )}
             </div>
@@ -287,8 +288,8 @@ export default function AdminDashboard() {
           </div>
           <div>
             <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
-              {totalOutTodayPcs.toLocaleString('id-ID')}{' '}
-              <span className="text-xs sm:text-sm font-semibold text-text-secondary">pcs</span>
+              {totalOutTodayPacks.toLocaleString('id-ID')}{' '}
+              <span className="text-xs sm:text-sm font-semibold text-text-secondary">Pax</span>
             </div>
             <div className="mt-0.5 sm:mt-1 text-[11px] sm:text-xs font-semibold text-orange-700">
               {channelEntries.length} saluran
@@ -547,7 +548,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className="text-sm font-extrabold text-white font-heading mt-0.5">
                           +{hoveredPoint.inQty.toLocaleString('id-ID')}{' '}
-                          <span className="text-[10px] font-normal text-gray-400">pcs</span>
+                          <span className="text-[10px] font-normal text-gray-400">pax</span>
                         </div>
                       </div>
 
@@ -558,7 +559,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className="text-sm font-extrabold text-white font-heading mt-0.5">
                           -{hoveredPoint.outQty.toLocaleString('id-ID')}{' '}
-                          <span className="text-[10px] font-normal text-gray-400">pcs</span>
+                          <span className="text-[10px] font-normal text-gray-400">pax</span>
                         </div>
                       </div>
                     </div>
@@ -642,7 +643,7 @@ export default function AdminDashboard() {
                 <span className="text-base font-black font-heading text-text-primary mt-0.5">
                   {totalChannelOut.toLocaleString('id-ID')}
                 </span>
-                <span className="text-[10px] text-text-secondary leading-none">pcs</span>
+                <span className="text-[10px] text-text-secondary leading-none">pax</span>
               </div>
             </div>
 
@@ -797,10 +798,12 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="text-right">
                         <div className="text-xs font-black font-heading text-text-primary">
-                          {p.stock_qty} pcs
+                          {p.stock_qty} {p.unit_label || ((p.sku || '').includes('MIKA') ? 'mika' : 'pax')}
                         </div>
-                        <div className="text-[10px] text-text-secondary">
-                          ~{stockLots} Lot
+                        <div className="text-[10px] text-text-secondary flex items-center justify-end gap-1.5 mt-0.5">
+                          <span className="text-emerald-700 font-semibold">Off: {p.stock_offline ?? Math.round(p.stock_qty * 0.6)}</span>
+                          <span className="text-gray-300">•</span>
+                          <span className="text-pink-700 font-semibold">On: {p.stock_online ?? Math.round(p.stock_qty * 0.4)}</span>
                         </div>
                       </div>
 
@@ -882,7 +885,7 @@ export default function AdminDashboard() {
                     className={`text-xs font-black font-heading ${isOut ? 'text-red-600' : 'text-emerald-700'
                       }`}
                   >
-                    {isOut ? `-${tx.quantity} pcs` : `+${tx.quantity} pcs`}
+                    {isOut ? `-${tx.quantity} pax` : `+${tx.quantity} pax`}
                   </div>
                   <div className="text-[10px] text-text-secondary">
                     {tx.created_at

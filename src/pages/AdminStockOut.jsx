@@ -15,7 +15,8 @@ import {
   Search,
   Sparkles,
   ArrowRight,
-  Info
+  Info,
+  ArrowLeftRight
 } from 'lucide-react';
 import api from '../api/client';
 import Pagination from '../components/ui/Pagination';
@@ -41,10 +42,16 @@ export default function AdminStockOut() {
   // Form State
   const [selectedProductId, setSelectedProductId] = useState('');
   const [selectedChannel, setSelectedChannel] = useState('shopee');
-  const [inputMode, setInputMode] = useState('lot'); // 'lot' | 'pcs'
-  const [lotCount, setLotCount] = useState(1);
-  const [pcsCount, setPcsCount] = useState(25);
+  const [packCount, setPackCount] = useState(1);
   const [notes, setNotes] = useState('');
+
+  // Quick Rebalance Modal State
+  const [rebalanceModalOpen, setRebalanceModalOpen] = useState(false);
+  const [rebalanceQty, setRebalanceQty] = useState(5);
+  const [rebalanceFromPool, setRebalanceFromPool] = useState('offline');
+  const [rebalanceReason, setRebalanceReason] = useState('');
+  const [rebalanceSubmitting, setRebalanceSubmitting] = useState(false);
+  const [rebalanceError, setRebalanceError] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
@@ -76,8 +83,48 @@ export default function AdminStockOut() {
     fetchData();
   }, []);
 
+  const handleQuickRebalanceSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedProductId) return;
+    setRebalanceSubmitting(true);
+    setRebalanceError('');
+
+    const toPool = rebalanceFromPool === 'offline' ? 'online' : 'offline';
+    try {
+      const res = await api.post('/api/inventory/stock-rebalance', {
+        product_id: selectedProductId,
+        from_pool: rebalanceFromPool,
+        to_pool: toPool,
+        quantity: Number(rebalanceQty),
+        reason: rebalanceReason || `Penyesuaian kuota untuk ${selectedChannel.toUpperCase()}`
+      }, { auth: 'admin' });
+
+      if (res.success) {
+        setSuccessMsg(res.message || 'Transfer kuota berhasil!');
+        setRebalanceModalOpen(false);
+        fetchData();
+        setTimeout(() => setSuccessMsg(''), 5000);
+      } else {
+        setRebalanceError(res.error || 'Gagal memproses transfer kuota');
+      }
+    } catch {
+      setRebalanceError('Koneksi bermasalah saat memproses transfer kuota');
+    } finally {
+      setRebalanceSubmitting(false);
+    }
+  };
+
   const selectedProduct = products.find(p => p.id === selectedProductId);
-  const calculatedQty = inputMode === 'lot' ? Number(lotCount || 0) * 25 : Number(pcsCount || 0);
+  const calculatedQty = Number(packCount || 0);
+
+  const isOnlineChannel = selectedChannel === 'shopee' || selectedChannel === 'tiktok';
+  const stockOff = selectedProduct ? (selectedProduct.stock_offline ?? Math.round((selectedProduct.stock_qty || 0) * 0.6)) : 0;
+  const stockOn = selectedProduct ? (selectedProduct.stock_online ?? Math.round((selectedProduct.stock_qty || 0) * 0.4)) : 0;
+  const activeQuota = isOnlineChannel ? stockOn : stockOff;
+  const otherPoolName = isOnlineChannel ? 'Offline' : 'Online';
+  const otherQuota = isOnlineChannel ? stockOff : stockOn;
+  const isQuotaExceeded = calculatedQty > activeQuota;
+  const deficit = Math.max(1, calculatedQty - activeQuota);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -98,8 +145,7 @@ export default function AdminStockOut() {
       if (res.success) {
         setSuccessMsg(res.message || `Stok berhasil dikeluarkan ke ${selectedChannel.toUpperCase()}!`);
         setNotes('');
-        if (inputMode === 'lot') setLotCount(1);
-        else setPcsCount(25);
+        setPackCount(1);
         fetchData();
       } else {
         setError(res.error || 'Gagal mencatat pengeluaran stok');
@@ -181,87 +227,129 @@ export default function AdminStockOut() {
               <select
                 value={selectedProductId}
                 onChange={(e) => setSelectedProductId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none font-semibold text-xs"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none font-semibold text-xs cursor-pointer"
               >
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} (Stok: {p.stock_qty} pcs)
-                  </option>
-                ))}
+                {products.map(p => {
+                  const isMika = (p.sku || '').includes('MIKA') || (p.name || '').toLowerCase().includes('mika');
+                  const pSize = p.pack_size || (isMika ? 50 : 25);
+                  return (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — [Isi {pSize} Pcs] (Stok: {p.stock_qty} pack)
+                    </option>
+                  );
+                })}
               </select>
 
-              {selectedProduct && (
-                <div className="mt-2 p-2.5 rounded-xl bg-gray-50 border border-gray-100 flex justify-between items-center text-[11px]">
-                  <div>
-                    <span className="text-text-secondary block">Stok Tersedia di Freezer:</span>
-                    <span className="font-bold text-text-primary text-sm">
-                      {selectedProduct.stock_qty} Pcs (~{Math.floor(selectedProduct.stock_qty / 25)} Lot)
-                    </span>
+              {selectedProduct && (() => {
+                const isMika = (selectedProduct.sku || '').includes('MIKA') || (selectedProduct.name || '').toLowerCase().includes('mika');
+                const pSize = selectedProduct.pack_size || (isMika ? 50 : 25);
+
+                return (
+                  <div className="mt-2 space-y-2">
+                    <div className="p-3 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col gap-2 text-[11px]">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="text-text-secondary block">Total Stok Fisik di Freezer:</span>
+                          <span className="font-bold text-text-primary text-sm">
+                            {selectedProduct.stock_qty} Pack <span className="text-xs font-normal text-gray-500">(~{selectedProduct.stock_qty * pSize} butir)</span>
+                          </span>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold ${selectedProduct.buffer_status === 'critical' ? 'bg-red-100 text-red-800 border-red-200' :
+                          selectedProduct.buffer_status === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                            'bg-emerald-100 text-emerald-800 border-emerald-200'
+                          }`}>
+                          {selectedProduct.buffer_label}
+                        </span>
+                      </div>
+
+                      {/* Quota Distribution Pills */}
+                      <div className="grid grid-cols-2 gap-2 pt-1 border-t border-gray-200/60">
+                        <div className={`p-2 rounded-xl border flex flex-col ${!isOnlineChannel
+                          ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300'
+                          : 'bg-white border-gray-200 opacity-70'
+                          }`}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-emerald-800 uppercase">Kuota Offline</span>
+                            {!isOnlineChannel && <span className="text-[9px] bg-emerald-600 text-white px-1.5 py-0.2 rounded font-bold">AKTIF</span>}
+                          </div>
+                          <span className="text-xs font-black text-text-primary mt-0.5">{stockOff} Pack</span>
+                          <span className="text-[9px] text-text-secondary">Kasir / Web / PO</span>
+                        </div>
+
+                        <div className={`p-2 rounded-xl border flex flex-col ${isOnlineChannel
+                          ? 'bg-pink-50/70 border-pink-300 ring-1 ring-pink-300'
+                          : 'bg-white border-gray-200 opacity-70'
+                          }`}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-pink-800 uppercase">Kuota Online</span>
+                            {isOnlineChannel && <span className="text-[9px] bg-pink-600 text-white px-1.5 py-0.2 rounded font-bold">AKTIF</span>}
+                          </div>
+                          <span className="text-xs font-black text-text-primary mt-0.5">{stockOn} Pack</span>
+                          <span className="text-[9px] text-text-secondary">Shopee / TikTok</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quota Exceeded Warning & Quick Transfer Trigger */}
+                    {isQuotaExceeded && (
+                      <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 animate-fadeIn">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold">Kuota {isOnlineChannel ? 'Online' : 'Offline'} Kurang {deficit} Pack!</span>
+                            <p className="text-[11px] text-amber-700 mt-0.5">
+                              Tersedia di pool ini: {activeQuota} pack. Ada {otherQuota} pack di kuota {otherPoolName}.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={otherQuota <= 0}
+                          onClick={() => {
+                            setRebalanceFromPool(isOnlineChannel ? 'offline' : 'online');
+                            setRebalanceQty(Math.min(deficit, otherQuota));
+                            setRebalanceReason(`Penyesuaian untuk pengeluaran ${selectedChannel.toUpperCase()}`);
+                            setRebalanceError('');
+                            setRebalanceModalOpen(true);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-brand-blue text-white text-xs font-bold hover:bg-brand-blue-hover disabled:opacity-40 transition-colors flex items-center gap-1 shrink-0 shadow-xs"
+                        >
+                          <ArrowLeftRight size={13} />
+                          <span>Transfer {Math.min(deficit, otherQuota)} Pack</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold ${selectedProduct.buffer_status === 'critical' ? 'bg-red-100 text-red-800 border-red-200' :
-                    selectedProduct.buffer_status === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                      'bg-emerald-100 text-emerald-800 border-emerald-200'
-                    }`}>
-                    {selectedProduct.buffer_label}
-                  </span>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
-            {/* Input Mode: Lot vs Pcs */}
+            {/* Input Jumlah Pack/Mika */}
             <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-text-primary font-semibold">
-                  Jumlah Yang Dikeluarkan *
-                </label>
-                <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg text-[10px] font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setInputMode('lot')}
-                    className={`px-2 py-0.5 rounded-md ${inputMode === 'lot' ? 'bg-white text-orange-700 shadow-xs' : 'text-gray-500'}`}
-                  >
-                    Hitung Lot (x25)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInputMode('pcs')}
-                    className={`px-2 py-0.5 rounded-md ${inputMode === 'pcs' ? 'bg-white text-orange-700 shadow-xs' : 'text-gray-500'}`}
-                  >
-                    Custom Pcs
-                  </button>
-                </div>
+              <label className="block text-text-primary font-semibold mb-1">
+                Jumlah Kemasan Yang Dikeluarkan (Pack / Mika) *
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  max={selectedProduct?.stock_qty || 5000}
+                  required
+                  value={packCount}
+                  onChange={(e) => setPackCount(e.target.value)}
+                  className="w-32 px-3 py-2 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none font-bold text-sm"
+                />
+                <span className="text-text-secondary font-medium">Pack</span>
+                {selectedProduct && (() => {
+                  const isMika = (selectedProduct.sku || '').includes('MIKA') || (selectedProduct.name || '').toLowerCase().includes('mika');
+                  const pSize = selectedProduct.pack_size || (isMika ? 50 : 25);
+                  return (
+                    <div className="ml-auto px-3 py-1.5 rounded-xl bg-orange-50 border border-orange-200 text-orange-950 font-bold text-xs">
+                      = {Number(packCount || 0) * pSize} Butir Dimsum
+                    </div>
+                  );
+                })()}
               </div>
-
-              {inputMode === 'lot' ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    max="500"
-                    required
-                    value={lotCount}
-                    onChange={(e) => setLotCount(e.target.value)}
-                    className="w-28 px-3 py-2 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none font-bold text-sm"
-                  />
-                  <span className="text-text-secondary font-medium">Lot</span>
-                  <div className="ml-auto px-3 py-1.5 rounded-xl bg-orange-50 border border-orange-200 text-orange-950 font-bold text-xs">
-                    = {Number(lotCount || 0) * 25} Pcs
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    max="10000"
-                    required
-                    value={pcsCount}
-                    onChange={(e) => setPcsCount(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none font-bold text-sm"
-                  />
-                  <span className="text-text-secondary font-medium shrink-0">Pcs</span>
-                </div>
-              )}
             </div>
 
             {/* Catatan / No. Resi */}
@@ -284,7 +372,7 @@ export default function AdminStockOut() {
                 <span className="text-text-secondary">Estimasi Sisa Stok:</span>
                 <span className={`font-bold ${(selectedProduct.stock_qty - calculatedQty) < 70 ? 'text-red-600 font-extrabold' : 'text-emerald-700'
                   }`}>
-                  {selectedProduct.stock_qty - calculatedQty} Pcs
+                  {selectedProduct.stock_qty - calculatedQty} Pack
                   {(selectedProduct.stock_qty - calculatedQty) < 70 && ' (Akan Kritis!)'}
                 </span>
               </div>
@@ -330,7 +418,7 @@ export default function AdminStockOut() {
                     <tr className="bg-gray-50/80 border-b border-gray-200 text-text-secondary font-semibold">
                       <th className="py-2.5 px-3">Waktu</th>
                       <th className="py-2.5 px-3">Saluran</th>
-                      <th className="py-2.5 px-3">Produk & Lot Terpotong</th>
+                      <th className="py-2.5 px-3">Produk & Batch Kemasan</th>
                       <th className="py-2.5 px-3 text-right">Jumlah Keluar</th>
                       <th className="py-2.5 px-3">Catatan</th>
                     </tr>
@@ -364,15 +452,15 @@ export default function AdminStockOut() {
                               {tx.batch_code ? (
                                 <div className="flex items-center gap-1 mt-0.5">
                                   <span className="text-[10px] font-mono font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
-                                    Lot: {tx.batch_code}
+                                    Batch: {tx.batch_code}
                                   </span>
                                 </div>
                               ) : (
-                                <span className="text-[10px] text-gray-400 italic">Stok Awal (Non-Lot)</span>
+                                <span className="text-[10px] text-gray-400 italic">Stok Awal (Non-Batch)</span>
                               )}
                             </td>
                             <td className="py-3 px-3 text-right font-extrabold text-red-600">
-                              -{tx.quantity} pcs
+                              -{tx.quantity} pack
                             </td>
                             <td className="py-3 px-3 text-text-secondary text-[11px] italic max-w-xs truncate">
                               {tx.notes || '-'}
@@ -400,6 +488,175 @@ export default function AdminStockOut() {
           )}
         </div>
       </div>
+
+      {/* Modal Quick Transfer Kuota */}
+      {rebalanceModalOpen && selectedProduct && (() => {
+        const maxTransfer = rebalanceFromPool === 'offline' ? stockOff : stockOn;
+        const toPool = rebalanceFromPool === 'offline' ? 'online' : 'offline';
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 relative">
+              <button
+                type="button"
+                onClick={() => setRebalanceModalOpen(false)}
+                className="absolute top-5 right-5 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0">
+                  <ArrowLeftRight size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-text-primary font-heading">
+                    Transfer Kuota Stok
+                  </h3>
+                  <p className="text-xs text-text-secondary">
+                    {selectedProduct.name}
+                  </p>
+                </div>
+              </div>
+
+              {rebalanceError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-center gap-2">
+                  <AlertCircle size={16} className="shrink-0 text-red-600" />
+                  <span>{rebalanceError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleQuickRebalanceSubmit} className="space-y-4 text-xs font-body">
+                {/* Quotas Info */}
+                <div className="grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded-2xl border border-gray-100 text-center">
+                  <div className="p-2 bg-white rounded-xl border border-emerald-100">
+                    <span className="text-[10px] text-emerald-700 font-bold block uppercase">Stok Offline</span>
+                    <span className="text-sm font-black text-emerald-800 font-heading">{stockOff} Pack</span>
+                  </div>
+                  <div className="p-2 bg-white rounded-xl border border-pink-100">
+                    <span className="text-[10px] text-pink-700 font-bold block uppercase">Stok Online</span>
+                    <span className="text-sm font-black text-pink-800 font-heading">{stockOn} Pack</span>
+                  </div>
+                </div>
+
+                {/* Transfer Direction Switcher */}
+                <div>
+                  <label className="block text-text-primary font-semibold mb-1">
+                    Arah Transfer Kuota *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRebalanceFromPool('offline')}
+                      className={`p-2.5 rounded-xl border text-center transition-all ${rebalanceFromPool === 'offline'
+                        ? 'border-brand-blue bg-blue-50/50 ring-1 ring-brand-blue text-brand-blue font-bold'
+                        : 'border-gray-200 bg-white text-text-secondary hover:bg-gray-50 font-medium'
+                        }`}
+                    >
+                      Offline ➔ Online
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRebalanceFromPool('online')}
+                      className={`p-2.5 rounded-xl border text-center transition-all ${rebalanceFromPool === 'online'
+                        ? 'border-brand-blue bg-blue-50/50 ring-1 ring-brand-blue text-brand-blue font-bold'
+                        : 'border-gray-200 bg-white text-text-secondary hover:bg-gray-50 font-medium'
+                        }`}
+                    >
+                      Online ➔ Offline
+                    </button>
+                  </div>
+                </div>
+
+                {/* Transfer Quantity */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-text-primary font-semibold">
+                      Jumlah Pack *
+                    </label>
+                    <span className="text-[11px] text-text-secondary">
+                      Tersedia: <strong>{maxTransfer} pack</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max={maxTransfer || 1}
+                      required
+                      value={rebalanceQty}
+                      onChange={(e) => setRebalanceQty(e.target.value)}
+                      className="w-28 px-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none font-bold text-sm"
+                    />
+                    <div className="flex items-center gap-1">
+                      {[5, 10, 20].map(n => (
+                        <button
+                          key={n}
+                          type="button"
+                          disabled={maxTransfer < n}
+                          onClick={() => setRebalanceQty(n)}
+                          className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-40 text-xs font-semibold text-text-secondary"
+                        >
+                          +{n}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        disabled={maxTransfer <= 0}
+                        onClick={() => setRebalanceQty(maxTransfer)}
+                        className="px-2 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-bold disabled:opacity-40"
+                      >
+                        Max
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transfer Reason */}
+                <div>
+                  <label className="block text-text-primary font-semibold mb-1">
+                    Alasan / Catatan
+                  </label>
+                  <input
+                    type="text"
+                    value={rebalanceReason}
+                    onChange={(e) => setRebalanceReason(e.target.value)}
+                    placeholder="Contoh: Pesanan Shopee melonjak"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none text-xs"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRebalanceModalOpen(false)}
+                    className="px-4 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-text-secondary hover:bg-gray-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={rebalanceSubmitting || maxTransfer <= 0 || Number(rebalanceQty) <= 0}
+                    className="px-5 py-2 rounded-xl bg-brand-blue text-white text-xs font-bold hover:bg-brand-blue-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shadow-sm"
+                  >
+                    {rebalanceSubmitting ? (
+                      <>
+                        <RefreshCw size={13} className="animate-spin" />
+                        <span>Memproses...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ArrowLeftRight size={13} />
+                        <span>Transfer ke {toPool.toUpperCase()}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

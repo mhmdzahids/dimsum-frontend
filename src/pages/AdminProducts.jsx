@@ -264,7 +264,7 @@ export default function AdminProducts() {
               </button>
             </div>
             <p className="text-xs text-gray-500 flex items-center gap-1.5">
-              <span className="font-semibold text-gray-600">Catatan:</span> Stok menu baru otomatis <strong>0 pcs</strong>. Penambahan stok fisik dilakukan melalui menu <strong className="text-gray-700">Produksi Lot</strong> setelah diverifikasi Checker.
+              <span className="font-semibold text-gray-600">Catatan:</span> Stok menu baru otomatis <strong>0 pack</strong>. Penambahan stok fisik dilakukan melalui menu <strong className="text-gray-700">Produksi Kemasan (P2)</strong> setelah diverifikasi Checker.
             </p>
           </form>
         </div>
@@ -321,7 +321,7 @@ export default function AdminProducts() {
 
                   <div className="flex items-center gap-3 text-xs text-gray-500 mt-1 flex-wrap">
                     <span>SKU: <strong className="text-gray-700">{p.sku}</strong></span>
-                    <span>Stok: <strong className="text-gray-700">{p.stock_qty}</strong></span>
+                    <span>Stok: <strong className="text-gray-700">{p.stock_qty} {p.unit_label || ((p.sku || '').includes('MIKA') || (p.name || '').toLowerCase().includes('mika') ? 'mika (isi 50)' : 'pack (isi 25)')}</strong></span>
                   </div>
 
                   {/* Pricing Overview */}

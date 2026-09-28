@@ -21,6 +21,7 @@ import ProfileEdit from './pages/ProfileEdit';
 const AddressNew = lazy(() => import('./pages/AddressNew'));
 const OrderHistory = lazy(() => import('./pages/OrderHistory'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 // Admin Pages & Guards (Lazy Loaded - Customers Never Download Admin Code)
 const AdminLogin = lazy(() => import('./pages/AdminLogin'));
@@ -34,8 +35,11 @@ const AdminPOS = lazy(() => import('./pages/AdminPOS'));
 const AdminUsers = lazy(() => import('./pages/AdminUsers'));
 const AdminProduction = lazy(() => import('./pages/AdminProduction'));
 const AdminInventoryDashboard = lazy(() => import('./pages/AdminInventoryDashboard'));
+const AdminRawMaterials = lazy(() => import('./pages/AdminRawMaterials'));
 const AdminStockOut = lazy(() => import('./pages/AdminStockOut'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminQCHistory = lazy(() => import('./pages/AdminQCHistory'));
+const AdminTransactions = lazy(() => import('./pages/AdminTransactions'));
 
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { getAdminDefaultRoute, getAdminRole } from './utils/adminAuth';
@@ -91,7 +95,7 @@ function App() {
                 {/* Admin Portal */}
                 <Route path="/admin/login" element={<AdminLogin />} />
                 {/* Standalone Full-Screen POS Kasir (tanpa Sidebar & Topbar CMS Admin) */}
-                <Route element={<AdminRoute allowedRoles={['admin', 'inventory', 'checker', 'staff']} />}>
+                <Route element={<AdminRoute allowedRoles={['admin', 'staff']} />}>
                   <Route path="/admin/pos" element={<AdminPOS />} />
                 </Route>
 
@@ -99,9 +103,10 @@ function App() {
                 <Route element={<AdminRoute />}>
                   <Route element={<AdminLayout />}>
                     <Route path="/admin" element={<AdminIndexRedirect />} />
+                    <Route path="/admin/dashboard" element={<AdminIndexRedirect />} />
                   
-                  {/* All internal roles (including Cashier / Staff) */}
-                  <Route element={<AdminRoute allowedRoles={['admin', 'inventory', 'checker', 'staff']} />}>
+                  {/* Kasir / Staff & Super Admin Pickup QR Scan */}
+                  <Route element={<AdminRoute allowedRoles={['admin', 'staff']} />}>
                     <Route path="/admin/scan-qr" element={<AdminScanQR />} />
                   </Route>
 
@@ -111,20 +116,30 @@ function App() {
                       <Route path="/admin/inventory" element={<AdminInventoryDashboard />} />
                     </Route>
 
+                    {/* QC History & Label Reprint (Checker & Admin only) */}
+                    <Route element={<AdminRoute allowedRoles={['admin', 'checker']} />}>
+                      <Route path="/admin/qc-history" element={<AdminQCHistory />} />
+                    </Route>
+
                     {/* Inventory control & Product management (Inventory, Admin) */}
                     <Route element={<AdminRoute allowedRoles={['admin', 'inventory']} />}>
+                      <Route path="/admin/raw-materials" element={<AdminRawMaterials />} />
                       <Route path="/admin/stock-out" element={<AdminStockOut />} />
                       <Route path="/admin/products" element={<AdminProducts />} />
                     </Route>
 
                     {/* Super Admin / Owner only */}
                     <Route element={<AdminRoute allowedRoles={['admin']} />}>
+                      <Route path="/admin/transactions" element={<AdminTransactions />} />
                       <Route path="/admin/banners" element={<AdminBanners />} />
                       <Route path="/admin/vouchers" element={<AdminVouchers />} />
                       <Route path="/admin/users" element={<AdminUsers />} />
                     </Route>
                   </Route>
                 </Route>
+
+                {/* Catch-all Wildcard 404 Route */}
+                <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
           </Router>
