@@ -151,7 +151,12 @@ export default function AdminRawMaterials() {
 
       if (matRes.success) {
         setMaterials(matRes.data?.materials || []);
-        setCounts(matRes.data?.counts || { total: 0, critical: 0, warning: 0, safe: 0 });
+        setCounts(matRes.data?.counts || {
+          total: matRes.data?.total_count ?? matRes.data?.materials?.length ?? 0,
+          critical: matRes.data?.critical_count ?? 0,
+          warning: matRes.data?.warning_count ?? 0,
+          safe: matRes.data?.safe_count ?? 0
+        });
       }
 
       if (readRes.success) {
@@ -159,7 +164,10 @@ export default function AdminRawMaterials() {
       }
 
       if (txRes.success) {
-        setTransactions(txRes.data?.transactions || []);
+        const txList = Array.isArray(txRes.data)
+          ? txRes.data
+          : (txRes.data?.transactions || []);
+        setTransactions(txList);
       }
     } catch (err) {
       console.error(err);
@@ -190,14 +198,14 @@ export default function AdminRawMaterials() {
     const gMika = j * (30 / 36);
     const gVakum = j * (6 / 36);
     return [
-      { name: 'Daging Ayam Mentah',       code: 'RM-AYAM',    qty: (j * 15).toFixed(1),          unit: 'kg' },
-      { name: 'Kulit Dimsum 9cm (Mika)',   code: 'RM-KULIT-9', qty: (gMika * 3).toFixed(1),        unit: 'kg' },
-      { name: 'Kulit Dimsum 10cm (Vakum)', code: 'RM-KULIT-10',qty: (gVakum * 5).toFixed(1),       unit: 'kg' },
-      { name: 'Tepung Tapioka',            code: 'RM-TEPUNG',  qty: ((j / 36) * 2).toFixed(2),    unit: 'karung' },
-      { name: 'Minyak Goreng & Wijen',     code: 'RM-MINYAK',  qty: (j * 1.2).toFixed(1),          unit: 'liter' },
-      { name: 'Bumbu Racik Adonan',        code: 'RM-BUMBU',   qty: (j * 1.6).toFixed(1),          unit: 'kg' },
-      { name: 'Saos Sambal',               code: 'RM-SAOS',    qty: ((j / 36) * 3).toFixed(2),    unit: 'dus' },
-      { name: 'Topping Dimsum',            code: 'RM-TOPPING', qty: ((j / 36) * 3).toFixed(2),    unit: 'dus' },
+      { name: 'Daging Ayam Mentah', code: 'RM-AYAM', qty: (j * 15).toFixed(1), unit: 'kg' },
+      { name: 'Kulit Dimsum 9cm (Mika)', code: 'RM-KULIT-9', qty: (gMika * 3).toFixed(1), unit: 'kg' },
+      { name: 'Kulit Dimsum 10cm (Vakum)', code: 'RM-KULIT-10', qty: (gVakum * 5).toFixed(1), unit: 'kg' },
+      { name: 'Tepung Tapioka', code: 'RM-TEPUNG', qty: ((j / 36) * 2).toFixed(2), unit: 'karung' },
+      { name: 'Minyak Goreng & Wijen', code: 'RM-MINYAK', qty: (j * 1.2).toFixed(1), unit: 'liter' },
+      { name: 'Bumbu Racik Adonan', code: 'RM-BUMBU', qty: (j * 1.6).toFixed(1), unit: 'kg' },
+      { name: 'Saos Sambal', code: 'RM-SAOS', qty: ((j / 36) * 3).toFixed(2), unit: 'dus' },
+      { name: 'Topping Dimsum', code: 'RM-TOPPING', qty: ((j / 36) * 3).toFixed(2), unit: 'dus' },
     ];
   };
 
@@ -355,11 +363,18 @@ export default function AdminRawMaterials() {
         {
           jumlah_gilingan: j,
           notes: gilinganForm.notes,
-          tanggal: gilinganForm.tanggal
+          tanggal: gilinganForm.tanggal,
+          force: gilinganForm.force || false
         },
         { auth: 'admin' }
       );
       if (res.success) {
+        if (res.data?.has_shortage) {
+          const shortageNames = (res.data?.shortage_items || [])
+            .map(s => `${s.material} (kurang ${s.deficit} ${s.unit})`)
+            .join(', ');
+          alert(`PERHATIAN: Realisasi gilingan berhasil dicatat, namun ada bahan baku yang stok fisiknya kurang dari standar: ${shortageNames}. Stok bahan tersebut telah dihabiskan ke 0.`);
+        }
         setSuccessMsg(res.message || `Berhasil mencatat realisasi ${j} gilingan & memotong stok bahan baku.`);
         setShowGilinganModal(false);
         fetchMaterials(true);
@@ -369,7 +384,36 @@ export default function AdminRawMaterials() {
         alert(res.error || 'Gagal mencatat gilingan');
       }
     } catch (err) {
-      alert(err.response?.data?.error || 'Terjadi kesalahan sistem saat menyimpan gilingan.');
+      const errMsg = err.response?.data?.error || err.message || 'Terjadi kesalahan sistem saat menyimpan gilingan.';
+      if (errMsg.includes('force=True') || errMsg.includes('sudah pernah dicatat')) {
+        const confirmExtra = window.confirm(`${errMsg}\n\nApakah Anda ingin tetap melanjutkan pencatatan sebagai shift tambahan?`);
+        if (confirmExtra) {
+          try {
+            const retryRes = await api.post(
+              '/api/inventory/raw-materials/log-gilingan',
+              {
+                jumlah_gilingan: j,
+                notes: gilinganForm.notes,
+                tanggal: gilinganForm.tanggal,
+                force: true
+              },
+              { auth: 'admin' }
+            );
+            if (retryRes.success) {
+              setSuccessMsg(retryRes.message || 'Berhasil mencatat gilingan shift tambahan.');
+              setShowGilinganModal(false);
+              fetchMaterials(true);
+              fetchProductionLog();
+              fetchP2Data();
+              return;
+            }
+          } catch (retryErr) {
+            alert(retryErr.response?.data?.error || 'Gagal mencatat shift tambahan.');
+          }
+        }
+      } else {
+        alert(errMsg);
+      }
     } finally {
       setGilinganSubmitting(false);
     }
@@ -538,18 +582,6 @@ export default function AdminRawMaterials() {
     <div className="space-y-6 pb-12">
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Kontrol Bahan Baku & Kesiapan Gudang (P1)</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
-              Tugas Ayu
-            </span>
-          </div>
-          <p className="text-sm text-gray-500 mt-1">
-            Monitoring stok bahan mentah (Daging, Kulit, Minyak, Tepung) & Kalkulator Kesiapan H-1 untuk produksi gilingan harian.
-          </p>
-        </div>
-
         <div className="flex items-center gap-2.5 flex-wrap">
           <button
             onClick={() => fetchMaterials(true)}
@@ -637,114 +669,125 @@ export default function AdminRawMaterials() {
       )}
 
       {/* KPI Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
         {/* Card 1: Total Bahan Baku */}
-        <div className="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Bahan Baku</span>
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center">
-              <Boxes className="w-5 h-5" />
+        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Total Bahan Baku</span>
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0">
+              <Boxes size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
           </div>
-          <div className="mt-3">
-            <span className="text-2xl font-bold text-gray-900">{counts.total}</span>
-            <span className="text-xs text-gray-500 ml-2">item aktif</span>
+          <div>
+            <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
+              {counts.total} <span className="text-xs sm:text-sm font-semibold text-text-secondary">item aktif</span>
+            </div>
+            <p className="text-[10px] sm:text-xs text-text-secondary mt-1">Semua kategori aktif</p>
           </div>
-          <p className="text-xs text-gray-400 mt-1">Daging, Kulit, Bumbu, Minyak, Tepung</p>
         </div>
 
         {/* Card 2: Kesiapan H-1 Produksi */}
-        <div className={`border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all ${
-          readiness?.overall_status === 'SIAP'
-            ? 'bg-emerald-50/40 border-emerald-200'
-            : 'bg-amber-50/40 border-amber-200'
-        }`}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Kesiapan Produksi Besok</span>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-              readiness?.overall_status === 'SIAP' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-            }`}>
-              {readiness?.overall_status === 'SIAP' ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+        {(() => {
+          const isReady = readiness?.overall_status === 'SIAP' || readiness?.overall_ready === true;
+          const statusText = !readiness ? 'MEMUAT...' : (isReady ? 'SIAP' : 'KURANG');
+          const deficitCount = readiness?.deficits?.length ?? readiness?.shortage_count ?? (readiness?.items?.filter(it => !it.is_ready && it.status !== 'SIAP').length || 0);
+
+          return (
+            <div className={`p-3.5 sm:p-5 rounded-card border shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${isReady
+              ? 'bg-emerald-50/40 border-emerald-200'
+              : 'bg-amber-50/40 border-amber-200'
+              }`}>
+              <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+                <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Kesiapan Produksi Besok</span>
+                <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${isReady ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                  {isReady ? <CheckCircle2 size={16} className="sm:w-[18px] sm:h-[18px]" /> : <AlertTriangle size={16} className="sm:w-[18px] sm:h-[18px]" />}
+                </div>
+              </div>
+              <div>
+                <div className="flex items-baseline gap-2">
+                  <span className={`text-xl sm:text-3xl font-black font-heading ${isReady ? 'text-emerald-700' : 'text-amber-700'
+                    }`}>
+                    {statusText}
+                  </span>
+                  <span className="text-xs sm:text-sm font-semibold text-text-secondary">({targetGilingan} Gilingan)</span>
+                </div>
+                <p className="text-[10px] sm:text-xs text-text-secondary mt-1">
+                  {!readiness
+                    ? 'Sedang memeriksa ketersediaan...'
+                    : isReady
+                      ? 'Seluruh bahan baku mencukupi untuk target besok'
+                      : `${deficitCount} bahan perlu dibelanjakan segera`}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className={`text-2xl font-bold ${
-              readiness?.overall_status === 'SIAP' ? 'text-emerald-700' : 'text-amber-700'
-            }`}>
-              {readiness?.overall_status || 'MEMUAT...'}
-            </span>
-            <span className="text-xs text-gray-600 font-medium">({targetGilingan} Gilingan)</span>
-          </div>
-          <p className="text-xs text-gray-500 mt-1">
-            {readiness?.overall_status === 'SIAP'
-              ? 'Seluruh bahan baku mencukupi untuk target besok'
-              : `${readiness?.deficits?.length || 0} bahan perlu dibelanjakan segera`}
-          </p>
-        </div>
+          );
+        })()}
 
         {/* Card 3: Buffer Kritis & Waspada */}
-        <div className="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Status Stok Buffer</span>
-            <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
-              <TrendingDown className="w-5 h-5" />
+        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Status Stok Buffer</span>
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-red-100 text-brand-red flex items-center justify-center shrink-0">
+              <TrendingDown size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-3">
-            <div>
-              <span className="text-2xl font-bold text-red-600">{counts.critical}</span>
-              <span className="text-xs text-gray-500 ml-1">Kritis</span>
+          <div>
+            <div className="flex items-baseline gap-2">
+              <div className="text-xl sm:text-3xl font-black font-heading text-red-600">
+                {counts.critical} <span className="text-xs font-semibold text-text-secondary">Kritis</span>
+              </div>
+              <span className="text-gray-300">|</span>
+              <div className="text-xl sm:text-3xl font-black font-heading text-amber-600">
+                {counts.warning} <span className="text-xs font-semibold text-text-secondary">Waspada</span>
+              </div>
             </div>
-            <span className="text-gray-300">|</span>
-            <div>
-              <span className="text-2xl font-bold text-amber-600">{counts.warning}</span>
-              <span className="text-xs text-gray-500 ml-1">Waspada</span>
-            </div>
+            <p className="text-[10px] sm:text-xs text-text-secondary mt-1">{counts.safe} bahan dalam status aman</p>
           </div>
-          <p className="text-xs text-gray-400 mt-1">{counts.safe} bahan dalam status aman</p>
         </div>
 
         {/* Card 4: Target Harian Produksi */}
-        <div className="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Target Harian Produksi 1</span>
-            <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-              <Scale className="w-5 h-5" />
+        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Target Harian</span>
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+              <Scale size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
           </div>
-          <div className="mt-3">
-            <span className="text-2xl font-bold text-gray-900">{targetGilingan * 15}</span>
-            <span className="text-xs text-gray-500 ml-1">kg Daging Ayam</span>
+          <div>
+            <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
+              {targetGilingan * 15} <span className="text-xs sm:text-sm font-semibold text-text-secondary">kg Daging Ayam</span>
+            </div>
+            <p className="text-[10px] sm:text-xs text-text-secondary mt-1">Standar {targetGilingan} gilingan / hari</p>
           </div>
-          <p className="text-xs text-gray-400 mt-1">Standar: 36 gilingan (30 Mika + 6 Vakum)</p>
         </div>
 
-        {/* Card 5: Kemasan Jadi Hari Ini (P2 Feedback Loop) */}
-        <div className="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+        {/* Card 5: Realisasi Kemas */}
+        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Kemasan Jadi (P2)</span>
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                <PackageCheck className="w-5 h-5" />
+            <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Realisasi Kemas</span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <PackageCheck size={16} className="sm:w-[18px] sm:h-[18px]" />
               </div>
             </div>
-            <div className="mt-3">
-              <div className="text-xl font-bold text-gray-900 leading-tight">
-                {p2Summary.completedMika} <span className="text-xs font-normal text-gray-400">Mika</span>
-                <span className="mx-1 text-gray-300">+</span>
-                {p2Summary.completedVakum} <span className="text-xs font-normal text-gray-400">Vakum</span>
+            <div>
+              <div className="text-xl sm:text-2xl font-black font-heading text-text-primary leading-tight">
+                {p2Summary.completedMika} <span className="text-xs font-semibold text-text-secondary">Mika</span>
+                <span className="mx-1.5 text-gray-300 font-normal">+</span>
+                {p2Summary.completedVakum} <span className="text-xs font-semibold text-text-secondary">Vakum</span>
               </div>
+              <p className="text-[10px] sm:text-xs text-text-secondary mt-1">
+                Target: {p2Summary.targetMika} Mika • {p2Summary.targetVakum} Vakum
+              </p>
             </div>
-            <p className="text-xs text-gray-400 mt-1">
-              Target: {p2Summary.targetMika} Mika, {p2Summary.targetVakum} Vakum
-            </p>
           </div>
-          <div className="mt-3 pt-2 border-t border-gray-100">
+          <div className="mt-3 pt-2.5 border-t border-bg-cream-dark/70">
             <Link
               to="/admin/production"
-              className="text-xs font-semibold text-brand-blue hover:text-brand-blue-dark inline-flex items-center gap-1 group"
+              className="text-xs font-bold text-brand-blue hover:text-brand-blue-dark inline-flex items-center gap-1 group"
             >
-              Lihat di P2 Kemasan
+              Lihat Detail Kemas
               <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
             </Link>
           </div>
@@ -755,25 +798,23 @@ export default function AdminRawMaterials() {
       <div className="flex border-b border-gray-200 gap-6 overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('inventory')}
-          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer whitespace-nowrap ${
-            activeTab === 'inventory'
-              ? 'text-brand-blue border-b-2 border-brand-blue'
-              : 'text-gray-500 hover:text-gray-800'
-          }`}
+          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer whitespace-nowrap ${activeTab === 'inventory'
+            ? 'text-brand-blue border-b-2 border-brand-blue'
+            : 'text-gray-500 hover:text-gray-800'
+            }`}
         >
-          Daftar Stok Bahan Baku ({materials.length})
+          Daftar Stok ({materials.length})
         </button>
 
         <button
           onClick={() => setActiveTab('readiness')}
-          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'readiness'
-              ? 'text-brand-blue border-b-2 border-brand-blue'
-              : 'text-gray-500 hover:text-gray-800'
-          }`}
+          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'readiness'
+            ? 'text-brand-blue border-b-2 border-brand-blue'
+            : 'text-gray-500 hover:text-gray-800'
+            }`}
         >
           <ClipboardCheck className="w-4 h-4 text-amber-500" />
-          Cek Kesiapan H-1
+          Kesiapan H-1
           {readiness?.overall_status !== 'SIAP' && (
             <span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
           )}
@@ -781,23 +822,21 @@ export default function AdminRawMaterials() {
 
         <button
           onClick={() => setActiveTab('lot-log')}
-          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'lot-log'
-              ? 'text-brand-blue border-b-2 border-brand-blue'
-              : 'text-gray-500 hover:text-gray-800'
-          }`}
+          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'lot-log'
+            ? 'text-brand-blue border-b-2 border-brand-blue'
+            : 'text-gray-500 hover:text-gray-800'
+            }`}
         >
           <BarChart3 className="w-4 h-4" />
-          Laporan Lot Harian
+          Laporan Lot Gilingan
         </button>
 
         <button
           onClick={() => setActiveTab('weekly')}
-          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'weekly'
-              ? 'text-brand-blue border-b-2 border-brand-blue'
-              : 'text-gray-500 hover:text-gray-800'
-          }`}
+          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'weekly'
+            ? 'text-brand-blue border-b-2 border-brand-blue'
+            : 'text-gray-500 hover:text-gray-800'
+            }`}
         >
           <Calendar className="w-4 h-4" />
           Rencana Mingguan
@@ -805,11 +844,10 @@ export default function AdminRawMaterials() {
 
         <button
           onClick={() => setActiveTab('history')}
-          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'history'
-              ? 'text-brand-blue border-b-2 border-brand-blue'
-              : 'text-gray-500 hover:text-gray-800'
-          }`}
+          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'history'
+            ? 'text-brand-blue border-b-2 border-brand-blue'
+            : 'text-gray-500 hover:text-gray-800'
+            }`}
         >
           <History className="w-4 h-4" />
           Riwayat Bahan Baku
@@ -872,7 +910,7 @@ export default function AdminRawMaterials() {
           </div>
 
           {/* Table Container */}
-          <div className="bg-white border border-gray-200/80 rounded-2xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-bg-cream-dark/80 rounded-card shadow-card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
@@ -909,13 +947,13 @@ export default function AdminRawMaterials() {
                           </td>
                           <td className="px-5 py-4">
                             <div className="font-bold text-gray-900 text-base">
-                              {formatNumber(mat.current_stock)}{' '}
+                              {formatNumber(mat.stock_qty ?? mat.current_stock ?? 0)}{' '}
                               <span className="text-xs font-normal text-gray-500">{mat.unit}</span>
                             </div>
                           </td>
                           <td className="px-5 py-4 text-xs text-gray-600">
-                            <div>Min: <span className="font-semibold text-red-600">{formatNumber(mat.minimum_stock)}</span> {mat.unit}</div>
-                            <div>Aman: <span className="font-semibold text-emerald-600">{formatNumber(mat.safety_stock)}</span> {mat.unit}</div>
+                            <div>Min: <span className="font-semibold text-red-600">{formatNumber(mat.min_buffer ?? mat.minimum_stock ?? 0)}</span> {mat.unit}</div>
+                            <div>Aman: <span className="font-semibold text-emerald-600">{formatNumber(mat.safe_target ?? mat.safety_stock ?? 0)}</span> {mat.unit}</div>
                           </td>
                           <td className="px-5 py-4">
                             {mat.buffer_status === 'critical' && (
@@ -992,32 +1030,31 @@ export default function AdminRawMaterials() {
       {activeTab === 'readiness' && (
         <div className="space-y-6">
           {/* Simulator Controls Card */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-gray-100">
+          <div className="bg-white border border-bg-cream-dark/80 rounded-card p-4 sm:p-6 shadow-card">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-bg-cream-dark/60">
               <div>
-                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-bold text-text-primary font-heading flex items-center gap-2">
                   <Sliders className="w-5 h-5 text-brand-blue" />
-                  Kalkulator Kesiapan H-1 (Target Produksi Besok)
+                  Kesiapan Bahan Baku
                 </h2>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  Berdasarkan standar hasil rapat: 36 gilingan harian (30 Mika + 6 Vakum) membutuhkan 540 kg daging ayam, 90 kg kulit 9cm, 30 kg kulit 10cm, dll.
+                <p className="text-xs sm:text-sm text-text-secondary mt-0.5">
+                  Kalkulasi kebutuhan bahan baku untuk target produksi besok.
                 </p>
               </div>
 
               {/* Target Selector */}
               <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-gray-500 uppercase">Target Gilingan:</span>
+                <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Target Gilingan:</span>
                 <div className="flex items-center gap-1.5">
                   {[24, 30, 36, 40].map((preset) => (
                     <button
                       key={preset}
                       type="button"
                       onClick={() => handleTargetGilinganChange(preset)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        targetGilingan === preset
-                          ? 'bg-brand-blue text-white shadow-sm'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${targetGilingan === preset
+                        ? 'bg-brand-blue text-white shadow-xs'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
                     >
                       {preset}
                     </button>
@@ -1035,81 +1072,96 @@ export default function AdminRawMaterials() {
             </div>
 
             {/* Status Summary Banner */}
-            <div className={`mt-6 p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-              readiness?.overall_status === 'SIAP'
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                : 'bg-red-50 border-red-200 text-red-900'
-            }`}>
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                  readiness?.overall_status === 'SIAP' ? 'bg-emerald-200 text-emerald-800' : 'bg-red-200 text-red-800'
-                }`}>
-                  {readiness?.overall_status === 'SIAP' ? <CheckCircle2 className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
-                </div>
-                <div>
-                  <h3 className="font-bold text-base">
-                    {readiness?.overall_status === 'SIAP'
-                      ? 'Gudang SIAP Untuk Produksi Besok!'
-                      : 'PERINGATAN: Bahan Baku Belum Cukup!'}
-                  </h3>
-                  <p className="text-xs text-opacity-80">
-                    {readiness?.overall_status === 'SIAP'
-                      ? `Semua bahan baku tersedia di gudang untuk ${targetGilingan} gilingan (${targetGilingan * 15} kg daging ayam).`
-                      : `Terdapat ${readiness?.deficits?.length || 0} bahan baku yang kurang. Harus dibelanjakan hari ini sebelum shift pagi!`}
-                  </p>
-                </div>
-              </div>
+            {(() => {
+              const isReady = readiness?.overall_status === 'SIAP' || readiness?.overall_ready === true;
+              const deficits = readiness?.deficits || (readiness?.items || []).filter(it => !it.is_ready && it.status !== 'SIAP').map(it => ({
+                code: it.code,
+                name: it.name,
+                unit: it.unit,
+                required: it.required ?? it.required_qty ?? 0,
+                current_stock: it.current_stock,
+                deficit: it.deficit
+              }));
+              const deficitCount = deficits.length;
 
-              {readiness?.overall_status !== 'SIAP' && canManage && (
-                <button
-                  onClick={() => {
-                    const firstDeficit = readiness?.deficits?.[0];
-                    const mat = materials.find(m => m.code === firstDeficit?.code);
-                    if (mat) openTransactionModal(mat, 'in');
-                  }}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 shadow cursor-pointer transition-all shrink-0"
-                >
-                  Belanja Restock Sekarang
-                </button>
-              )}
-            </div>
-
-            {/* Deficit Items List */}
-            {readiness?.deficits && readiness.deficits.length > 0 && (
-              <div className="mt-6">
-                <h3 className="text-xs font-bold text-red-700 uppercase tracking-wider mb-3">
-                  Daftar Bahan Yang Harus Dibeli ({readiness.deficits.length} Item)
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {readiness.deficits.map((def, idx) => (
-                    <div key={idx} className="p-3.5 bg-red-50/70 border border-red-200 rounded-xl flex items-center justify-between">
-                      <div>
-                        <div className="font-bold text-gray-900 text-sm">{def.name}</div>
-                        <div className="text-xs text-gray-500">
-                          Stok Ada: {formatNumber(def.current_stock)} {def.unit} | Butuh: {formatNumber(def.required)} {def.unit}
-                        </div>
+              return (
+                <>
+                  <div className={`mt-6 p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isReady
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-red-50 border-red-200 text-red-900'
+                    }`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isReady ? 'bg-emerald-200 text-emerald-800' : 'bg-red-200 text-red-800'
+                        }`}>
+                        {isReady ? <CheckCircle2 className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
                       </div>
-                      <div className="text-right">
-                        <span className="text-xs text-red-600 font-semibold uppercase block">Kurang</span>
-                        <span className="text-base font-extrabold text-red-700">
-                          +{formatNumber(def.deficit)} {def.unit}
-                        </span>
+                      <div>
+                        <h3 className="font-bold text-base">
+                          {isReady
+                            ? 'Bahan Baku Siap Produksi'
+                            : 'Peringatan: Bahan Baku Belum Cukup'}
+                        </h3>
+                        <p className="text-xs text-opacity-80">
+                          {isReady
+                            ? `Seluruh bahan baku mencukupi untuk target ${targetGilingan} gilingan (${targetGilingan * 15} kg daging ayam).`
+                            : `Terdapat ${deficitCount} bahan baku yang kurang dan perlu dibelanjakan segera.`}
+                        </p>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+
+                    {!isReady && canManage && (
+                      <button
+                        onClick={() => {
+                          const firstDeficit = deficits[0];
+                          const mat = materials.find(m => m.code === firstDeficit?.code);
+                          if (mat) openTransactionModal(mat, 'in');
+                        }}
+                        className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 shadow-xs cursor-pointer transition-all shrink-0"
+                      >
+                        Belanja Restock Sekarang
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Deficit Items List */}
+                  {deficits.length > 0 && (
+                    <div className="mt-6">
+                      <h3 className="text-xs font-bold text-red-700 uppercase tracking-wider mb-3">
+                        Bahan Perlu Dibelanjakan ({deficits.length})
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {deficits.map((def, idx) => (
+                          <div key={idx} className="p-3.5 bg-red-50/70 border border-red-200 rounded-xl flex items-center justify-between">
+                            <div>
+                              <div className="font-bold text-gray-900 text-sm">{def.name}</div>
+                              <div className="text-xs text-gray-500">
+                                Stok: {formatNumber(def.current_stock)} {def.unit} | Butuh: {formatNumber(def.required)} {def.unit}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-xs text-red-600 font-semibold uppercase block">Kurang</span>
+                              <span className="text-base font-extrabold text-red-700">
+                                +{formatNumber(def.deficit)} {def.unit}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {/* Bill of Materials (BOM) Table */}
             <div className="mt-6 border-t border-gray-100 pt-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                 <div>
                   <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    Kebutuhan Detail Standar Resep (Bill of Materials)
+                    Kebutuhan Resep & Stok Fisik
                   </h3>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Centang bahan yang sudah diperiksa langsung di gudang/freezer fisik (Tugas Ayu).
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    Verifikasi stok fisik gudang & freezer.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1118,11 +1170,10 @@ export default function AdminRawMaterials() {
                     const totalCount = readiness?.items?.length || 0;
                     return (
                       <>
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
-                          checkedCount === totalCount && totalCount > 0
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${checkedCount === totalCount && totalCount > 0
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
                           {checkedCount}/{totalCount} Fisik Dicek
                         </span>
                         <button
@@ -1153,10 +1204,10 @@ export default function AdminRawMaterials() {
                   <tbody className="divide-y divide-gray-100">
                     {readiness?.items?.map((item, idx) => {
                       const isChecked = !!checkedPhysicalItems[item.name];
+                      const isItemReady = item.status === 'SIAP' || item.is_ready === true;
                       return (
-                        <tr key={idx} className={`transition-colors ${
-                          isChecked ? 'bg-emerald-50/40 hover:bg-emerald-50/60' : 'hover:bg-gray-50/50'
-                        }`}>
+                        <tr key={idx} className={`transition-colors ${isChecked ? 'bg-emerald-50/40 hover:bg-emerald-50/60' : 'hover:bg-gray-50/50'
+                          }`}>
                           <td className="px-3 py-3 text-center">
                             <input
                               type="checkbox"
@@ -1178,13 +1229,13 @@ export default function AdminRawMaterials() {
                           </td>
                           <td className="px-4 py-3 text-xs text-gray-500">{item.notes}</td>
                           <td className="px-4 py-3 font-bold text-brand-blue">
-                            {formatNumber(item.required)} {item.unit}
+                            {formatNumber(item.required ?? item.required_qty)} {item.unit}
                           </td>
                           <td className="px-4 py-3 text-gray-700">
                             {formatNumber(item.current_stock)} {item.unit}
                           </td>
                           <td className="px-4 py-3">
-                            {item.status === 'SIAP' ? (
+                            {isItemReady ? (
                               <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                                 Mencukupi
@@ -1204,27 +1255,27 @@ export default function AdminRawMaterials() {
               </div>
             </div>
 
-            {/* Submit Cek H-1 — Checklist Digital Ayu */}
+            {/* Verifikasi Fisik Harian */}
             {canManage && (
               <div className="mt-6 pt-6 border-t border-gray-100">
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="bg-gray-50/80 border border-gray-200 rounded-xl p-4">
                   <div className="flex flex-col md:flex-row md:items-center gap-3">
                     <div className="flex-1">
-                      <h4 className="font-bold text-blue-900 text-sm flex items-center gap-2">
-                        <ClipboardCheck className="w-4 h-4" />
-                        Submit Cek Fisik Stok H-1
+                      <h4 className="font-bold text-text-primary text-sm flex items-center gap-2">
+                        <ClipboardCheck className="w-4 h-4 text-brand-blue" />
+                        Verifikasi Fisik Harian
                       </h4>
-                      <p className="text-xs text-blue-700 mt-0.5">
-                        Setelah Ayu selesai keliling cek fisik gudang, submit di sini sebagai pengganti papan checklist.
+                      <p className="text-xs text-text-secondary mt-0.5">
+                        Catat verifikasi stok fisik gudang & freezer sebagai data historis.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
-                        placeholder="Catatan cek hari ini..."
+                        placeholder="Catatan kondisi fisik stok..."
                         value={checklistNotes}
                         onChange={e => setChecklistNotes(e.target.value)}
-                        className="px-3 py-2 text-xs bg-white border border-blue-200 rounded-xl w-48 focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                        className="px-3 py-2 text-xs bg-white border border-gray-200 rounded-xl w-48 focus:outline-none focus:ring-1 focus:ring-brand-blue"
                       />
                       <button
                         onClick={async () => {
@@ -1239,24 +1290,26 @@ export default function AdminRawMaterials() {
                               { auth: 'admin' });
                             if (res.success) {
                               setLastCheckResult(res.data?.check);
-                              setSuccessMsg(`Cek H-1 berhasil disimpan! ${res.data?.check?.all_items_sufficient ? 'Semua bahan SIAP ✅' : `${res.data?.check?.shortage_count} bahan KURANG ⚠️`}`);
+                              setSuccessMsg(`Verifikasi berhasil disimpan. ${res.data?.check?.all_items_sufficient ? 'Semua bahan mencukupi.' : `${res.data?.check?.shortage_count} bahan kurang.`}`);
                               setChecklistNotes('');
                             }
                           } catch { /* ignore */ }
                           finally { setChecklistSubmitting(false); }
                         }}
                         disabled={checklistSubmitting}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-blue hover:bg-brand-blue-dark shadow cursor-pointer disabled:opacity-50 transition-all"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-blue hover:bg-brand-blue-dark shadow-xs cursor-pointer disabled:opacity-50 transition-all"
                       >
                         <Send className="w-3.5 h-3.5" />
-                        {checklistSubmitting ? 'Menyimpan...' : 'Submit Cek H-1'}
+                        {checklistSubmitting ? 'Menyimpan...' : 'Simpan Verifikasi'}
                       </button>
                     </div>
                   </div>
                   {lastCheckResult && (
-                    <div className="mt-3 text-xs text-blue-700 border-t border-blue-200 pt-2">
-                      Terakhir dicek: <strong>{lastCheckResult.checker_name || 'Ayu'}</strong> — {lastCheckResult.tanggal} |
-                      {lastCheckResult.all_items_sufficient ? ' ✅ Semua bahan mencukupi' : ` ⚠️ ${lastCheckResult.shortage_count} bahan kurang`}
+                    <div className="mt-3 text-xs text-text-secondary border-t border-gray-200 pt-2">
+                      Terverifikasi oleh: <strong className="text-text-primary">{lastCheckResult.checker_name || 'Petugas Gudang'}</strong> — {lastCheckResult.tanggal} |{' '}
+                      <span className={lastCheckResult.all_items_sufficient ? 'text-emerald-700 font-medium' : 'text-amber-700 font-medium'}>
+                        {lastCheckResult.all_items_sufficient ? 'Semua bahan mencukupi' : `${lastCheckResult.shortage_count} bahan kurang`}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -1271,39 +1324,37 @@ export default function AdminRawMaterials() {
         <div className="space-y-4">
           {/* Summary Cards */}
           {productionLog.summary && Object.keys(productionLog.summary).length > 0 && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-                <div className="text-xs font-semibold text-gray-500 uppercase">Total Hari Tercatat</div>
-                <div className="text-2xl font-bold text-gray-900 mt-1">{productionLog.summary.total_records || 0}</div>
-                <div className="text-xs text-gray-400 mt-0.5">30 hari terakhir</div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Total Hari Tercatat</div>
+                <div className="text-xl sm:text-3xl font-black font-heading text-text-primary mt-2">{productionLog.summary.total_records || 0}</div>
+                <div className="text-[10px] sm:text-xs text-text-secondary mt-1">30 hari terakhir</div>
               </div>
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-                <div className="text-xs font-semibold text-gray-500 uppercase">Gilingan Aktual</div>
-                <div className="text-2xl font-bold text-brand-blue mt-1">{productionLog.summary.total_actual_gilingan || 0}</div>
-                <div className="text-xs text-gray-400 mt-0.5">dari target {productionLog.summary.total_target_gilingan || 0}</div>
+              <div className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Gilingan Aktual</div>
+                <div className="text-xl sm:text-3xl font-black font-heading text-brand-blue mt-2">{productionLog.summary.total_actual_gilingan || 0}</div>
+                <div className="text-[10px] sm:text-xs text-text-secondary mt-1">dari target {productionLog.summary.total_target_gilingan || 0}</div>
               </div>
-              <div className="bg-white border border-emerald-200 rounded-2xl p-4 shadow-sm">
-                <div className="text-xs font-semibold text-gray-500 uppercase">Hari Tercapai</div>
-                <div className="text-2xl font-bold text-emerald-600 mt-1">{productionLog.summary.days_achieved || 0}</div>
-                <div className="text-xs text-gray-400 mt-0.5">dari {productionLog.summary.total_records || 0} hari</div>
+              <div className="bg-white border border-emerald-200 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Hari Tercapai</div>
+                <div className="text-xl sm:text-3xl font-black font-heading text-emerald-600 mt-2">{productionLog.summary.days_achieved || 0}</div>
+                <div className="text-[10px] sm:text-xs text-text-secondary mt-1">dari {productionLog.summary.total_records || 0} hari</div>
               </div>
-              <div className={`border rounded-2xl p-4 shadow-sm ${
-                (productionLog.summary.overall_achievement_percent || 0) >= 90
-                  ? 'bg-emerald-50 border-emerald-200'
-                  : 'bg-amber-50 border-amber-200'
-              }`}>
-                <div className="text-xs font-semibold text-gray-500 uppercase">Pencapaian</div>
-                <div className={`text-2xl font-bold mt-1 ${
-                  (productionLog.summary.overall_achievement_percent || 0) >= 90 ? 'text-emerald-700' : 'text-amber-700'
-                }`}>{productionLog.summary.overall_achievement_percent || 0}%</div>
-                <div className="text-xs text-gray-400 mt-0.5">target gilingan tercapai</div>
+              <div className={`border rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${(productionLog.summary.overall_achievement_percent || 0) >= 90
+                ? 'bg-emerald-50 border-emerald-200'
+                : 'bg-amber-50 border-amber-200'
+                }`}>
+                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Pencapaian</div>
+                <div className={`text-xl sm:text-3xl font-black font-heading mt-2 ${(productionLog.summary.overall_achievement_percent || 0) >= 90 ? 'text-emerald-700' : 'text-amber-700'
+                  }`}>{productionLog.summary.overall_achievement_percent || 0}%</div>
+                <div className="text-[10px] sm:text-xs text-text-secondary mt-1">target gilingan tercapai</div>
               </div>
             </div>
           )}
 
           {/* Log Table */}
-          <div className="bg-white border border-gray-200/80 rounded-2xl shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="bg-white border border-bg-cream-dark/80 rounded-card shadow-card overflow-hidden">
+            <div className="p-4 border-b border-bg-cream-dark/60 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-brand-blue" />
                 Riwayat Realisasi Lot Harian (Produksi 1)
@@ -1337,9 +1388,8 @@ export default function AdminRawMaterials() {
                     </td></tr>
                   ) : (
                     productionLog.logs?.map((log) => (
-                      <tr key={log.id} className={`hover:bg-gray-50/50 ${
-                        log.status === 'achieved' ? '' : 'bg-red-50/30'
-                      }`}>
+                      <tr key={log.id} className={`hover:bg-gray-50/50 ${log.status === 'achieved' ? '' : 'bg-red-50/30'
+                        }`}>
                         <td className="px-5 py-3.5 font-semibold text-gray-900">
                           {new Date(log.tanggal).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
                         </td>
@@ -1427,36 +1477,17 @@ export default function AdminRawMaterials() {
                 to="/admin/production"
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all shadow-xs"
               >
-                <span>Kelola di P2</span>
+                <span>Kelola Produksi</span>
                 <ArrowRight size={14} />
               </Link>
             </div>
-          </div>
-
-          {/* Info Banner for Ayu */}
-          <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 text-xs text-blue-900 flex items-start justify-between gap-3">
-            <div className="flex items-start gap-2.5">
-              <Info className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold">Panduan Bagian Bahan Baku (Ayu / P1):</span>
-                <p className="text-blue-700 mt-0.5">
-                  Rencana mingguan disusun oleh Planning/Sales (Lala). Tabel di bawah memperlihatkan estimasi kebutuhan gilingan dan daging ayam tiap harinya, sehingga Ayu dapat mempersiapkan belanja H-1 dan cek kesiapan gudang lebih awal.
-                </p>
-              </div>
-            </div>
-            <Link
-              to="/admin/production"
-              className="text-xs font-bold text-brand-blue hover:underline whitespace-nowrap"
-            >
-              Buka Halaman P2 →
-            </Link>
           </div>
 
           {/* Weekly Summary Totals */}
           {weeklyData?.weekly_totals && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs">
-                <div className="text-[11px] font-semibold text-gray-500 uppercase">Total Target Mika (50 pcs)</div>
+                <div className="text-[11px] font-semibold text-gray-500 uppercase">Target Mika (Isi 50)</div>
                 <div className="mt-1 text-2xl font-bold text-brand-blue">
                   {weeklyData.weekly_totals.target_mika.toLocaleString('id-ID')}{' '}
                   <span className="text-xs font-normal text-gray-400">wadah</span>
@@ -1467,7 +1498,7 @@ export default function AdminRawMaterials() {
               </div>
 
               <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs">
-                <div className="text-[11px] font-semibold text-gray-500 uppercase">Total Target Vakum (25 pcs)</div>
+                <div className="text-[11px] font-semibold text-gray-500 uppercase">Target Vakum (Isi 25)</div>
                 <div className="mt-1 text-2xl font-bold text-purple-700">
                   {weeklyData.weekly_totals.target_vakum.toLocaleString('id-ID')}{' '}
                   <span className="text-xs font-normal text-gray-400">pack</span>
@@ -1478,13 +1509,13 @@ export default function AdminRawMaterials() {
               </div>
 
               <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs">
-                <div className="text-[11px] font-semibold text-gray-500 uppercase">Estimasi Kebutuhan Gilingan</div>
+                <div className="text-[11px] font-semibold text-gray-500 uppercase">Kebutuhan Gilingan</div>
                 <div className="mt-1 text-2xl font-bold text-amber-700">
                   {weeklyData.weekly_totals.total_gilingan}{' '}
                   <span className="text-xs font-normal text-gray-400">gilingan</span>
                 </div>
                 <div className="text-[10px] text-gray-400 mt-0.5">
-                  ≈ {(weeklyData.weekly_totals.total_gilingan * 15).toLocaleString('id-ID')} kg daging ayam mentah
+                  ≈ {(weeklyData.weekly_totals.total_gilingan * 15).toLocaleString('id-ID')} kg daging ayam
                 </div>
               </div>
 
@@ -1524,18 +1555,17 @@ export default function AdminRawMaterials() {
               return (
                 <div
                   key={plan.id}
-                  className={`rounded-2xl border p-4 shadow-xs flex flex-col justify-between transition-all ${
-                    isToday
-                      ? 'bg-blue-50/40 border-brand-blue ring-2 ring-brand-blue/20'
-                      : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                  }`}
+                  className={`rounded-card border p-3.5 sm:p-4 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${isToday
+                    ? 'bg-blue-50/40 border-brand-blue ring-2 ring-brand-blue/20'
+                    : 'bg-white border-bg-cream-dark/80 hover:border-brand-blue/40'
+                    }`}
                 >
                   <div>
                     {/* Header: Day & Date */}
-                    <div className="flex items-start justify-between mb-3 border-b border-gray-100 pb-2.5">
+                    <div className="flex items-start justify-between mb-3 border-b border-bg-cream-dark/60 pb-2.5">
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-sm font-bold text-gray-900">{plan.day_of_week}</span>
+                          <span className="text-sm sm:text-base font-extrabold font-heading text-text-primary">{plan.day_of_week}</span>
                           {isToday && (
                             <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-brand-blue text-white">
                               HARI INI
@@ -1548,19 +1578,18 @@ export default function AdminRawMaterials() {
                       </div>
 
                       {/* Readiness Badge */}
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                        plan.readiness?.overall_ready
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}>
-                        {plan.readiness?.overall_ready ? 'Bahan Siap ✅' : `${plan.readiness?.deficits?.length || 0} Kurang ⚠️`}
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${plan.readiness?.overall_ready
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                        {plan.readiness?.overall_ready ? 'Bahan Siap' : `${plan.readiness?.deficits?.length || 0} Kurang`}
                       </span>
                     </div>
 
-                    {/* Target P1: Gilingan & Daging */}
+                    {/* Target Gilingan & Daging */}
                     <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-2.5 mb-3">
                       <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
-                        Kebutuhan Produksi 1 (Dapur)
+                        Kebutuhan Gilingan
                       </div>
                       <div className="mt-1 flex items-baseline justify-between">
                         <span className="text-base font-extrabold text-amber-900">{gilingan} Gilingan</span>
@@ -1568,14 +1597,14 @@ export default function AdminRawMaterials() {
                       </div>
                     </div>
 
-                    {/* Target P2 Kemasan */}
+                    {/* Target Kemasan */}
                     <div className="space-y-1.5 text-xs text-gray-600 mb-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-500">Target Mika (50 pcs):</span>
+                        <span className="text-gray-500">Mika (Isi 50):</span>
                         <span className="font-bold text-gray-900">{plan.target_mika} wadah</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-500">Target Vakum (25 pcs):</span>
+                        <span className="text-gray-500">Vakum (Isi 25):</span>
                         <span className="font-bold text-gray-900">{plan.target_vakum} pack</span>
                       </div>
                     </div>
@@ -1591,7 +1620,7 @@ export default function AdminRawMaterials() {
                     )}
                   </div>
 
-                  {/* Actions for Ayu */}
+                  {/* Actions */}
                   <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2 flex-wrap">
                     <button
                       onClick={() => {
@@ -1629,8 +1658,8 @@ export default function AdminRawMaterials() {
 
 
       {activeTab === 'history' && (
-        <div className="bg-white border border-gray-200/80 rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="bg-white border border-bg-cream-dark/80 rounded-card shadow-card overflow-hidden">
+          <div className="p-4 border-b border-bg-cream-dark/60 flex items-center justify-between">
             <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
               <History className="w-4 h-4 text-brand-blue" />
               Riwayat Arus Masuk & Keluar Bahan Baku
@@ -1704,9 +1733,8 @@ export default function AdminRawMaterials() {
       {showTxModal && selectedMaterial && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-scaleUp">
-            <div className={`p-4 text-white flex items-center justify-between ${
-              txType === 'in' ? 'bg-emerald-600' : 'bg-amber-600'
-            }`}>
+            <div className={`p-4 text-white flex items-center justify-between ${txType === 'in' ? 'bg-emerald-600' : 'bg-amber-600'
+              }`}>
               <div className="flex items-center gap-2">
                 {txType === 'in' ? <ArrowDownLeft className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />}
                 <h3 className="font-bold text-base">
@@ -1816,9 +1844,8 @@ export default function AdminRawMaterials() {
                 <button
                   type="submit"
                   disabled={txSubmitting}
-                  className={`px-5 py-2 rounded-xl text-sm font-bold text-white shadow transition-all cursor-pointer disabled:opacity-50 ${
-                    txType === 'in' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
-                  }`}
+                  className={`px-5 py-2 rounded-xl text-sm font-bold text-white shadow transition-all cursor-pointer disabled:opacity-50 ${txType === 'in' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
+                    }`}
                 >
                   {txSubmitting ? 'Menyimpan...' : 'Simpan Transaksi'}
                 </button>
@@ -2036,11 +2063,10 @@ export default function AdminRawMaterials() {
                       setGilinganForm({ ...gilinganForm, jumlah: num });
                       setGilinganPreview(computeGilinganPreview(num));
                     }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      gilinganForm.jumlah === num
-                        ? 'bg-brand-blue text-white shadow-xs'
-                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                    }`}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${gilinganForm.jumlah === num
+                      ? 'bg-brand-blue text-white shadow-xs'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                      }`}
                   >
                     {num} Gilingan {num === 36 ? '(Standar)' : ''}
                   </button>
