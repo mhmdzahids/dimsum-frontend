@@ -29,7 +29,8 @@ import {
   TrendingUp,
   BarChart3,
   Send,
-  PackageCheck
+  PackageCheck,
+  Lock
 } from 'lucide-react';
 import api from '../api/client';
 import Pagination from '../components/ui/Pagination';
@@ -93,10 +94,9 @@ export default function AdminRawMaterials() {
     day_of_week: '',
     target_mika: 350,
     target_vakum: 100,
-    target_shopee: 150,
-    target_tiktok: 100,
-    target_offline: 150,
-    target_po_b2b: 50,
+    target_online: 180,
+    target_offline: 270,
+    online_ratio: 40,
     notes: ''
   });
   const [submittingDayPlan, setSubmittingDayPlan] = useState(false);
@@ -281,10 +281,11 @@ export default function AdminRawMaterials() {
   }, []);
 
   const handleNavigateWeek = (offsetDays) => {
-    if (!currentWeekStart) return;
-    const curr = new Date(currentWeekStart);
-    curr.setDate(curr.getDate() + offsetDays);
-    const dateStr = curr.toISOString().split('T')[0];
+    if (offsetDays < 0 && !weeklyData?.can_navigate_backward) return;
+    if (offsetDays > 0 && !weeklyData?.can_navigate_forward) return;
+    const baseDate = currentWeekStart ? new Date(currentWeekStart) : new Date(weeklyData?.start_date || new Date());
+    baseDate.setDate(baseDate.getDate() + offsetDays);
+    const dateStr = baseDate.toISOString().split('T')[0];
     setCurrentWeekStart(dateStr);
     fetchWeeklyPlans(dateStr);
   };
@@ -295,17 +296,55 @@ export default function AdminRawMaterials() {
   };
 
   // Plan Edit Handlers in P1 (Rencana Mingguan Interaktif)
+  const handleEditTargetChange = (field, val) => {
+    const num = Math.max(0, parseInt(val) || 0);
+    const newMika = field === 'target_mika' ? num : (parseInt(editDayForm.target_mika) || 0);
+    const newVakum = field === 'target_vakum' ? num : (parseInt(editDayForm.target_vakum) || 0);
+    const total = newMika + newVakum;
+    const ratio = editDayForm.online_ratio ?? 40;
+    const onPacks = Math.round(total * (ratio / 100));
+    const offPacks = Math.max(0, total - onPacks);
+    setEditDayForm(prev => ({
+      ...prev,
+      [field]: num,
+      target_online: onPacks,
+      target_offline: offPacks
+    }));
+  };
+
+  const handleEditRatioChange = (ratio) => {
+    const total = (parseInt(editDayForm.target_mika) || 0) + (parseInt(editDayForm.target_vakum) || 0);
+    const onPacks = Math.round(total * (ratio / 100));
+    const offPacks = Math.max(0, total - onPacks);
+    setEditDayForm(prev => ({
+      ...prev,
+      online_ratio: ratio,
+      target_online: onPacks,
+      target_offline: offPacks
+    }));
+  };
+
   const handleOpenEditDayPlan = (plan) => {
+    if (plan.is_past) {
+      alert('Rencana produksi tanggal lampau bersifat arsip dan tidak dapat diubah.');
+      return;
+    }
     setEditingDayPlan(plan);
+    const mika = plan.target_mika || 350;
+    const vakum = plan.target_vakum || 100;
+    const onPacks = plan.target_online ?? 180;
+    const offPacks = plan.target_offline ?? 270;
+    const sumPacks = onPacks + offPacks;
+    const ratio = sumPacks > 0 ? Math.round((onPacks / sumPacks) * 100) : 40;
+
     setEditDayForm({
       plan_date: plan.plan_date,
       day_of_week: plan.day_of_week,
-      target_mika: plan.target_mika || 350,
-      target_vakum: plan.target_vakum || 100,
-      target_shopee: plan.target_shopee || 0,
-      target_tiktok: plan.target_tiktok || 0,
-      target_offline: plan.target_offline || 0,
-      target_po_b2b: plan.target_po_b2b || 0,
+      target_mika: mika,
+      target_vakum: vakum,
+      target_online: onPacks,
+      target_offline: offPacks,
+      online_ratio: ratio,
       notes: plan.notes || ''
     });
   };
@@ -682,7 +721,6 @@ export default function AdminRawMaterials() {
             <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
               {counts.total} <span className="text-xs sm:text-sm font-semibold text-text-secondary">item aktif</span>
             </div>
-            <p className="text-[10px] sm:text-xs text-text-secondary mt-1">Semua kategori aktif</p>
           </div>
         </div>
 
@@ -710,15 +748,8 @@ export default function AdminRawMaterials() {
                     }`}>
                     {statusText}
                   </span>
-                  <span className="text-xs sm:text-sm font-semibold text-text-secondary">({targetGilingan} Gilingan)</span>
+
                 </div>
-                <p className="text-[10px] sm:text-xs text-text-secondary mt-1">
-                  {!readiness
-                    ? 'Sedang memeriksa ketersediaan...'
-                    : isReady
-                      ? 'Seluruh bahan baku mencukupi untuk target besok'
-                      : `${deficitCount} bahan perlu dibelanjakan segera`}
-                </p>
               </div>
             </div>
           );
@@ -742,7 +773,6 @@ export default function AdminRawMaterials() {
                 {counts.warning} <span className="text-xs font-semibold text-text-secondary">Waspada</span>
               </div>
             </div>
-            <p className="text-[10px] sm:text-xs text-text-secondary mt-1">{counts.safe} bahan dalam status aman</p>
           </div>
         </div>
 
@@ -758,7 +788,6 @@ export default function AdminRawMaterials() {
             <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
               {targetGilingan * 15} <span className="text-xs sm:text-sm font-semibold text-text-secondary">kg Daging Ayam</span>
             </div>
-            <p className="text-[10px] sm:text-xs text-text-secondary mt-1">Standar {targetGilingan} gilingan / hari</p>
           </div>
         </div>
 
@@ -777,20 +806,9 @@ export default function AdminRawMaterials() {
                 <span className="mx-1.5 text-gray-300 font-normal">+</span>
                 {p2Summary.completedVakum} <span className="text-xs font-semibold text-text-secondary">Vakum</span>
               </div>
-              <p className="text-[10px] sm:text-xs text-text-secondary mt-1">
-                Target: {p2Summary.targetMika} Mika • {p2Summary.targetVakum} Vakum
-              </p>
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-bg-cream-dark/70">
-            <Link
-              to="/admin/production"
-              className="text-xs font-bold text-brand-blue hover:text-brand-blue-dark inline-flex items-center gap-1 group"
-            >
-              Lihat Detail Kemas
-              <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
-            </Link>
-          </div>
+
         </div>
       </div>
 
@@ -1440,9 +1458,6 @@ export default function AdminRawMaterials() {
                   <h2 className="text-base font-bold text-gray-900">
                     Target & Jadwal Produksi Mingguan
                   </h2>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
-                    Sinkronisasi P2
-                  </span>
                 </div>
                 <p className="text-xs text-gray-500">
                   Rentang: {weeklyData?.start_date ? new Date(weeklyData.start_date).toLocaleDateString('id-ID', { dateStyle: 'medium' }) : '-'} s/d{' '}
@@ -1455,20 +1470,33 @@ export default function AdminRawMaterials() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleNavigateWeek(-7)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-all cursor-pointer"
+                disabled={!weeklyData?.can_navigate_backward}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${!weeklyData?.can_navigate_backward
+                  ? 'border-gray-200/60 text-gray-300 bg-gray-50/50 cursor-not-allowed'
+                  : 'border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer'
+                  }`}
+                title={!weeklyData?.can_navigate_backward ? 'Tidak ada data riwayat sebelum minggu ini' : 'Lihat minggu sebelumnya'}
               >
                 <ChevronLeft size={14} />
                 <span>Minggu Lalu</span>
               </button>
               <button
                 onClick={handleThisWeek}
-                className="px-3.5 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-800 transition-all cursor-pointer"
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${!currentWeekStart || currentWeekStart === weeklyData?.current_week_start
+                  ? 'bg-gray-900 text-white shadow-xs'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
               >
                 Minggu Ini
               </button>
               <button
                 onClick={() => handleNavigateWeek(7)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-all cursor-pointer"
+                disabled={!weeklyData?.can_navigate_forward}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${!weeklyData?.can_navigate_forward
+                  ? 'border-gray-200/60 text-gray-300 bg-gray-50/50 cursor-not-allowed'
+                  : 'border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer'
+                  }`}
+                title={!weeklyData?.can_navigate_forward ? 'Maksimal perencanaan hanya hingga 2 minggu ke depan' : 'Lihat minggu berikutnya'}
               >
                 <span>Minggu Depan</span>
                 <ChevronRight size={14} />
@@ -1520,21 +1548,24 @@ export default function AdminRawMaterials() {
               </div>
 
               <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs">
-                <div className="text-[11px] font-semibold text-gray-500 uppercase">Distribusi Channel</div>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  <span className="px-1.5 py-0.5 rounded bg-orange-50 border border-orange-200 text-orange-800 text-[10px] font-semibold">
-                    Shopee: {weeklyData.weekly_totals.target_shopee}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-pink-50 border border-pink-200 text-pink-800 text-[10px] font-semibold">
-                    TikTok: {weeklyData.weekly_totals.target_tiktok}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-semibold">
-                    Offline: {weeklyData.weekly_totals.target_offline}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-800 text-[10px] font-semibold">
-                    B2B: {weeklyData.weekly_totals.target_po_b2b}
-                  </span>
-                </div>
+                <div className="text-[11px] font-semibold text-gray-500 uppercase">Alokasi Stok (Online / Offline)</div>
+                {(() => {
+                  const on = weeklyData.weekly_totals.target_online ?? 0;
+                  const off = weeklyData.weekly_totals.target_offline ?? 0;
+                  const sum = on + off;
+                  const onPct = sum > 0 ? Math.round((on / sum) * 100) : 40;
+                  const offPct = 100 - onPct;
+                  return (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span className="px-2 py-1 rounded bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
+                        Online: {onPct}% ({on} pack)
+                      </span>
+                      <span className="px-2 py-1 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+                        Offline: {offPct}% ({off} pack)
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -1548,6 +1579,8 @@ export default function AdminRawMaterials() {
               </div>
             ) : weeklyData?.plans?.map((plan) => {
               const isToday = plan.is_today;
+              const isPast = plan.is_past;
+              const isFuture = plan.is_future;
               const gilingan = plan.total_gilingan || 36;
               const dagingKg = gilingan * 15;
               const hasDeficit = !plan.readiness?.overall_ready;
@@ -1555,9 +1588,11 @@ export default function AdminRawMaterials() {
               return (
                 <div
                   key={plan.id}
-                  className={`rounded-card border p-3.5 sm:p-4 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${isToday
-                    ? 'bg-blue-50/40 border-brand-blue ring-2 ring-brand-blue/20'
-                    : 'bg-white border-bg-cream-dark/80 hover:border-brand-blue/40'
+                  className={`rounded-card border p-3.5 sm:p-4 shadow-xs transition-all flex flex-col justify-between ${isToday
+                    ? 'bg-white border-brand-blue ring-1 ring-brand-blue/30'
+                    : isPast
+                      ? 'bg-[#fafaf9] border-gray-200/80 text-gray-600'
+                      : 'bg-white border-bg-cream-dark/80 hover:border-gray-300'
                     }`}
                 >
                   <div>
@@ -1565,25 +1600,38 @@ export default function AdminRawMaterials() {
                     <div className="flex items-start justify-between mb-3 border-b border-bg-cream-dark/60 pb-2.5">
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-sm sm:text-base font-extrabold font-heading text-text-primary">{plan.day_of_week}</span>
+                          <span className={`text-sm sm:text-base font-heading ${isPast ? 'font-semibold text-gray-600' : 'font-extrabold text-text-primary'}`}>
+                            {plan.day_of_week}
+                          </span>
                           {isToday && (
-                            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-brand-blue text-white">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-blue text-white uppercase tracking-wider">
                               HARI INI
                             </span>
                           )}
+                          {isPast && (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-gray-200/70 text-gray-500">
+                              Arsip
+                            </span>
+                          )}
                         </div>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-gray-500 font-mono">
                           {new Date(plan.plan_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </span>
                       </div>
 
                       {/* Readiness Badge */}
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${plan.readiness?.overall_ready
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>
-                        {plan.readiness?.overall_ready ? 'Bahan Siap' : `${plan.readiness?.deficits?.length || 0} Kurang`}
-                      </span>
+                      {isPast ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-gray-100 text-gray-500 border-gray-200">
+                          Tercatat
+                        </span>
+                      ) : (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${plan.readiness?.overall_ready
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
+                          {plan.readiness?.overall_ready ? 'Bahan Siap' : `${plan.readiness?.deficits?.length || 0} Kurang`}
+                        </span>
+                      )}
                     </div>
 
                     {/* Target Gilingan & Daging */}
@@ -1610,7 +1658,7 @@ export default function AdminRawMaterials() {
                     </div>
 
                     {/* Deficit detail if any */}
-                    {hasDeficit && plan.readiness?.deficits && (
+                    {!isPast && hasDeficit && plan.readiness?.deficits && (
                       <div className="text-[11px] text-red-600 bg-red-50 p-2 rounded-lg border border-red-200 mb-3 space-y-0.5">
                         <div className="font-semibold">Bahan baku kurang:</div>
                         {plan.readiness.deficits.slice(0, 2).map((d, i) => (
@@ -1622,28 +1670,44 @@ export default function AdminRawMaterials() {
 
                   {/* Actions */}
                   <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2 flex-wrap">
-                    <button
-                      onClick={() => {
-                        handleTargetGilinganChange(gilingan);
-                        setActiveTab('readiness');
-                      }}
-                      className="text-xs font-semibold text-brand-blue hover:text-brand-blue-dark cursor-pointer inline-flex items-center gap-1"
-                    >
-                      <ClipboardCheck className="w-3.5 h-3.5" />
-                      Cek Kesiapan
-                    </button>
-                    {canManage && (
+                    {!isPast ? (
                       <button
-                        onClick={() => handleOpenEditDayPlan(plan)}
-                        className="text-xs font-semibold text-gray-700 hover:text-brand-blue bg-gray-50 hover:bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                        onClick={() => {
+                          handleTargetGilinganChange(gilingan);
+                          setActiveTab('readiness');
+                        }}
+                        className="text-xs font-semibold text-brand-blue hover:text-brand-blue-dark cursor-pointer inline-flex items-center gap-1"
                       >
-                        <Edit2 className="w-3 h-3 text-brand-blue" />
-                        <span>Edit Target</span>
+                        <ClipboardCheck className="w-3.5 h-3.5" />
+                        Cek Kesiapan
                       </button>
+                    ) : (
+                      <span className="text-xs text-gray-400 font-medium inline-flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-gray-400" />
+                        Selesai
+                      </span>
                     )}
+
+                    {canManage && (
+                      isPast ? (
+                        <span className="text-xs font-semibold text-gray-400 bg-gray-50 px-2 py-1 rounded-lg border border-gray-200 inline-flex items-center gap-1 cursor-not-allowed" title="Arsip - target tidak dapat diubah">
+                          <Lock className="w-3 h-3 text-gray-400" />
+                          <span>Terkunci</span>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleOpenEditDayPlan(plan)}
+                          className="text-xs font-semibold text-gray-700 hover:text-brand-blue bg-gray-50 hover:bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit2 className="w-3 h-3 text-brand-blue" />
+                          <span>Edit Target</span>
+                        </button>
+                      )
+                    )}
+
                     <Link
                       to="/admin/production"
-                      className="text-xs text-gray-400 hover:text-gray-700 inline-flex items-center gap-0.5"
+                      className="text-xs text-gray-400 hover:text-gray-700 inline-flex items-center gap-0.5 ml-auto"
                     >
                       <span>P2 Kemasan</span>
                       <ArrowRight className="w-3 h-3" />
@@ -2144,7 +2208,7 @@ export default function AdminRawMaterials() {
                     Edit Target Produksi: {editingDayPlan.day_of_week}
                   </h3>
                   <p className="text-xs text-gray-500">
-                    Tanggal: {editingDayPlan.plan_date} (Sinkronisasi Otomatis ke P2)
+                    Tanggal: {editingDayPlan.plan_date}
                   </p>
                 </div>
               </div>
@@ -2167,7 +2231,7 @@ export default function AdminRawMaterials() {
                     min="0"
                     required
                     value={editDayForm.target_mika}
-                    onChange={(e) => setEditDayForm({ ...editDayForm, target_mika: parseInt(e.target.value) || 0 })}
+                    onChange={(e) => handleEditTargetChange('target_mika', e.target.value)}
                     className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-brand-blue focus:bg-white focus:ring-1 focus:ring-brand-blue"
                   />
                 </div>
@@ -2180,7 +2244,7 @@ export default function AdminRawMaterials() {
                     min="0"
                     required
                     value={editDayForm.target_vakum}
-                    onChange={(e) => setEditDayForm({ ...editDayForm, target_vakum: parseInt(e.target.value) || 0 })}
+                    onChange={(e) => handleEditTargetChange('target_vakum', e.target.value)}
                     className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-purple-700 focus:bg-white focus:ring-1 focus:ring-brand-blue"
                   />
                 </div>
@@ -2205,52 +2269,111 @@ export default function AdminRawMaterials() {
                 );
               })()}
 
+              {/* Stock Pool Allocation Slider (Opsi B: Rasio Persentase) */}
               <div className="border-t border-gray-100 pt-3">
-                <span className="block text-xs font-semibold text-gray-700 uppercase mb-2">
-                  Alokasi Demand Channel Penjualan
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-0.5">Shopee (pack)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editDayForm.target_shopee}
-                      onChange={(e) => setEditDayForm({ ...editDayForm, target_shopee: parseInt(e.target.value) || 0 })}
-                      className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-0.5">TikTok (pack)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editDayForm.target_tiktok}
-                      onChange={(e) => setEditDayForm({ ...editDayForm, target_tiktok: parseInt(e.target.value) || 0 })}
-                      className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-0.5">Offline / Outlet (pack)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editDayForm.target_offline}
-                      onChange={(e) => setEditDayForm({ ...editDayForm, target_offline: parseInt(e.target.value) || 0 })}
-                      className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-0.5">B2B / PO (pack)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editDayForm.target_po_b2b}
-                      onChange={(e) => setEditDayForm({ ...editDayForm, target_po_b2b: parseInt(e.target.value) || 0 })}
-                      className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs"
-                    />
-                  </div>
-                </div>
+                {(() => {
+                  const currentMika = parseInt(editDayForm.target_mika) || 0;
+                  const currentVakum = parseInt(editDayForm.target_vakum) || 0;
+                  const totalPacks = currentMika + currentVakum;
+                  const onlineRatio = editDayForm.online_ratio ?? 40;
+                  const offlineRatio = 100 - onlineRatio;
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="block text-gray-800 font-bold uppercase tracking-wider text-[11px]">
+                            Rasio Alokasi Stok (Online vs Offline)
+                          </label>
+                          <span className="text-[10px] text-gray-500">
+                            Membagi total target ({totalPacks} pack) ke 2 kolam penjualan
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200">
+                          {onlineRatio}% Online : {offlineRatio}% Offline
+                        </span>
+                      </div>
+
+                      {/* Metric Visual Cards */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className={`p-2.5 rounded-xl border transition-all ${
+                          onlineRatio > 0 ? 'bg-blue-50/70 border-blue-200/80 text-blue-950' : 'bg-gray-50 border-gray-200 text-gray-400'
+                        }`}>
+                          <div className="flex items-center justify-between text-xs font-semibold">
+                            <span className="text-blue-700">Online</span>
+                            <span className="font-bold text-sm font-mono text-blue-800">{onlineRatio}%</span>
+                          </div>
+                          <div className="mt-1 flex items-baseline justify-between">
+                            <span className="text-base font-extrabold font-heading text-blue-900">
+                              {editDayForm.target_online} <span className="text-[10px] font-normal text-blue-700">Pack</span>
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-blue-600/80 block mt-0.5 truncate">Shopee, TikTok & Web</span>
+                        </div>
+
+                        <div className={`p-2.5 rounded-xl border transition-all ${
+                          offlineRatio > 0 ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-950' : 'bg-gray-50 border-gray-200 text-gray-400'
+                        }`}>
+                          <div className="flex items-center justify-between text-xs font-semibold">
+                            <span className="text-emerald-700">Offline</span>
+                            <span className="font-bold text-sm font-mono text-emerald-800">{offlineRatio}%</span>
+                          </div>
+                          <div className="mt-1 flex items-baseline justify-between">
+                            <span className="text-base font-extrabold font-heading text-emerald-900">
+                              {editDayForm.target_offline} <span className="text-[10px] font-normal text-emerald-700">Pack</span>
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-emerald-600/80 block mt-0.5 truncate">Kasir Toko & Outlet</span>
+                        </div>
+                      </div>
+
+                      {/* Interactive Dual Slider */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="relative flex items-center">
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="5"
+                            value={onlineRatio}
+                            onChange={(e) => handleEditRatioChange(parseInt(e.target.value) || 0)}
+                            className="w-full h-2.5 rounded-lg appearance-none cursor-pointer accent-stone-800"
+                            style={{
+                              background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${onlineRatio}%, #10b981 ${onlineRatio}%, #10b981 100%)`
+                            }}
+                          />
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div className="flex items-center justify-between pt-1 text-[10px]">
+                          <span className="text-gray-400 font-medium">Preset Cepat:</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {[
+                              { label: '30:70', val: 30 },
+                              { label: '40:60 (Standar)', val: 40 },
+                              { label: '50:50', val: 50 },
+                              { label: '60:40', val: 60 },
+                              { label: '70:30', val: 70 },
+                            ].map((preset) => (
+                              <button
+                                key={preset.val}
+                                type="button"
+                                onClick={() => handleEditRatioChange(preset.val)}
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer ${
+                                  onlineRatio === preset.val
+                                    ? 'bg-stone-900 text-white border-stone-900 font-bold'
+                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                                }`}
+                              >
+                                {preset.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>

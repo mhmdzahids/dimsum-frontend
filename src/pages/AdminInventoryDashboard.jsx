@@ -208,10 +208,6 @@ export default function AdminInventoryDashboard() {
                 Online: {(data?.total_stock_online || 0).toLocaleString('id-ID')} pk
               </span>
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] sm:text-xs text-text-secondary">
-              <span className="font-semibold text-brand-blue">~{(data?.total_stock_pieces || (data?.total_stock_pcs || 0) * 25).toLocaleString('id-ID')} Butir</span>
-              <span className="hidden xs:inline sm:inline">(Mika 50 / Vakum 25)</span>
-            </div>
           </div>
         </div>
 

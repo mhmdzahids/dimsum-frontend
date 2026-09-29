@@ -29,8 +29,10 @@ import {
   Store,
   Briefcase,
   AlertTriangle,
-  FlameKindling,
-  Boxes
+  ChefHat,
+  Boxes,
+  Play,
+  Lock
 } from 'lucide-react';
 import api from '../api/client';
 import LotStickerModal from '../components/inventory/LotStickerModal';
@@ -77,10 +79,9 @@ export default function AdminProduction() {
     day_of_week: '',
     target_mika: 350,
     target_vakum: 100,
-    target_shopee: 150,
-    target_tiktok: 100,
-    target_offline: 150,
-    target_po_b2b: 50,
+    target_online: 180,
+    target_offline: 270,
+    online_ratio: 40,
     notes: ''
   });
   const [submittingDayPlan, setSubmittingDayPlan] = useState(false);
@@ -182,10 +183,11 @@ export default function AdminProduction() {
 
   // Week navigation
   const handleNavigateWeek = (offsetDays) => {
-    if (!currentWeekStart) return;
-    const current = new Date(currentWeekStart);
-    current.setDate(current.getDate() + offsetDays);
-    const newStr = current.toISOString().split('T')[0];
+    if (offsetDays < 0 && !weeklyData?.can_navigate_backward) return;
+    if (offsetDays > 0 && !weeklyData?.can_navigate_forward) return;
+    const baseDate = currentWeekStart ? new Date(currentWeekStart) : new Date(weeklyData?.start_date || new Date());
+    baseDate.setDate(baseDate.getDate() + offsetDays);
+    const newStr = baseDate.toISOString().split('T')[0];
     setCurrentWeekStart(newStr);
     fetchWeeklyPlans(newStr);
   };
@@ -196,17 +198,55 @@ export default function AdminProduction() {
   };
 
   // Open Edit Day Plan Modal
+  const handleEditTargetChange = (field, val) => {
+    const num = Math.max(0, parseInt(val) || 0);
+    const newMika = field === 'target_mika' ? num : (parseInt(editDayForm.target_mika) || 0);
+    const newVakum = field === 'target_vakum' ? num : (parseInt(editDayForm.target_vakum) || 0);
+    const total = newMika + newVakum;
+    const ratio = editDayForm.online_ratio ?? 40;
+    const onPacks = Math.round(total * (ratio / 100));
+    const offPacks = Math.max(0, total - onPacks);
+    setEditDayForm(prev => ({
+      ...prev,
+      [field]: num,
+      target_online: onPacks,
+      target_offline: offPacks
+    }));
+  };
+
+  const handleEditRatioChange = (ratio) => {
+    const total = (parseInt(editDayForm.target_mika) || 0) + (parseInt(editDayForm.target_vakum) || 0);
+    const onPacks = Math.round(total * (ratio / 100));
+    const offPacks = Math.max(0, total - onPacks);
+    setEditDayForm(prev => ({
+      ...prev,
+      online_ratio: ratio,
+      target_online: onPacks,
+      target_offline: offPacks
+    }));
+  };
+
   const openEditDayModal = (plan) => {
+    if (plan.is_past) {
+      alert('Rencana produksi tanggal lampau bersifat arsip dan tidak dapat diubah.');
+      return;
+    }
     setEditingDayPlan(plan);
+    const mika = plan.target_mika || 350;
+    const vakum = plan.target_vakum || 100;
+    const onPacks = plan.target_online ?? 180;
+    const offPacks = plan.target_offline ?? 270;
+    const sumPacks = onPacks + offPacks;
+    const ratio = sumPacks > 0 ? Math.round((onPacks / sumPacks) * 100) : 40;
+
     setEditDayForm({
       plan_date: plan.plan_date,
       day_of_week: plan.day_of_week,
-      target_mika: plan.target_mika || 350,
-      target_vakum: plan.target_vakum || 100,
-      target_shopee: plan.target_shopee || 0,
-      target_tiktok: plan.target_tiktok || 0,
-      target_offline: plan.target_offline || 0,
-      target_po_b2b: plan.target_po_b2b || 0,
+      target_mika: mika,
+      target_vakum: vakum,
+      target_online: onPacks,
+      target_offline: offPacks,
+      online_ratio: ratio,
       notes: plan.notes || ''
     });
   };
@@ -471,11 +511,10 @@ export default function AdminProduction() {
             <>
               <button
                 onClick={() => setActiveTab('weekly')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  activeTab === 'weekly'
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${activeTab === 'weekly'
                     ? 'bg-brand-blue text-white shadow-xs'
                     : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
-                }`}
+                  }`}
               >
                 <Calendar size={15} />
                 <span>Rencana Mingguan</span>
@@ -483,11 +522,10 @@ export default function AdminProduction() {
 
               <button
                 onClick={() => setActiveTab('planner')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  activeTab === 'planner'
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${activeTab === 'planner'
                     ? 'bg-brand-blue text-white shadow-xs'
                     : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
-                }`}
+                  }`}
               >
                 <FileText size={15} />
                 <span>Daftar Batch ({batches.length})</span>
@@ -499,11 +537,10 @@ export default function AdminProduction() {
             <>
               <button
                 onClick={() => setActiveTab('checker')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all relative cursor-pointer ${
-                  activeTab === 'checker'
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all relative cursor-pointer ${activeTab === 'checker'
                     ? 'bg-amber-700 text-white shadow-xs'
                     : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
-                }`}
+                  }`}
               >
                 <ShieldCheck size={15} />
                 <span>Antrean QC</span>
@@ -551,70 +588,67 @@ export default function AdminProduction() {
       </div>
 
       {/* Widget Status Adonan Produksi 1 (Feedback Loop) */}
-      <div className="bg-white border border-bg-cream-dark/80 rounded-card p-4 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 ${
-            p1TodayLot
-              ? p1TodayLot.status === 'achieved' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
-              : 'bg-blue-50 text-brand-blue'
-          }`}>
-            <FlameKindling className="w-5 h-5" />
+      <div className="bg-white border border-bg-cream-dark/80 rounded-card px-4 py-3 sm:px-5 sm:py-3.5 shadow-card hover:shadow-elevated transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-amber-50/90 border border-amber-200/70 text-amber-700 flex items-center justify-center shrink-0">
+            <ChefHat className="w-5 h-5" />
           </div>
-          <div>
+          <div className="flex flex-col justify-center">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] sm:text-[11px] font-bold text-text-secondary uppercase tracking-wider">Pasokan Adonan Hari Ini</span>
+              <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider leading-none">
+                Pasokan Adonan Hari Ini
+              </span>
               {p1TodayLot ? (
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border leading-none ${
                   p1TodayLot.status === 'achieved'
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/70'
+                    : 'bg-amber-50 text-amber-700 border-amber-200/70'
                 }`}>
                   {p1TodayLot.status === 'achieved' ? (
                     <>
-                      <CheckCircle2 size={12} className="text-emerald-600" />
+                      <CheckCircle2 size={11} className="text-emerald-600" />
                       <span>Adonan Siap Kemas</span>
                     </>
                   ) : (
                     <>
-                      <AlertTriangle size={12} className="text-amber-600" />
+                      <AlertTriangle size={11} className="text-amber-600" />
                       <span>Kurang dari Target</span>
                     </>
                   )}
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600 border border-gray-200">
-                  <Clock size={12} className="text-gray-500" />
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200 leading-none">
+                  <Clock size={11} className="text-gray-500" />
                   <span>Menunggu Gilingan</span>
                 </span>
               )}
             </div>
+
             <div className="mt-1 flex items-baseline gap-2 flex-wrap">
               {p1TodayLot ? (
                 <>
-                  <span className="text-base sm:text-lg font-black font-heading text-text-primary">
-                    {p1TodayLot.actual_gilingan} <span className="text-xs font-semibold text-text-secondary">Gilingan selesai</span>
+                  <span className="text-base sm:text-lg font-bold font-heading text-text-primary leading-tight">
+                    {p1TodayLot.actual_gilingan}{' '}
+                    <span className="text-xs font-semibold text-text-secondary">Gilingan selesai</span>
                   </span>
-                  <span className="text-xs text-text-secondary">
-                    (Target: {p1TodayLot.target_gilingan} gilingan ≈ {(p1TodayLot.actual_gilingan * 15).toLocaleString('id-ID')} kg daging)
-                  </span>
+                  {p1TodayLot.notes && (
+                    <span className="text-xs text-text-secondary font-normal">
+                      • Catatan: <span className="text-gray-600 italic">"{p1TodayLot.notes}"</span>
+                    </span>
+                  )}
                 </>
               ) : (
-                <span className="text-xs text-text-secondary">
-                  Target harian: 36 gilingan (540 kg daging). Menunggu realisasi gilingan hari ini.
+                <span className="text-xs text-text-secondary leading-tight">
+                  Target harian: 36 gilingan (≈ 540 kg daging). Belum ada realisasi gilingan hari ini.
                 </span>
               )}
             </div>
-            {p1TodayLot?.notes && (
-              <p className="text-[11px] text-text-secondary italic mt-0.5">
-                Catatan: "{p1TodayLot.notes}"
-              </p>
-            )}
           </div>
         </div>
 
         <Link
           to="/admin/raw-materials"
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-brand-blue bg-blue-50/80 hover:bg-blue-100 border border-blue-200 transition-all shrink-0 cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-brand-blue bg-blue-50/70 hover:bg-blue-100/80 border border-blue-200/70 transition-all shrink-0 cursor-pointer"
         >
           <Boxes className="w-3.5 h-3.5" />
           <span>Bahan Baku & Gilingan</span>
@@ -646,20 +680,36 @@ export default function AdminProduction() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleNavigateWeek(-7)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-all cursor-pointer"
+                disabled={!weeklyData?.can_navigate_backward}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                  !weeklyData?.can_navigate_backward
+                    ? 'border-gray-200/60 text-gray-300 bg-gray-50/50 cursor-not-allowed'
+                    : 'border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer'
+                }`}
+                title={!weeklyData?.can_navigate_backward ? 'Tidak ada data riwayat sebelum minggu ini' : 'Lihat minggu sebelumnya'}
               >
                 <ChevronLeft size={14} />
                 <span>Minggu Lalu</span>
               </button>
               <button
                 onClick={handleThisWeek}
-                className="px-3.5 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-800 transition-all cursor-pointer"
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  !currentWeekStart || currentWeekStart === weeklyData?.current_week_start
+                    ? 'bg-gray-900 text-white shadow-xs'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
               >
                 Minggu Ini
               </button>
               <button
                 onClick={() => handleNavigateWeek(7)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-all cursor-pointer"
+                disabled={!weeklyData?.can_navigate_forward}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                  !weeklyData?.can_navigate_forward
+                    ? 'border-gray-200/60 text-gray-300 bg-gray-50/50 cursor-not-allowed'
+                    : 'border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer'
+                }`}
+                title={!weeklyData?.can_navigate_forward ? 'Maksimal perencanaan hanya hingga 2 minggu ke depan' : 'Lihat minggu berikutnya'}
               >
                 <span>Minggu Depan</span>
                 <ChevronRight size={14} />
@@ -704,21 +754,24 @@ export default function AdminProduction() {
               </div>
 
               <div className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Alokasi Demand Channel</div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <span className="px-1.5 py-0.5 rounded bg-orange-50 border border-orange-200 text-orange-800 text-[10px] font-bold">
-                    Shopee: {weeklyData.weekly_totals.target_shopee}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-pink-50 border border-pink-200 text-pink-800 text-[10px] font-bold">
-                    TikTok: {weeklyData.weekly_totals.target_tiktok}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
-                    Offline: {weeklyData.weekly_totals.target_offline}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-800 text-[10px] font-bold">
-                    B2B: {weeklyData.weekly_totals.target_po_b2b}
-                  </span>
-                </div>
+                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Alokasi Stok (Online / Offline)</div>
+                {(() => {
+                  const on = weeklyData.weekly_totals.target_online ?? 0;
+                  const off = weeklyData.weekly_totals.target_offline ?? 0;
+                  const sum = on + off;
+                  const onPct = sum > 0 ? Math.round((on / sum) * 100) : 40;
+                  const offPct = 100 - onPct;
+                  return (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span className="px-2 py-1 rounded-md bg-blue-50 border border-blue-200/60 text-blue-700 text-xs font-bold">
+                        Online: {onPct}% ({on} pack)
+                      </span>
+                      <span className="px-2 py-1 rounded-md bg-emerald-50 border border-emerald-200/60 text-emerald-700 text-xs font-bold">
+                        Offline: {offPct}% ({off} pack)
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -727,16 +780,20 @@ export default function AdminProduction() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {weeklyData?.plans?.map((plan) => {
               const isToday = plan.is_today;
+              const isPast = plan.is_past;
+              const isFuture = plan.is_future;
               const hasDeficit = !plan.readiness?.overall_ready;
               const hasBatches = plan.batches_count > 0 || plan.batches_generated;
 
               return (
                 <div
                   key={plan.id}
-                  className={`rounded-card border p-3.5 sm:p-4 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${
+                  className={`rounded-card border p-3.5 sm:p-4 shadow-xs transition-all flex flex-col justify-between ${
                     isToday
-                      ? 'bg-blue-50/30 border-brand-blue ring-2 ring-brand-blue/20'
-                      : 'bg-white border-bg-cream-dark/80 hover:border-brand-blue/40'
+                      ? 'bg-white border-brand-blue ring-1 ring-brand-blue/30'
+                      : isPast
+                      ? 'bg-[#fafaf9] border-gray-200/80 text-gray-600'
+                      : 'bg-white border-bg-cream-dark/80 hover:border-gray-300'
                   }`}
                 >
                   <div>
@@ -744,10 +801,17 @@ export default function AdminProduction() {
                     <div className="flex items-start justify-between mb-3 border-b border-bg-cream-dark/60 pb-2.5">
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-base font-black font-heading text-text-primary">{plan.day_of_week}</span>
+                          <span className={`text-base font-heading ${isPast ? 'font-semibold text-gray-600' : 'font-bold text-text-primary'}`}>
+                            {plan.day_of_week}
+                          </span>
                           {isToday && (
-                            <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-brand-blue text-white uppercase tracking-wider animate-pulse">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-blue text-white uppercase tracking-wider">
                               Hari Ini
+                            </span>
+                          )}
+                          {isPast && (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-gray-200/70 text-gray-500">
+                              Arsip
                             </span>
                           )}
                         </div>
@@ -756,33 +820,39 @@ export default function AdminProduction() {
                         </span>
                       </div>
 
-                      <button
-                        onClick={() => openEditDayModal(plan)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-brand-blue hover:bg-blue-50 transition-colors cursor-pointer"
-                        title="Edit Target & Alokasi Channel"
-                      >
-                        <Edit3 size={15} />
-                      </button>
+                      {isPast ? (
+                        <div className="p-1.5 text-gray-300 cursor-not-allowed" title="Arsip riwayat - target tidak dapat diubah">
+                          <Lock size={14} />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => openEditDayModal(plan)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-brand-blue hover:bg-blue-50 transition-colors cursor-pointer"
+                          title="Ubah Target Harian"
+                        >
+                          <Edit3 size={15} />
+                        </button>
+                      )}
                     </div>
 
                     {/* Target Quantities */}
                     <div className="space-y-2 mb-3">
-                      <div className="flex items-center justify-between p-2 rounded-xl bg-gray-50 text-xs">
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-gray-50/80 text-xs">
                         <span className="font-semibold text-gray-700 flex items-center gap-1">
                           <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                           Mika (Isi 50)
                         </span>
-                        <span className="font-extrabold text-brand-blue text-sm">
+                        <span className="font-bold text-brand-blue text-sm">
                           {plan.target_mika} <span className="text-[11px] font-normal text-gray-500">wadah</span>
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between p-2 rounded-xl bg-gray-50 text-xs">
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-gray-50/80 text-xs">
                         <span className="font-semibold text-gray-700 flex items-center gap-1">
                           <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                           Vakum (Isi 25)
                         </span>
-                        <span className="font-extrabold text-purple-700 text-sm">
+                        <span className="font-bold text-purple-700 text-sm">
                           {plan.target_vakum} <span className="text-[11px] font-normal text-gray-500">pack</span>
                         </span>
                       </div>
@@ -802,7 +872,12 @@ export default function AdminProduction() {
 
                     {/* Raw Material Readiness Pill */}
                     <div className="mb-3">
-                      {hasDeficit ? (
+                      {isPast ? (
+                        <div className="px-2.5 py-1.5 rounded-xl bg-gray-100/70 border border-gray-200/70 text-gray-500 text-[11px] flex items-center justify-between font-medium">
+                          <span>Status Bahan Baku</span>
+                          <span className="font-mono text-[10px]">Tercatat</span>
+                        </div>
+                      ) : hasDeficit ? (
                         <div
                           className="px-2.5 py-1.5 rounded-xl bg-red-50/80 border border-red-200/80 text-red-800 text-[11px] flex items-center justify-between gap-1.5 font-medium"
                           title={plan.readiness?.deficits?.map(d => `${d.name} (-${Number(d.deficit).toLocaleString('id-ID', { maximumFractionDigits: 1 })} ${d.unit})`).join(', ')}
@@ -844,42 +919,75 @@ export default function AdminProduction() {
                       </div>
                     )}
 
-                    {/* Channel Breakdown Badges */}
-                    <div className="flex flex-wrap gap-1 text-[10px] mb-4">
-                      {plan.target_shopee > 0 && <span className="px-1.5 py-0.5 rounded bg-orange-50 border border-orange-200 text-orange-800 font-bold">Shopee: {plan.target_shopee}</span>}
-                      {plan.target_tiktok > 0 && <span className="px-1.5 py-0.5 rounded bg-pink-50 border border-pink-200 text-pink-800 font-bold">TikTok: {plan.target_tiktok}</span>}
-                      {plan.target_offline > 0 && <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold">Toko: {plan.target_offline}</span>}
-                      {plan.target_po_b2b > 0 && <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-800 font-bold">B2B: {plan.target_po_b2b}</span>}
-                    </div>
+                    {/* Stock Allocation Badges */}
+                    {(() => {
+                      const onPacks = plan.target_online ?? 0;
+                      const offPacks = plan.target_offline ?? 0;
+                      const sum = onPacks + offPacks;
+                      const onPct = sum > 0 ? Math.round((onPacks / sum) * 100) : 40;
+                      const offPct = 100 - onPct;
+                      return (
+                        <div className="flex flex-wrap gap-1.5 text-[11px] mb-4">
+                          <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200/60 text-blue-700 font-medium">
+                            Online: {onPct}% ({onPacks} pack)
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200/60 text-emerald-700 font-medium">
+                            Offline: {offPct}% ({offPacks} pack)
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
 
-                  {/* Bottom Action: Trigger Production */}
+                  {/* Bottom Action: Lifecycle Aware */}
                   <div>
-                    {!hasBatches ? (
-                      <button
-                        onClick={() => handleGenerateBatches(plan)}
-                        disabled={generatingPlanId === plan.id}
-                        className={`w-full py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer ${
-                          isToday
-                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                            : 'bg-brand-blue hover:bg-brand-blue/90 text-white'
-                        }`}
-                      >
-                        <Rocket size={14} className={generatingPlanId === plan.id ? 'animate-bounce' : ''} />
-                        <span>{generatingPlanId === plan.id ? 'Memproses...' : 'Mulai Produksi'}</span>
-                      </button>
-                    ) : (
-                      <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
-                        <span className="flex items-center gap-1">
-                          <CheckCircle2 size={14} className="text-emerald-600" />
-                          <span>Batch Aktif</span>
-                        </span>
+                    {isPast ? (
+                      hasBatches ? (
+                        <div className="flex items-center justify-between text-xs py-2 px-3 rounded-xl bg-emerald-50/70 text-emerald-800 font-semibold border border-emerald-200/60">
+                          <span className="flex items-center gap-1.5">
+                            <CheckCircle2 size={13} className="text-emerald-600" />
+                            <span>Produksi Selesai</span>
+                          </span>
+                          <span className="text-[11px] font-mono font-bold text-emerald-700">
+                            {plan.total_actual_packs} Pack
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1.5 text-xs py-2 px-3 rounded-xl bg-gray-100/70 text-gray-500 font-medium border border-gray-200/60">
+                          <Clock size={13} className="text-gray-400" />
+                          <span>Terlewati (Tidak Ada Produksi)</span>
+                        </div>
+                      )
+                    ) : isToday ? (
+                      !hasBatches ? (
                         <button
-                          onClick={() => setActiveTab('checker')}
-                          className="text-[11px] underline text-emerald-900 cursor-pointer"
+                          onClick={() => handleGenerateBatches(plan)}
+                          disabled={generatingPlanId === plan.id}
+                          className="w-full py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer bg-emerald-700 hover:bg-emerald-800 text-white"
                         >
-                          Cek QC &rarr;
+                          <Play size={13} fill="currentColor" className={generatingPlanId === plan.id ? 'animate-spin' : ''} />
+                          <span>{generatingPlanId === plan.id ? 'Memproses...' : 'Mulai Produksi Hari Ini'}</span>
                         </button>
+                      ) : (
+                        <div className="flex items-center justify-between text-xs py-2 px-3 rounded-xl bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
+                          <span className="flex items-center gap-1.5">
+                            <CheckCircle2 size={14} className="text-emerald-600" />
+                            <span>Batch Aktif</span>
+                          </span>
+                          <button
+                            onClick={() => setActiveTab('checker')}
+                            className="text-[11px] font-semibold text-emerald-900 hover:underline cursor-pointer flex items-center gap-1"
+                          >
+                            <span>Cek QC</span>
+                            <ArrowRight size={12} />
+                          </button>
+                        </div>
+                      )
+                    ) : (
+                      /* Future Days */
+                      <div className="flex items-center justify-center gap-1.5 text-xs py-2 px-3 rounded-xl bg-gray-50 text-gray-600 font-medium border border-gray-200/70">
+                        <Calendar size={13} className="text-gray-400" />
+                        <span>Terjadwal ({plan.total_gilingan} Gilingan)</span>
                       </div>
                     )}
                   </div>
@@ -896,16 +1004,14 @@ export default function AdminProduction() {
           {/* Top 3 KPI Metrics Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
             {/* Metric 1: Antrean Menunggu QC */}
-            <div className={`p-3.5 sm:p-5 rounded-card border shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${
-              pendingPacks > 0 ? 'bg-amber-50/40 border-amber-200' : 'bg-white border-bg-cream-dark/80'
-            }`}>
+            <div className={`p-3.5 sm:p-5 rounded-card border shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${pendingPacks > 0 ? 'bg-amber-50/40 border-amber-200' : 'bg-white border-bg-cream-dark/80'
+              }`}>
               <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
                 <span className="text-[10px] sm:text-[11px] font-bold text-text-secondary uppercase tracking-wider leading-tight">
                   Antrean Menunggu QC
                 </span>
-                <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  pendingPacks > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
-                }`}>
+                <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${pendingPacks > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
+                  }`}>
                   <Clock size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
               </div>
@@ -952,31 +1058,28 @@ export default function AdminProduction() {
             </div>
 
             {/* Metric 3: Kapasitas Kemasan Hari Ini */}
-            <div className={`p-3.5 sm:p-5 rounded-card border shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${
-              todayTotalPacks > NORMAL_CAPACITY_PACKS ? 'bg-rose-50/40 border-rose-200' : 'bg-white border-bg-cream-dark/80'
-            }`}>
+            <div className={`p-3.5 sm:p-5 rounded-card border shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${todayTotalPacks > NORMAL_CAPACITY_PACKS ? 'bg-rose-50/40 border-rose-200' : 'bg-white border-bg-cream-dark/80'
+              }`}>
               <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
                 <span className="text-[10px] sm:text-[11px] font-bold text-text-secondary uppercase tracking-wider leading-tight">
                   Kapasitas Kemasan (Hari Ini)
                 </span>
-                <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  todayTotalPacks > NORMAL_CAPACITY_PACKS
+                <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${todayTotalPacks > NORMAL_CAPACITY_PACKS
                     ? 'bg-rose-100 text-rose-700'
                     : todayTotalPacks >= 380
-                    ? 'bg-amber-100 text-amber-700'
-                    : 'bg-brand-blue/10 text-brand-blue'
-                }`}>
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-brand-blue/10 text-brand-blue'
+                  }`}>
                   <Layers size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
               </div>
               <div>
-                <div className={`text-xl sm:text-3xl font-black font-heading ${
-                  todayTotalPacks > NORMAL_CAPACITY_PACKS
+                <div className={`text-xl sm:text-3xl font-black font-heading ${todayTotalPacks > NORMAL_CAPACITY_PACKS
                     ? 'text-rose-700'
                     : todayTotalPacks >= 380
-                    ? 'text-amber-700'
-                    : 'text-text-primary'
-                }`}>
+                      ? 'text-amber-700'
+                      : 'text-text-primary'
+                  }`}>
                   {todayTotalPacks}
                   <span className="text-xs sm:text-sm font-semibold text-text-secondary ml-1 sm:ml-1.5">
                     / {NORMAL_CAPACITY_PACKS} Pack
@@ -1268,7 +1371,7 @@ export default function AdminProduction() {
                       min="0"
                       required
                       value={editDayForm.target_mika}
-                      onChange={(e) => setEditDayForm({ ...editDayForm, target_mika: parseInt(e.target.value) || 0 })}
+                      onChange={(e) => handleEditTargetChange('target_mika', e.target.value)}
                       className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm text-brand-blue focus:bg-white focus:ring-1 focus:ring-brand-blue outline-none"
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">Wadah</span>
@@ -1285,7 +1388,7 @@ export default function AdminProduction() {
                       min="0"
                       required
                       value={editDayForm.target_vakum}
-                      onChange={(e) => setEditDayForm({ ...editDayForm, target_vakum: parseInt(e.target.value) || 0 })}
+                      onChange={(e) => handleEditTargetChange('target_vakum', e.target.value)}
                       className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm text-purple-700 focus:bg-white focus:ring-1 focus:ring-purple-700 outline-none"
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">Pack</span>
@@ -1293,53 +1396,111 @@ export default function AdminProduction() {
                 </div>
               </div>
 
-              {/* Demand Channels Breakdown */}
-              <div className="pt-2">
-                <label className="block text-gray-700 font-bold uppercase tracking-wider text-[11px] mb-2">
-                  Alokasi Estimasi Pesanan / Demand Channel (Pack)
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <div>
-                    <span className="text-[10px] text-orange-800 font-semibold block mb-0.5">Shopee</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editDayForm.target_shopee}
-                      onChange={(e) => setEditDayForm({ ...editDayForm, target_shopee: parseInt(e.target.value) || 0 })}
-                      className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold focus:bg-white outline-none"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-pink-800 font-semibold block mb-0.5">TikTok</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editDayForm.target_tiktok}
-                      onChange={(e) => setEditDayForm({ ...editDayForm, target_tiktok: parseInt(e.target.value) || 0 })}
-                      className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold focus:bg-white outline-none"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-emerald-800 font-semibold block mb-0.5">Toko Offline</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editDayForm.target_offline}
-                      onChange={(e) => setEditDayForm({ ...editDayForm, target_offline: parseInt(e.target.value) || 0 })}
-                      className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold focus:bg-white outline-none"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-blue-800 font-semibold block mb-0.5">PO / B2B</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editDayForm.target_po_b2b}
-                      onChange={(e) => setEditDayForm({ ...editDayForm, target_po_b2b: parseInt(e.target.value) || 0 })}
-                      className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold focus:bg-white outline-none"
-                    />
-                  </div>
-                </div>
+              {/* Stock Pool Allocation Slider (Opsi B: Rasio Persentase) */}
+              <div className="pt-2 border-t border-gray-100">
+                {(() => {
+                  const currentMika = parseInt(editDayForm.target_mika) || 0;
+                  const currentVakum = parseInt(editDayForm.target_vakum) || 0;
+                  const totalPacks = currentMika + currentVakum;
+                  const onlineRatio = editDayForm.online_ratio ?? 40;
+                  const offlineRatio = 100 - onlineRatio;
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="block text-gray-800 font-bold uppercase tracking-wider text-[11px]">
+                            Rasio Alokasi Stok (Online vs Offline)
+                          </label>
+                          <span className="text-[10px] text-text-secondary">
+                            Membagi total target ({totalPacks} pack) ke 2 kolam penjualan
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200">
+                          {onlineRatio}% Online : {offlineRatio}% Offline
+                        </span>
+                      </div>
+
+                      {/* Metric Visual Cards */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className={`p-2.5 rounded-xl border transition-all ${
+                          onlineRatio > 0 ? 'bg-blue-50/70 border-blue-200/80 text-blue-950' : 'bg-gray-50 border-gray-200 text-gray-400'
+                        }`}>
+                          <div className="flex items-center justify-between text-xs font-semibold">
+                            <span className="text-blue-700">Online</span>
+                            <span className="font-bold text-sm font-mono text-blue-800">{onlineRatio}%</span>
+                          </div>
+                          <div className="mt-1 flex items-baseline justify-between">
+                            <span className="text-base font-extrabold font-heading text-blue-900">
+                              {editDayForm.target_online} <span className="text-[10px] font-normal text-blue-700">Pack</span>
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-blue-600/80 block mt-0.5 truncate">Shopee, TikTok & Web</span>
+                        </div>
+
+                        <div className={`p-2.5 rounded-xl border transition-all ${
+                          offlineRatio > 0 ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-950' : 'bg-gray-50 border-gray-200 text-gray-400'
+                        }`}>
+                          <div className="flex items-center justify-between text-xs font-semibold">
+                            <span className="text-emerald-700">Offline</span>
+                            <span className="font-bold text-sm font-mono text-emerald-800">{offlineRatio}%</span>
+                          </div>
+                          <div className="mt-1 flex items-baseline justify-between">
+                            <span className="text-base font-extrabold font-heading text-emerald-900">
+                              {editDayForm.target_offline} <span className="text-[10px] font-normal text-emerald-700">Pack</span>
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-emerald-600/80 block mt-0.5 truncate">Kasir Toko & Outlet</span>
+                        </div>
+                      </div>
+
+                      {/* Interactive Dual Slider */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="relative flex items-center">
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="5"
+                            value={onlineRatio}
+                            onChange={(e) => handleEditRatioChange(parseInt(e.target.value) || 0)}
+                            className="w-full h-2.5 rounded-lg appearance-none cursor-pointer accent-stone-800"
+                            style={{
+                              background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${onlineRatio}%, #10b981 ${onlineRatio}%, #10b981 100%)`
+                            }}
+                          />
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div className="flex items-center justify-between pt-1 text-[10px]">
+                          <span className="text-gray-400 font-medium">Preset Cepat:</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {[
+                              { label: '30:70', val: 30 },
+                              { label: '40:60 (Standar)', val: 40 },
+                              { label: '50:50', val: 50 },
+                              { label: '60:40', val: 60 },
+                              { label: '70:30', val: 70 },
+                            ].map((preset) => (
+                              <button
+                                key={preset.val}
+                                type="button"
+                                onClick={() => handleEditRatioChange(preset.val)}
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer ${
+                                  onlineRatio === preset.val
+                                    ? 'bg-stone-900 text-white border-stone-900 font-bold'
+                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                                }`}
+                              >
+                                {preset.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Real-time Calculation Summary Box */}
@@ -1359,7 +1520,7 @@ export default function AdminProduction() {
                   <span className="font-semibold">
                     {(
                       (((editDayForm.target_mika / 350.0) * 30.0) +
-                      ((editDayForm.target_vakum / 100.0) * 6.0)) * 15
+                        ((editDayForm.target_vakum / 100.0) * 6.0)) * 15
                     ).toFixed(0)}{' '}
                     kg
                   </span>
