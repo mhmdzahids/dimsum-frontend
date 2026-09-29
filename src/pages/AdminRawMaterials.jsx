@@ -83,6 +83,24 @@ export default function AdminRawMaterials() {
   const [checklistSubmitting, setChecklistSubmitting] = useState(false);
   const [lastCheckResult, setLastCheckResult] = useState(null);
 
+  // Physical Verification Checklist State (Papan BC Digital Ayu)
+  const [checkedPhysicalItems, setCheckedPhysicalItems] = useState({});
+
+  // Edit Day Plan Modal State in P1 (Rencana Mingguan Interaktif)
+  const [editingDayPlan, setEditingDayPlan] = useState(null);
+  const [editDayForm, setEditDayForm] = useState({
+    plan_date: '',
+    day_of_week: '',
+    target_mika: 350,
+    target_vakum: 100,
+    target_shopee: 150,
+    target_tiktok: 100,
+    target_offline: 150,
+    target_po_b2b: 50,
+    notes: ''
+  });
+  const [submittingDayPlan, setSubmittingDayPlan] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -166,18 +184,20 @@ export default function AdminRawMaterials() {
   }, []);
 
   // Compute BOM preview for Catat Gilingan modal
+  // PENTING: harus sinkron dengan bom_deductions di backend service.py log_gilingan()
   const computeGilinganPreview = (jumlah) => {
     const j = Number(jumlah) || 0;
     const gMika = j * (30 / 36);
     const gVakum = j * (6 / 36);
     return [
-      { name: 'Daging Ayam Mentah', qty: (j * 15).toFixed(1), unit: 'kg' },
-      { name: 'Kulit Dimsum 9cm (Mika)', qty: (gMika * 3).toFixed(1), unit: 'kg' },
-      { name: 'Kulit Dimsum 10cm (Vakum)', qty: (gVakum * 5).toFixed(1), unit: 'kg' },
-      { name: 'Tepung Tapioka', qty: ((j / 36) * 2).toFixed(2), unit: 'karung' },
-      { name: 'Minyak Goreng & Wijen', qty: (j * 1.2).toFixed(1), unit: 'liter' },
-      { name: 'Bumbu Racik Adonan', qty: (j * 1.6).toFixed(1), unit: 'kg' },
-      { name: 'Saos Sambal', qty: ((j / 36) * 3).toFixed(2), unit: 'dus' },
+      { name: 'Daging Ayam Mentah',       code: 'RM-AYAM',    qty: (j * 15).toFixed(1),          unit: 'kg' },
+      { name: 'Kulit Dimsum 9cm (Mika)',   code: 'RM-KULIT-9', qty: (gMika * 3).toFixed(1),        unit: 'kg' },
+      { name: 'Kulit Dimsum 10cm (Vakum)', code: 'RM-KULIT-10',qty: (gVakum * 5).toFixed(1),       unit: 'kg' },
+      { name: 'Tepung Tapioka',            code: 'RM-TEPUNG',  qty: ((j / 36) * 2).toFixed(2),    unit: 'karung' },
+      { name: 'Minyak Goreng & Wijen',     code: 'RM-MINYAK',  qty: (j * 1.2).toFixed(1),          unit: 'liter' },
+      { name: 'Bumbu Racik Adonan',        code: 'RM-BUMBU',   qty: (j * 1.6).toFixed(1),          unit: 'kg' },
+      { name: 'Saos Sambal',               code: 'RM-SAOS',    qty: ((j / 36) * 3).toFixed(2),    unit: 'dus' },
+      { name: 'Topping Dimsum',            code: 'RM-TOPPING', qty: ((j / 36) * 3).toFixed(2),    unit: 'dus' },
     ];
   };
 
@@ -266,6 +286,60 @@ export default function AdminRawMaterials() {
     fetchWeeklyPlans();
   };
 
+  // Plan Edit Handlers in P1 (Rencana Mingguan Interaktif)
+  const handleOpenEditDayPlan = (plan) => {
+    setEditingDayPlan(plan);
+    setEditDayForm({
+      plan_date: plan.plan_date,
+      day_of_week: plan.day_of_week,
+      target_mika: plan.target_mika || 350,
+      target_vakum: plan.target_vakum || 100,
+      target_shopee: plan.target_shopee || 0,
+      target_tiktok: plan.target_tiktok || 0,
+      target_offline: plan.target_offline || 0,
+      target_po_b2b: plan.target_po_b2b || 0,
+      notes: plan.notes || ''
+    });
+  };
+
+  const handleSaveDayPlan = async (e) => {
+    e.preventDefault();
+    setSubmittingDayPlan(true);
+    try {
+      const res = await api.post('/api/inventory/production/plans/daily', editDayForm, { auth: 'admin' });
+      if (res.success) {
+        setSuccessMsg(`Target produksi ${editDayForm.day_of_week} (${editDayForm.plan_date}) berhasil diperbarui!`);
+        setEditingDayPlan(null);
+        fetchWeeklyPlans(currentWeekStart);
+        fetchP2Data();
+      } else {
+        alert(res.error || 'Gagal menyimpan target');
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || 'Terjadi kesalahan sistem saat menyimpan target.');
+    } finally {
+      setSubmittingDayPlan(false);
+    }
+  };
+
+  // Physical Verification Checklist Handlers (Papan BC Ayu)
+  const handleTogglePhysicalCheck = (itemName) => {
+    setCheckedPhysicalItems(prev => ({
+      ...prev,
+      [itemName]: !prev[itemName]
+    }));
+  };
+
+  const handleCheckAllPhysical = () => {
+    if (!readiness?.items) return;
+    const allChecked = readiness.items.every(it => checkedPhysicalItems[it.name]);
+    const nextState = {};
+    readiness.items.forEach(it => {
+      nextState[it.name] = !allChecked;
+    });
+    setCheckedPhysicalItems(nextState);
+  };
+
   // Submit Catat Gilingan Hari Ini (Bulk LOT Entry)
   const handleGilinganSubmit = async (e) => {
     e.preventDefault();
@@ -301,16 +375,38 @@ export default function AdminRawMaterials() {
     }
   };
 
+  // Fetch status cek fisik terakhir hari ini (tampilkan "Terakhir dicek oleh X")
+  const fetchLatestDailyCheck = useCallback(async () => {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const res = await api.get(`/api/inventory/raw-materials/daily-check?tanggal=${todayStr}`, { auth: 'admin' });
+      if (res.success && res.data?.check) {
+        setLastCheckResult(res.data.check);
+      }
+    } catch {
+      // Ignore — non-critical fetch
+    }
+  }, []);
+
   useEffect(() => {
     fetchMaterials();
     fetchProductionLog();
     fetchP2Data();
-  }, [fetchProductionLog, fetchP2Data]);
+    fetchLatestDailyCheck();
+
+    // Auto-refresh P2 KPI setiap 5 menit agar data kemasan jadi selalu terkini
+    const p2RefreshInterval = setInterval(() => {
+      fetchP2Data();
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(p2RefreshInterval);
+  }, [fetchProductionLog, fetchP2Data, fetchLatestDailyCheck]);
 
   useEffect(() => {
     if (activeTab === 'lot-log') fetchProductionLog();
     if (activeTab === 'weekly') fetchWeeklyPlans(currentWeekStart);
-  }, [activeTab, fetchProductionLog, fetchWeeklyPlans, currentWeekStart]);
+    if (activeTab === 'readiness') fetchLatestDailyCheck();
+  }, [activeTab, fetchProductionLog, fetchWeeklyPlans, fetchLatestDailyCheck, currentWeekStart]);
 
   const handleTargetGilinganChange = (val) => {
     const num = Math.max(1, parseInt(val) || 1);
@@ -1007,13 +1103,46 @@ export default function AdminRawMaterials() {
 
             {/* Bill of Materials (BOM) Table */}
             <div className="mt-6 border-t border-gray-100 pt-6">
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">
-                Kebutuhan Detail Standar Resep (Bill of Materials)
-              </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Kebutuhan Detail Standar Resep (Bill of Materials)
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Centang bahan yang sudah diperiksa langsung di gudang/freezer fisik (Tugas Ayu).
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {(() => {
+                    const checkedCount = (readiness?.items || []).filter(item => checkedPhysicalItems[item.name]).length;
+                    const totalCount = readiness?.items?.length || 0;
+                    return (
+                      <>
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                          checkedCount === totalCount && totalCount > 0
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          {checkedCount}/{totalCount} Fisik Dicek
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCheckAllPhysical}
+                          className="px-3 py-1 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors cursor-pointer"
+                        >
+                          {checkedCount === totalCount && totalCount > 0 ? 'Batal Centang' : 'Centang Semua'}
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase border-y border-gray-200">
+                      <th className="px-3 py-3 w-10 text-center">Fisik</th>
                       <th className="px-4 py-3">Nama Bahan</th>
                       <th className="px-4 py-3">Rasio Standar Resep</th>
                       <th className="px-4 py-3">Kebutuhan ({targetGilingan} Gilingan)</th>
@@ -1022,31 +1151,54 @@ export default function AdminRawMaterials() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {readiness?.items?.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50/50">
-                        <td className="px-4 py-3 font-semibold text-gray-900">{item.name}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500">{item.notes}</td>
-                        <td className="px-4 py-3 font-bold text-brand-blue">
-                          {formatNumber(item.required)} {item.unit}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700">
-                          {formatNumber(item.current_stock)} {item.unit}
-                        </td>
-                        <td className="px-4 py-3">
-                          {item.status === 'SIAP' ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              Mencukupi
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-                              <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                              Kurang {formatNumber(item.deficit)} {item.unit}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {readiness?.items?.map((item, idx) => {
+                      const isChecked = !!checkedPhysicalItems[item.name];
+                      return (
+                        <tr key={idx} className={`transition-colors ${
+                          isChecked ? 'bg-emerald-50/40 hover:bg-emerald-50/60' : 'hover:bg-gray-50/50'
+                        }`}>
+                          <td className="px-3 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleTogglePhysicalCheck(item.name)}
+                              className="w-4 h-4 rounded text-brand-blue border-gray-300 focus:ring-brand-blue cursor-pointer"
+                              title="Tandai sudah dicek fisik di gudang"
+                            />
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-gray-900">
+                            <div className="flex items-center gap-1.5">
+                              <span>{item.name}</span>
+                              {isChecked && (
+                                <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/70 px-1.5 py-0.2 rounded-full">
+                                  Terverifikasi
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-500">{item.notes}</td>
+                          <td className="px-4 py-3 font-bold text-brand-blue">
+                            {formatNumber(item.required)} {item.unit}
+                          </td>
+                          <td className="px-4 py-3 text-gray-700">
+                            {formatNumber(item.current_stock)} {item.unit}
+                          </td>
+                          <td className="px-4 py-3">
+                            {item.status === 'SIAP' ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                Mencukupi
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                                <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                                Kurang {formatNumber(item.deficit)} {item.unit}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1062,7 +1214,9 @@ export default function AdminRawMaterials() {
                         <ClipboardCheck className="w-4 h-4" />
                         Submit Cek Fisik Stok H-1
                       </h4>
-                      <p className="text-xs text-blue-700 mt-0.5">Setelah Ayu selesai keliling cek fisik gudang, submit di sini sebagai pengganti papan checklist.</p>
+                      <p className="text-xs text-blue-700 mt-0.5">
+                        Setelah Ayu selesai keliling cek fisik gudang, submit di sini sebagai pengganti papan checklist.
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <input
@@ -1076,9 +1230,12 @@ export default function AdminRawMaterials() {
                         onClick={async () => {
                           setChecklistSubmitting(true);
                           try {
+                            const checkedCount = (readiness?.items || []).filter(item => checkedPhysicalItems[item.name]).length;
+                            const totalCount = readiness?.items?.length || 0;
                             const tanggal = new Date().toISOString().split('T')[0];
+                            const fullNotes = `[Fisik: ${checkedCount}/${totalCount}] ${checklistNotes}`.trim();
                             const res = await api.post('/api/inventory/raw-materials/daily-check',
-                              { tanggal, target_gilingan: targetGilingan, notes: checklistNotes },
+                              { tanggal, target_gilingan: targetGilingan, notes: fullNotes },
                               { auth: 'admin' });
                             if (res.success) {
                               setLastCheckResult(res.data?.check);
@@ -1435,7 +1592,7 @@ export default function AdminRawMaterials() {
                   </div>
 
                   {/* Actions for Ayu */}
-                  <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
+                  <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2 flex-wrap">
                     <button
                       onClick={() => {
                         handleTargetGilinganChange(gilingan);
@@ -1444,8 +1601,17 @@ export default function AdminRawMaterials() {
                       className="text-xs font-semibold text-brand-blue hover:text-brand-blue-dark cursor-pointer inline-flex items-center gap-1"
                     >
                       <ClipboardCheck className="w-3.5 h-3.5" />
-                      Cek Kesiapan H-1
+                      Cek Kesiapan
                     </button>
+                    {canManage && (
+                      <button
+                        onClick={() => handleOpenEditDayPlan(plan)}
+                        className="text-xs font-semibold text-gray-700 hover:text-brand-blue bg-gray-50 hover:bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Edit2 className="w-3 h-3 text-brand-blue" />
+                        <span>Edit Target</span>
+                      </button>
+                    )}
                     <Link
                       to="/admin/production"
                       className="text-xs text-gray-400 hover:text-gray-700 inline-flex items-center gap-0.5"
@@ -1931,6 +2097,161 @@ export default function AdminRawMaterials() {
                 >
                   <FlameKindling className="w-4 h-4" />
                   {gilinganSubmitting ? 'Memproses BOM...' : 'Konfirmasi & Kurangi Stok'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Target Rencana Harian (Rencana Mingguan Interaktif P1) */}
+      {editingDayPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base">
+                    Edit Target Produksi: {editingDayPlan.day_of_week}
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Tanggal: {editingDayPlan.plan_date} (Sinkronisasi Otomatis ke P2)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingDayPlan(null)}
+                className="text-gray-400 hover:text-gray-600 rounded-lg p-1.5 hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveDayPlan} className="mt-4 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
+                    Target Mika (50 pcs)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={editDayForm.target_mika}
+                    onChange={(e) => setEditDayForm({ ...editDayForm, target_mika: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-brand-blue focus:bg-white focus:ring-1 focus:ring-brand-blue"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
+                    Target Vakum (25 pcs)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={editDayForm.target_vakum}
+                    onChange={(e) => setEditDayForm({ ...editDayForm, target_vakum: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-purple-700 focus:bg-white focus:ring-1 focus:ring-brand-blue"
+                  />
+                </div>
+              </div>
+
+              {/* Calculated P1 Needs Box */}
+              {(() => {
+                const totalPieces = (editDayForm.target_mika * 50) + (editDayForm.target_vakum * 25);
+                const estGilingan = Math.ceil(totalPieces / 750) || 1;
+                const estDaging = estGilingan * 15;
+                return (
+                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-xs space-y-1">
+                    <div className="font-bold text-amber-900 flex items-center justify-between">
+                      <span>Estimasi Kebutuhan Produksi 1 (Dapur):</span>
+                      <span className="text-amber-800 font-extrabold">{estGilingan} Gilingan</span>
+                    </div>
+                    <div className="flex justify-between text-amber-800">
+                      <span>Total Butir Dimsum: {totalPieces.toLocaleString('id-ID')} pcs</span>
+                      <span>Daging Mentah: ≈ {estDaging.toLocaleString('id-ID')} kg</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="border-t border-gray-100 pt-3">
+                <span className="block text-xs font-semibold text-gray-700 uppercase mb-2">
+                  Alokasi Demand Channel Penjualan
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-0.5">Shopee (pack)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editDayForm.target_shopee}
+                      onChange={(e) => setEditDayForm({ ...editDayForm, target_shopee: parseInt(e.target.value) || 0 })}
+                      className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-0.5">TikTok (pack)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editDayForm.target_tiktok}
+                      onChange={(e) => setEditDayForm({ ...editDayForm, target_tiktok: parseInt(e.target.value) || 0 })}
+                      className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-0.5">Offline / Outlet (pack)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editDayForm.target_offline}
+                      onChange={(e) => setEditDayForm({ ...editDayForm, target_offline: parseInt(e.target.value) || 0 })}
+                      className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-0.5">B2B / PO (pack)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editDayForm.target_po_b2b}
+                      onChange={(e) => setEditDayForm({ ...editDayForm, target_po_b2b: parseInt(e.target.value) || 0 })}
+                      className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Catatan Target</label>
+                <textarea
+                  rows="2"
+                  value={editDayForm.notes}
+                  onChange={(e) => setEditDayForm({ ...editDayForm, notes: e.target.value })}
+                  placeholder="Catatan prioritas pesanan atau event..."
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-1 focus:ring-brand-blue"
+                ></textarea>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingDayPlan(null)}
+                  className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingDayPlan}
+                  className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark shadow transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {submittingDayPlan ? 'Menyimpan...' : 'Simpan Target Produksi'}
                 </button>
               </div>
             </form>
