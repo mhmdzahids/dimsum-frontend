@@ -324,9 +324,13 @@ function MenuPage() {
             const activePrice = Number(p.price);
             const originalPrice = p.original_price ? Number(p.original_price) : activePrice;
             const discountPercent = p.discount_percent || 0;
+            const stock = p.stock_online !== undefined ? p.stock_online : (p.stock_qty || 0);
+            const isOutOfStock = stock <= 0;
 
             return {
               ...p,
+              stock,
+              isOutOfStock,
               weight: p.weight || '18-20 Gram/Pcs',
               description: p.description || '',
               hasDiscount,
@@ -339,8 +343,12 @@ function MenuPage() {
             };
           });
 
-          // Sort products: highest discount percentage first, then regular non-promo products
+          // Sort products: Out of stock at bottom, then highest discount percentage first, then alphabetically
           formattedProducts.sort((a, b) => {
+            if (a.isOutOfStock !== b.isOutOfStock) {
+              return a.isOutOfStock ? 1 : -1;
+            }
+            
             const discountA = a.hasDiscount ? a.discountPercent : 0;
             const discountB = b.hasDiscount ? b.discountPercent : 0;
             if (discountB !== discountA) {
@@ -636,6 +644,7 @@ function MenuPage() {
             <div
               key={product.id}
               onClick={() => {
+                if (product.isOutOfStock) return;
                 if (pendingOrder) {
                   setShowPendingModal(true);
                   return;
@@ -643,9 +652,11 @@ function MenuPage() {
                 setSelectedProduct(product);
                 setQty(productQty || 1);
               }}
-              className={`bg-white rounded-[16px] shadow-sm flex p-3 cursor-pointer transition-all ${productQty > 0
-                ? 'border-[1.2px] border-brand-gold border-r-4 border-r-brand-gold'
-                : 'border border-gray-100 border-r-4 border-r-transparent'
+              className={`bg-white rounded-[16px] shadow-sm flex p-3 transition-all ${product.isOutOfStock
+                  ? 'opacity-60 grayscale-[50%] cursor-not-allowed border border-gray-100'
+                  : productQty > 0
+                    ? 'cursor-pointer border-[1.2px] border-brand-gold border-r-4 border-r-brand-gold'
+                    : 'cursor-pointer border border-gray-100 border-r-4 border-r-transparent'
                 }`}
             >
               {/* Product Image Box */}
@@ -684,8 +695,10 @@ function MenuPage() {
 
                   {productQty === 0 ? (
                     <button
+                      disabled={product.isOutOfStock}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (product.isOutOfStock) return;
                         if (pendingOrder) {
                           setShowPendingModal(true);
                           return;
@@ -693,9 +706,12 @@ function MenuPage() {
                         setSelectedProduct(product);
                         setQty(1);
                       }}
-                      className="border border-brand-gold text-brand-gold font-body font-bold text-[12px] rounded-full px-5 py-1 transition-colors hover:bg-brand-gold hover:text-white"
+                      className={`border font-body font-bold text-[12px] rounded-full px-5 py-1 transition-colors ${product.isOutOfStock
+                          ? 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'
+                          : 'border-brand-gold text-brand-gold hover:bg-brand-gold hover:text-white'
+                        }`}
                     >
-                      Add
+                      {product.isOutOfStock ? 'Habis' : 'Add'}
                     </button>
                   ) : (
                     <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>

@@ -31,7 +31,11 @@ import {
   Send,
   PackageCheck,
   Lock,
-  PieChart
+  PieChart,
+  Plus,
+  Funnel,
+  NotebookPen,
+  CalendarDays
 } from 'lucide-react';
 import api from '../api/client';
 import Pagination from '../components/ui/Pagination';
@@ -61,6 +65,9 @@ export default function AdminRawMaterials() {
   // Advanced features state (Tabs 2-5)
   const [transactions, setTransactions] = useState([]);
   const [targetGilingan, setTargetGilingan] = useState(36);
+  const [isTargetSet, setIsTargetSet] = useState(false);
+  const [showTargetModal, setShowTargetModal] = useState(false);
+  const [targetModalInput, setTargetModalInput] = useState('');
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'readiness' | 'lot-log' | 'weekly' | 'history'
 
   // Tab 2: Production Readiness (Kesiapan H-1) - using React Query
@@ -91,6 +98,9 @@ export default function AdminRawMaterials() {
   // Tab 5: Material History - using React Query
   const [historyFilter, setHistoryFilter] = useState('all');
   const [historyPage, setHistoryPage] = useState(1);
+  const [historyLimit, setHistoryLimit] = useState(50);
+  const [historySearch, setHistorySearch] = useState('');
+  const historyLimitOptions = [25, 50, 100, 200];
 
   const {
     data: historyData,
@@ -100,12 +110,19 @@ export default function AdminRawMaterials() {
   } = useMaterialHistory({
     action: historyFilter,
     page: historyPage,
-    limit: 50
+    limit: historyLimit
   });
 
   // Derive history array from data
   const materialHistory = historyData?.history || [];
   const historyPagination = historyData?.pagination || { page: 1, limit: 50, total: 0, totalPages: 0 };
+
+  const filteredHistory = materialHistory.filter(item => 
+    !historySearch || 
+    item.material_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
+    item.notes?.toLowerCase().includes(historySearch.toLowerCase()) ||
+    item.creator_name?.toLowerCase().includes(historySearch.toLowerCase())
+  );
 
   // Modal: Catat Gilingan Hari Ini
   const [showGilinganModal, setShowGilinganModal] = useState(false);
@@ -135,6 +152,11 @@ export default function AdminRawMaterials() {
   });
   const [submittingDayPlan, setSubmittingDayPlan] = useState(false);
 
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [activeDays, setActiveDays] = useState([0, 1, 2, 3, 4, 5, 6]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [submittingSchedule, setSubmittingSchedule] = useState(false);
+
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -143,6 +165,7 @@ export default function AdminRawMaterials() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const ITEMS_PER_PAGE = 10;
 
   // Transaction Modal State
@@ -281,7 +304,7 @@ export default function AdminRawMaterials() {
       if (res.success) {
         setSuccessMsg(`Target produksi ${editDayForm.day_of_week} (${editDayForm.plan_date}) berhasil diperbarui!`);
         setEditingDayPlan(null);
-        refetchP2Data();
+        // React Query auto-refetches due to staleTime config
       } else {
         alert(res.error || 'Gagal menyimpan target');
       }
@@ -341,7 +364,7 @@ export default function AdminRawMaterials() {
         setShowGilinganModal(false);
         refetch(); // React Query refetch
         refetchProductionLog();
-        refetchP2Data();
+        // P2 summary auto-refetches via refetchInterval in hook
       } else {
         alert(res.error || 'Gagal mencatat gilingan');
       }
@@ -366,7 +389,7 @@ export default function AdminRawMaterials() {
               setShowGilinganModal(false);
               refetch();
               refetchProductionLog();
-              refetchP2Data();
+              // P2 summary auto-refetches via refetchInterval in hook
               return;
             }
           } catch (retryErr) {
@@ -394,17 +417,52 @@ export default function AdminRawMaterials() {
     }
   }, []);
 
+  const handleOpenScheduleModal = async () => {
+    setShowScheduleModal(true);
+    setScheduleLoading(true);
+    try {
+      const res = await api.get('/api/settings/production-days', { auth: 'admin' });
+      if (res.success && res.data?.active_production_days) {
+        setActiveDays(res.data.active_production_days);
+      }
+    } catch {
+      setActiveDays([0, 1, 2, 3, 4, 5, 6]);
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
+  const handleSaveSchedule = async () => {
+    setSubmittingSchedule(true);
+    try {
+      const res = await api.put('/api/settings/production-days', { active_production_days: activeDays }, { auth: 'admin' });
+      if (res.success) {
+        setSuccessMsg(res.message || 'Jadwal kerja mingguan berhasil diperbarui.');
+        setShowScheduleModal(false);
+        // P2 summary auto-refetches via refetchInterval in hook
+      } else {
+        setError(res.error || 'Gagal menyimpan jadwal kerja');
+      }
+    } catch {
+      setError('Gagal menyimpan jadwal kerja');
+    } finally {
+      setSubmittingSchedule(false);
+    }
+  };
+
+  const toggleActiveDay = (dayIndex) => {
+    if (activeDays.includes(dayIndex)) {
+      setActiveDays(activeDays.filter(d => d !== dayIndex));
+    } else {
+      setActiveDays([...activeDays, dayIndex].sort());
+    }
+  };
+
   useEffect(() => {
     fetchAdvancedData();
     fetchLatestDailyCheck();
-
-    // Auto-refresh P2 KPI setiap 5 menit
-    const p2RefreshInterval = setInterval(() => {
-      refetchP2Data();
-    }, 5 * 60 * 1000);
-
-    return () => clearInterval(p2RefreshInterval);
-  }, [refetchP2Data, fetchLatestDailyCheck]);
+    // React Query's refetchInterval in useP2Summary handles auto-refresh every 5 minutes
+  }, [fetchLatestDailyCheck]);
 
   useEffect(() => {
     // React Query handles lot-log and weekly planning fetching automatically
@@ -414,6 +472,7 @@ export default function AdminRawMaterials() {
   const handleTargetGilinganChange = (val) => {
     const num = Math.max(1, parseInt(val) || 1);
     setTargetGilingan(num);
+    setIsTargetSet(true);
     // React Query will automatically refetch when targetGilingan changes
   };
 
@@ -542,21 +601,6 @@ export default function AdminRawMaterials() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <button
-            onClick={() => refetch()}
-            disabled={isRefetching}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-all cursor-pointer shadow-sm disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin text-brand-blue' : ''}`} />
-            Refresh
-          </button>
-
-        </div>
-      </div>
-
       {/* Success / Error Alerts */}
       {successMsg && (
         <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center justify-between animate-fadeIn">
@@ -582,9 +626,66 @@ export default function AdminRawMaterials() {
         </div>
       )}
 
+      {/* Main Tabs Navigation */}
+      <div className="flex border-b border-gray-200 gap-6 overflow-x-auto no-scrollbar mb-6">
+        <button
+          onClick={() => setActiveTab('inventory')}
+          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer whitespace-nowrap ${activeTab === 'inventory'
+            ? 'text-brand-blue border-b-2 border-brand-blue'
+            : 'text-gray-500 hover:text-gray-800'
+            }`}
+        >
+          Daftar Stok ({materials.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('readiness')}
+          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'readiness'
+            ? 'text-brand-blue border-b-2 border-brand-blue'
+            : 'text-gray-500 hover:text-gray-800'
+            }`}
+        >
+          <ClipboardCheck className="w-4 h-4" />
+          Kontrol Stok
+        </button>
+
+        <button
+          onClick={() => setActiveTab('lot-log')}
+          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'lot-log'
+            ? 'text-brand-blue border-b-2 border-brand-blue'
+            : 'text-gray-500 hover:text-gray-800'
+            }`}
+        >
+          <BarChart3 className="w-4 h-4" />
+          Laporan Lot Gilingan
+        </button>
+
+        <button
+          onClick={() => setActiveTab('weekly')}
+          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'weekly'
+            ? 'text-brand-blue border-b-2 border-brand-blue'
+            : 'text-gray-500 hover:text-gray-800'
+            }`}
+        >
+          <Calendar className="w-4 h-4" />
+          Rencana Mingguan
+        </button>
+
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'history'
+            ? 'text-brand-blue border-b-2 border-brand-blue'
+            : 'text-gray-500 hover:text-gray-800'
+            }`}
+        >
+          <History className="w-4 h-4" />
+          Riwayat Bahan Baku
+        </button>
+      </div>
+
       {/* KPI Summary Cards */}
       {activeTab === 'lot-log' && productionLog?.summary && Object.keys(productionLog.summary).length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Card 1: Total Hari Tercatat */}
           <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
             <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
@@ -656,7 +757,7 @@ export default function AdminRawMaterials() {
           })()}
         </div>
       ) : activeTab === 'weekly' && weeklyData?.weekly_totals ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Card 1: Target Mika */}
           <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
             <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
@@ -668,9 +769,6 @@ export default function AdminRawMaterials() {
             <div>
               <div className="text-xl sm:text-3xl font-black font-heading text-brand-blue">
                 {weeklyData.weekly_totals.target_mika.toLocaleString('id-ID')} <span className="text-xs sm:text-sm font-semibold text-text-secondary">wadah</span>
-              </div>
-              <div className="text-[10px] sm:text-xs text-text-secondary mt-1">
-                = {(weeklyData.weekly_totals.target_mika * 50).toLocaleString('id-ID')} butir dimsum
               </div>
             </div>
           </div>
@@ -686,9 +784,6 @@ export default function AdminRawMaterials() {
             <div>
               <div className="text-xl sm:text-3xl font-black font-heading text-purple-700">
                 {weeklyData.weekly_totals.target_vakum.toLocaleString('id-ID')} <span className="text-xs sm:text-sm font-semibold text-text-secondary">pack</span>
-              </div>
-              <div className="text-[10px] sm:text-xs text-text-secondary mt-1">
-                = {(weeklyData.weekly_totals.target_vakum * 25).toLocaleString('id-ID')} butir dimsum
               </div>
             </div>
           </div>
@@ -739,7 +834,7 @@ export default function AdminRawMaterials() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Card 1: Total Bahan Baku */}
           <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
             <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
@@ -750,7 +845,7 @@ export default function AdminRawMaterials() {
             </div>
             <div>
               <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
-                {counts.total} <span className="text-xs sm:text-sm font-semibold text-text-secondary">item aktif</span>
+                {counts.total} <span className="text-xs sm:text-sm font-semibold text-text-secondary">Bahan</span>
               </div>
             </div>
           </div>
@@ -847,87 +942,10 @@ export default function AdminRawMaterials() {
             </div>
           </div>
 
-          {/* Card 5: Realisasi Kemas */}
-          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-            <div>
-              <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
-                <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Realisasi Kemas</span>
-                <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                  <PackageCheck size={16} className="sm:w-[18px] sm:h-[18px]" />
-                </div>
-              </div>
-              <div>
-                <div className="text-xl sm:text-2xl font-black font-heading text-text-primary leading-tight">
-                  {p2Summary.completedMika} <span className="text-xs font-semibold text-text-secondary">Mika</span>
-                  <span className="mx-1.5 text-gray-300 font-normal">+</span>
-                  {p2Summary.completedVakum} <span className="text-xs font-semibold text-text-secondary">Vakum</span>
-                </div>
-              </div>
-            </div>
 
-          </div>
         </div>
       )}
 
-      {/* Main Tabs Navigation */}
-      <div className="flex border-b border-gray-200 gap-6 overflow-x-auto no-scrollbar">
-        <button
-          onClick={() => setActiveTab('inventory')}
-          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer whitespace-nowrap ${activeTab === 'inventory'
-            ? 'text-brand-blue border-b-2 border-brand-blue'
-            : 'text-gray-500 hover:text-gray-800'
-            }`}
-        >
-          Daftar Stok ({materials.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab('readiness')}
-          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'readiness'
-            ? 'text-brand-blue border-b-2 border-brand-blue'
-            : 'text-gray-500 hover:text-gray-800'
-            }`}
-        >
-          <ClipboardCheck className="w-4 h-4 text-amber-500" />
-          Kesiapan H-1
-          {readiness?.overall_status !== 'SIAP' && (
-            <span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveTab('lot-log')}
-          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'lot-log'
-            ? 'text-brand-blue border-b-2 border-brand-blue'
-            : 'text-gray-500 hover:text-gray-800'
-            }`}
-        >
-          <BarChart3 className="w-4 h-4" />
-          Laporan Lot Gilingan
-        </button>
-
-        <button
-          onClick={() => setActiveTab('weekly')}
-          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'weekly'
-            ? 'text-brand-blue border-b-2 border-brand-blue'
-            : 'text-gray-500 hover:text-gray-800'
-            }`}
-        >
-          <Calendar className="w-4 h-4" />
-          Rencana Mingguan
-        </button>
-
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`pb-3 font-semibold text-sm transition-all relative cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'history'
-            ? 'text-brand-blue border-b-2 border-brand-blue'
-            : 'text-gray-500 hover:text-gray-800'
-            }`}
-        >
-          <History className="w-4 h-4" />
-          Riwayat Bahan Baku
-        </button>
-      </div>
 
       {/* TAB 1: INVENTORY TABLE - MIGRATED TO REACT QUERY */}
       {activeTab === 'inventory' && (
@@ -936,67 +954,86 @@ export default function AdminRawMaterials() {
 
 
           {/* Filters Bar */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
-            {/* Search */}
-            <div className="relative w-full md:w-80">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Cari nama atau kode bahan..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue transition-all"
-              />
-            </div>
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 w-full">
+              {/* Search & Sort Mobile */}
+              <div className="flex gap-2 w-full md:w-auto">
+                <div className="relative flex-1 md:w-80">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Cari nama atau kode bahan..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue transition-all"
+                  />
+                </div>
+                <button
+                  onClick={() => setShowMobileFilters(!showMobileFilters)}
+                  className={`md:hidden w-11 h-auto flex-shrink-0 flex items-center justify-center border rounded-xl transition-colors ${showMobileFilters ? 'bg-brand-blue text-white border-brand-blue' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'}`}
+                >
+                  <Funnel size={18} />
+                </button>
+              </div>
 
-            {/* Filter Buttons */}
-            <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-              <select
-                value={categoryFilter}
-                onChange={(e) => {
-                  setCategoryFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="text-xs font-medium px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-blue"
-              >
-                <option value="all">Semua Kategori</option>
-                <option value="meat">Daging & Unggas</option>
-                <option value="skin">Kulit Dimsum</option>
-                <option value="seasoning">Bumbu & Minyak</option>
-                <option value="flour">Tepung & Pati</option>
-                <option value="packaging">Kemasan & Saos</option>
-                <option value="other">Lainnya</option>
-              </select>
+              {/* Filter Dropdowns (Desktop & Mobile if toggled) */}
+              <div className={`${showMobileFilters ? 'flex' : 'hidden'} md:flex flex-col md:flex-row gap-2 w-full md:w-auto`}>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => {
+                    setCategoryFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full md:w-auto text-xs font-medium px-3 py-2.5 md:py-2 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                >
+                  <option value="all">Semua Kategori</option>
+                  <option value="meat">Daging & Unggas</option>
+                  <option value="skin">Kulit Dimsum</option>
+                  <option value="seasoning">Bumbu & Minyak</option>
+                  <option value="flour">Tepung & Pati</option>
+                  <option value="packaging">Kemasan & Saos</option>
+                  <option value="other">Lainnya</option>
+                </select>
 
-              <select
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="text-xs font-medium px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-blue"
-              >
-                <option value="all">Semua Status Buffer</option>
-                <option value="critical">🔴 Kritis (Belanja Sekarang)</option>
-                <option value="warning">🟡 Waspada (Mendekati Min)</option>
-                <option value="safe">🟢 Aman</option>
-              </select>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full md:w-auto text-xs font-medium px-3 py-2.5 md:py-2 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                >
+                  <option value="all">Semua Status Buffer</option>
+                  <option value="critical">🔴 Kritis (Belanja Sekarang)</option>
+                  <option value="warning">🟡 Waspada (Mendekati Min)</option>
+                  <option value="safe">🟢 Aman</option>
+                </select>
 
-              {canManage && (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-2.5">
+                {canManage && (
                   <button
                     onClick={() => openMaterialModal()}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm hover:shadow"
+                    className="hidden md:inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm hover:shadow"
                   >
                     <PlusCircle className="w-4 h-4" />
                     Tambah Bahan
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
+
+            {/* Mobile Tambah Bahan */}
+            {canManage && (
+              <button
+                onClick={() => openMaterialModal()}
+                className="md:hidden w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm active:scale-[0.98]"
+              >
+                <PlusCircle className="w-5 h-5" />
+                Tambah Bahan
+              </button>
+            )}
           </div>
 
           {/* Table Container */}
@@ -1135,191 +1172,181 @@ export default function AdminRawMaterials() {
               </button>
             </div>
           ) : (
-            <div className="bg-white border border-bg-cream-dark/80 rounded-card p-4 sm:p-6 shadow-card">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-bg-cream-dark/60">
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-text-primary font-heading flex items-center gap-2">
-                    <Sliders className="w-5 h-5 text-brand-blue" />
-                    Kesiapan Bahan Baku
-                  </h2>
-                </div>
-
-                {/* Target Selector */}
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Target Gilingan:</span>
+            <>
+              {canManage && (
+                <div className="flex justify-end mb-4">
                   <button
-                    type="button"
                     onClick={() => {
-                      const val = window.prompt('Masukkan target gilingan (contoh: 36):', targetGilingan);
-                      if (val !== null && val.trim() !== '') {
-                        const num = parseInt(val);
-                        if (!isNaN(num) && num > 0) {
-                          handleTargetGilinganChange(num);
-                        }
-                      }
+                      setTargetModalInput(targetGilingan.toString());
+                      setShowTargetModal(true);
                     }}
                     className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm hover:shadow"
                   >
-                    <span>{targetGilingan} Gilingan</span>
+                    <NotebookPen className="w-4 h-4" />
+                    {isTargetSet ? 'Edit Target' : 'Atur Target'}
                   </button>
                 </div>
-              </div>
+              )}
+              <div className="bg-white border border-bg-cream-dark/80 rounded-card p-4 sm:p-6 shadow-card">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-bg-cream-dark/60">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-text-primary font-heading flex items-center gap-2">
+                      <Sliders className="w-5 h-5 text-brand-blue" />
+                      Kesiapan Bahan Baku
+                    </h2>
+                  </div>
 
-              {/* Bill of Materials (BOM) Table */}
-              <div className="pt-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                  <div className="flex items-center gap-2">
-                    {(() => {
-                      const checkedCount = (readiness?.items || []).filter(item => checkedPhysicalItems[item.name]).length;
-                      const totalCount = readiness?.items?.length || 0;
-                      return (
-                        <>
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${checkedCount === totalCount && totalCount > 0
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                            }`}>
-                            {checkedCount}/{totalCount} Fisik Dicek
-                          </span>
-                          <button
-                            type="button"
-                            onClick={handleCheckAllPhysical}
-                            className="px-3 py-1 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors cursor-pointer"
-                          >
-                            {checkedCount === totalCount && totalCount > 0 ? 'Batal Centang' : 'Centang Semua'}
-                          </button>
-                        </>
-                      );
-                    })()}
+                  {/* Plain Text Target */}
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Target Gilingan:</span>
+                    <span className="text-sm font-bold text-brand-blue bg-brand-blue/10 px-3 py-1.5 rounded-lg">
+                      {isTargetSet ? `${targetGilingan} Gilingan` : 'Belum di tentukan'}
+                    </span>
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase border-y border-gray-200">
-                        <th className="px-3 py-3 w-10 text-center">Fisik</th>
-                        <th className="px-4 py-3">Nama Bahan</th>
-                        <th className="px-4 py-3">Rasio Standar Resep</th>
-                        <th className="px-4 py-3">Kebutuhan ({targetGilingan} Gilingan)</th>
-                        <th className="px-4 py-3">Stok Gudang</th>
-                        <th className="px-4 py-3">Status Kesiapan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {readiness?.items?.map((item, idx) => {
-                        const isChecked = !!checkedPhysicalItems[item.name];
-                        const isItemReady = item.status === 'SIAP' || item.is_ready === true;
+                {/* Bill of Materials (BOM) Table */}
+                <div className="pt-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const checkedCount = (readiness?.items || []).filter(item => checkedPhysicalItems[item.name]).length;
+                        const totalCount = readiness?.items?.length || 0;
                         return (
-                          <tr key={idx} className={`transition-colors ${isChecked ? 'bg-emerald-50/40 hover:bg-emerald-50/60' : 'hover:bg-gray-50/50'
-                            }`}>
-                            <td className="px-3 py-3 text-center">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => handleTogglePhysicalCheck(item.name)}
-                                className="w-4 h-4 rounded text-brand-blue border-gray-300 focus:ring-brand-blue cursor-pointer"
-                                title="Tandai sudah dicek fisik di gudang"
-                              />
-                            </td>
-                            <td className="px-4 py-3 font-semibold text-gray-900">
-                              <div className="flex items-center gap-1.5">
-                                <span>{item.name}</span>
-                                {isChecked && (
-                                  <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/70 px-1.5 py-0.2 rounded-full">
-                                    Terverifikasi
+                          <>
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${checkedCount === totalCount && totalCount > 0
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                              }`}>
+                              {checkedCount}/{totalCount} Terpilih
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleCheckAllPhysical}
+                              className="px-3 py-1 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors cursor-pointer"
+                            >
+                              {checkedCount === totalCount && totalCount > 0 ? 'Batal Centang' : 'Centang Semua'}
+                            </button>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase border-y border-gray-200">
+                          <th className="px-3 py-3 w-10 text-center">Fisik</th>
+                          <th className="px-4 py-3">Nama Bahan</th>
+                          <th className="px-4 py-3">Rasio Standar Resep</th>
+                          <th className="px-4 py-3">Kebutuhan ({targetGilingan} Gilingan)</th>
+                          <th className="px-4 py-3">Stok Gudang</th>
+                          <th className="px-4 py-3">Status Kesiapan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {readiness?.items?.map((item, idx) => {
+                          const isChecked = !!checkedPhysicalItems[item.name];
+                          const isItemReady = item.status === 'SIAP' || item.is_ready === true;
+                          return (
+                            <tr key={idx} className={`transition-colors ${isChecked ? 'bg-emerald-50/40 hover:bg-emerald-50/60' : 'hover:bg-gray-50/50'
+                              }`}>
+                              <td className="px-3 py-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => handleTogglePhysicalCheck(item.name)}
+                                  className="w-4 h-4 rounded text-brand-blue border-gray-300 focus:ring-brand-blue cursor-pointer"
+                                  title="Tandai sudah dicek fisik di gudang"
+                                />
+                              </td>
+                              <td className="px-4 py-3 font-semibold text-gray-900">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{item.name}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-xs text-gray-500">{item.notes}</td>
+                              <td className="px-4 py-3 font-bold text-brand-blue">
+                                {formatNumber(item.required ?? item.required_qty)} {item.unit}
+                              </td>
+                              <td className="px-4 py-3 text-gray-700">
+                                {formatNumber(item.current_stock)} {item.unit}
+                              </td>
+                              <td className="px-4 py-3">
+                                {isItemReady ? (
+                                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                    Mencukupi
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                                    <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                                    Kurang {formatNumber(item.deficit)} {item.unit}
                                   </span>
                                 )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-xs text-gray-500">{item.notes}</td>
-                            <td className="px-4 py-3 font-bold text-brand-blue">
-                              {formatNumber(item.required ?? item.required_qty)} {item.unit}
-                            </td>
-                            <td className="px-4 py-3 text-gray-700">
-                              {formatNumber(item.current_stock)} {item.unit}
-                            </td>
-                            <td className="px-4 py-3">
-                              {isItemReady ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                  Mencukupi
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-                                  <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                                  Kurang {formatNumber(item.deficit)} {item.unit}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Verifikasi Fisik Harian */}
-              {canManageRawMaterials && (
-                <div className="mt-6 pt-6 border-t border-gray-100">
-                  <div className="bg-gray-50/80 border border-gray-200 rounded-xl p-4">
-                    <div className="flex flex-col md:flex-row md:items-center gap-3">
-                      <div className="flex-1">
-                        <h4 className="font-bold text-text-primary text-sm flex items-center gap-2">
-                          <ClipboardCheck className="w-4 h-4 text-brand-blue" />
-                          Verifikasi Fisik Harian
-                        </h4>
-                        <p className="text-xs text-text-secondary mt-0.5">
-                          Catat verifikasi stok fisik gudang & freezer sebagai data historis.
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          placeholder="Catatan kondisi fisik stok..."
-                          value={checklistNotes}
-                          onChange={e => setChecklistNotes(e.target.value)}
-                          className="px-3 py-2 text-xs bg-white border border-gray-200 rounded-xl w-48 focus:outline-none focus:ring-1 focus:ring-brand-blue"
-                        />
-                        <button
-                          onClick={async () => {
-                            setChecklistSubmitting(true);
-                            try {
-                              const checkedCount = (readiness?.items || []).filter(item => checkedPhysicalItems[item.name]).length;
-                              const totalCount = readiness?.items?.length || 0;
-                              const tanggal = new Date().toISOString().split('T')[0];
-                              const fullNotes = `[Fisik: ${checkedCount}/${totalCount}] ${checklistNotes}`.trim();
-                              const res = await api.post('/api/inventory/raw-materials/daily-check',
-                                { tanggal, target_gilingan: targetGilingan, notes: fullNotes },
-                                { auth: 'admin' });
-                              if (res.success) {
-                                setLastCheckResult(res.data?.check);
-                                setSuccessMsg(`Verifikasi berhasil disimpan. ${res.data?.check?.all_items_sufficient ? 'Semua bahan mencukupi.' : `${res.data?.check?.shortage_count} bahan kurang.`}`);
-                                setChecklistNotes('');
-                              }
-                            } catch { /* ignore */ }
-                            finally { setChecklistSubmitting(false); }
-                          }}
-                          disabled={checklistSubmitting}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-blue hover:bg-brand-blue-dark shadow-xs cursor-pointer disabled:opacity-50 transition-all"
-                        >
-                          <Send className="w-3.5 h-3.5" />
-                          {checklistSubmitting ? 'Menyimpan...' : 'Simpan Verifikasi'}
-                        </button>
-                      </div>
-                    </div>
-                    {lastCheckResult && (
-                      <div className="mt-3 text-xs text-text-secondary border-t border-gray-200 pt-2">
-                        Terverifikasi oleh: <strong className="text-text-primary">{lastCheckResult.checker_name || 'Petugas Gudang'}</strong> — {lastCheckResult.tanggal} |{' '}
-                        <span className={lastCheckResult.all_items_sufficient ? 'text-emerald-700 font-medium' : 'text-amber-700 font-medium'}>
-                          {lastCheckResult.all_items_sufficient ? 'Semua bahan mencukupi' : `${lastCheckResult.shortage_count} bahan kurang`}
-                        </span>
-                      </div>
-                    )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-              )}
-            </div>
+
+                {/* Verifikasi Fisik Harian */}
+                {canManageRawMaterials && (
+                  <div className="mt-6 pt-6 border-t border-gray-100">
+                    <div className="">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3">
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <input
+                            type="text"
+                            placeholder="Catatan kondisi fisik stok..."
+                            value={checklistNotes}
+                            onChange={e => setChecklistNotes(e.target.value)}
+                            className="px-4 py-2 text-xs bg-gray-50 border border-gray-300 rounded-xl w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue focus:bg-white transition-all shadow-inner"
+                          />
+                          <button
+                            onClick={async () => {
+                              setChecklistSubmitting(true);
+                              try {
+                                const checkedCount = (readiness?.items || []).filter(item => checkedPhysicalItems[item.name]).length;
+                                const totalCount = readiness?.items?.length || 0;
+                                const tanggal = new Date().toISOString().split('T')[0];
+                                const fullNotes = `[Fisik: ${checkedCount}/${totalCount}] ${checklistNotes}`.trim();
+                                const res = await api.post('/api/inventory/raw-materials/daily-check',
+                                  { tanggal, target_gilingan: targetGilingan, notes: fullNotes },
+                                  { auth: 'admin' });
+                                if (res.success) {
+                                  setLastCheckResult(res.data?.check);
+                                  setSuccessMsg(`Verifikasi berhasil disimpan. ${res.data?.check?.all_items_sufficient ? 'Semua bahan mencukupi.' : `${res.data?.check?.shortage_count} bahan kurang.`}`);
+                                  setChecklistNotes('');
+                                }
+                              } catch { /* ignore */ }
+                              finally { setChecklistSubmitting(false); }
+                            }}
+                            disabled={checklistSubmitting}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-blue hover:bg-brand-blue-dark shadow-xs cursor-pointer disabled:opacity-50 transition-all"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            {checklistSubmitting ? 'Menyimpan...' : 'Simpan Verifikasi'}
+                          </button>
+                        </div>
+                      </div>
+                      {lastCheckResult && (
+                        <div className="mt-3 text-xs text-text-secondary pt-2 text-right">
+                          Terverifikasi oleh: <strong className="text-text-primary">{lastCheckResult.checker_name || 'Petugas Gudang'}</strong> — {lastCheckResult.tanggal} |{' '}
+                          <span className={lastCheckResult.all_items_sufficient ? 'text-emerald-700 font-medium' : 'text-amber-700 font-medium'}>
+                            {lastCheckResult.all_items_sufficient ? 'Semua bahan mencukupi' : `${lastCheckResult.shortage_count} bahan kurang`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -1343,7 +1370,7 @@ export default function AdminRawMaterials() {
                 }}
                 className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm hover:shadow"
               >
-                <FlameKindling className="w-4 h-4" />
+                <NotebookPen className="w-4 h-4" />
                 Catat Gilingan Hari Ini
               </button>
             </div>
@@ -1524,13 +1551,15 @@ export default function AdminRawMaterials() {
                 <span>Minggu Depan</span>
                 <ChevronRight size={14} />
               </button>
-              <Link
-                to="/admin/production"
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all shadow-xs"
-              >
-                <span>Kelola Produksi</span>
-                <ArrowRight size={14} />
-              </Link>
+              {canManage && (
+                <button
+                  onClick={handleOpenScheduleModal}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm hover:shadow ml-2"
+                >
+                  <CalendarDays size={14} />
+                  <span>Atur Hari Aktif</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1547,34 +1576,36 @@ export default function AdminRawMaterials() {
               const isToday = plan.is_today;
               const isPast = plan.is_past;
               const isFuture = plan.is_future;
-              const gilingan = plan.total_gilingan || 36;
+              const gilingan = plan.total_gilingan !== null && plan.total_gilingan !== undefined ? plan.total_gilingan : 36;
               const dagingKg = gilingan * 15;
               const hasDeficit = !plan.readiness?.overall_ready;
 
               return (
                 <div
                   key={plan.id}
-                  className={`rounded-card border p-3.5 sm:p-4 shadow-xs transition-all flex flex-col justify-between ${isToday
-                    ? 'bg-white border-brand-blue ring-1 ring-brand-blue/30'
-                    : isPast
-                      ? 'bg-[#fafaf9] border-gray-200/80 text-gray-600'
-                      : 'bg-white border-bg-cream-dark/80 hover:border-gray-300'
+                  className={`rounded-card border p-3.5 sm:p-4 shadow-xs transition-all flex flex-col justify-between ${gilingan === 0
+                    ? 'bg-gray-50/80 border-gray-200 opacity-80'
+                    : isToday
+                      ? 'bg-white border-brand-blue ring-1 ring-brand-blue/30'
+                      : isPast
+                        ? 'bg-[#fafaf9] border-gray-200/80 text-gray-600'
+                        : 'bg-white border-bg-cream-dark/80 hover:border-gray-300'
                     }`}
                 >
                   <div>
                     {/* Header: Day & Date */}
                     <div className="flex items-start justify-between mb-3 border-b border-bg-cream-dark/60 pb-2.5">
-                      <div>
+                      <div className={gilingan === 0 ? 'opacity-60' : ''}>
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-sm sm:text-base font-heading ${isPast ? 'font-semibold text-gray-600' : 'font-extrabold text-text-primary'}`}>
+                          <span className={`text-sm sm:text-base font-heading ${isPast || gilingan === 0 ? 'font-semibold text-gray-600' : 'font-extrabold text-text-primary'}`}>
                             {plan.day_of_week}
                           </span>
-                          {isToday && (
+                          {isToday && gilingan > 0 && (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-blue text-white uppercase tracking-wider">
                               HARI INI
                             </span>
                           )}
-                          {isPast && (
+                          {isPast && gilingan > 0 && (
                             <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-gray-200/70 text-gray-500">
                               Arsip
                             </span>
@@ -1586,45 +1617,57 @@ export default function AdminRawMaterials() {
                       </div>
 
                       {/* Readiness Badge */}
-                      {isPast ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-gray-100 text-gray-500 border-gray-200">
-                          Tercatat
-                        </span>
-                      ) : (
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${plan.readiness?.overall_ready
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                          }`}>
-                          {plan.readiness?.overall_ready ? 'Bahan Siap' : `${plan.readiness?.deficits?.length || 0} Kurang`}
-                        </span>
+                      {gilingan > 0 && (
+                        isPast ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-gray-100 text-gray-500 border-gray-200">
+                            Tercatat
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${plan.readiness?.overall_ready
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                            {plan.readiness?.overall_ready ? 'Bahan Siap' : `${plan.readiness?.deficits?.length || 0} Kurang`}
+                          </span>
+                        )
                       )}
                     </div>
 
-                    {/* Target Gilingan & Daging */}
-                    <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-2.5 mb-3">
-                      <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
-                        Kebutuhan Gilingan
+                    {gilingan === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-6 text-gray-400 bg-gray-100/50 rounded-xl mb-3 border border-gray-200 border-dashed">
+                        <CalendarDays className="w-8 h-8 mb-2 opacity-40 text-gray-400" />
+                        <span className="font-bold text-sm text-gray-500">Libur Produksi</span>
+                        <span className="text-xs text-gray-400">Tidak ada target</span>
                       </div>
-                      <div className="mt-1 flex items-baseline justify-between">
-                        <span className="text-base font-extrabold text-amber-900">{gilingan} Gilingan</span>
-                        <span className="text-xs font-semibold text-amber-800">≈ {dagingKg} kg Daging</span>
-                      </div>
-                    </div>
+                    ) : (
+                      <>
+                        {/* Target Gilingan & Daging */}
+                        <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-2.5 mb-3">
+                          <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                            Kebutuhan Gilingan
+                          </div>
+                          <div className="mt-1 flex items-baseline justify-between">
+                            <span className="text-base font-extrabold text-amber-900">{gilingan} Gilingan</span>
+                            <span className="text-xs font-semibold text-amber-800">≈ {dagingKg} kg Daging</span>
+                          </div>
+                        </div>
 
-                    {/* Target Kemasan */}
-                    <div className="space-y-1.5 text-xs text-gray-600 mb-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-500">Mika (Isi 50):</span>
-                        <span className="font-bold text-gray-900">{plan.target_mika} wadah</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-500">Vakum (Isi 25):</span>
-                        <span className="font-bold text-gray-900">{plan.target_vakum} pack</span>
-                      </div>
-                    </div>
+                        {/* Target Kemasan */}
+                        <div className="space-y-1.5 text-xs text-gray-600 mb-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-500">Mika (Isi 50):</span>
+                            <span className="font-bold text-gray-900">{plan.target_mika} wadah</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-500">Vakum (Isi 25):</span>
+                            <span className="font-bold text-gray-900">{plan.target_vakum} pack</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
 
                     {/* Deficit detail if any */}
-                    {!isPast && hasDeficit && plan.readiness?.deficits && (
+                    {gilingan > 0 && !isPast && hasDeficit && plan.readiness?.deficits && (
                       <div className="text-[11px] text-red-600 bg-red-50 p-2 rounded-lg border border-red-200 mb-3 space-y-0.5">
                         <div className="font-semibold">Bahan baku kurang:</div>
                         {plan.readiness.deficits.slice(0, 2).map((d, i) => (
@@ -1636,7 +1679,7 @@ export default function AdminRawMaterials() {
 
                   {/* Actions */}
                   <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2 flex-wrap">
-                    {!isPast ? (
+                    {!isPast && gilingan > 0 ? (
                       <button
                         onClick={() => {
                           handleTargetGilinganChange(gilingan);
@@ -1647,10 +1690,14 @@ export default function AdminRawMaterials() {
                         <ClipboardCheck className="w-3.5 h-3.5" />
                         Cek Kesiapan
                       </button>
-                    ) : (
+                    ) : isPast ? (
                       <span className="text-xs text-gray-400 font-medium inline-flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5 text-gray-400" />
                         Selesai
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400 font-medium inline-flex items-center gap-1">
+                        Libur
                       </span>
                     )}
 
@@ -1768,79 +1815,128 @@ export default function AdminRawMaterials() {
           {/* Success State */}
           {!historyLoading && !historyError && (
             <div className="space-y-4">
-              {/* History Table */}
-              <div className="bg-white border border-bg-cream-dark/80 rounded-card shadow-card overflow-hidden">
-                <div className="p-4 border-b border-bg-cream-dark/60 flex items-center justify-between">
-                  <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                    <History className="w-4 h-4 text-brand-blue" />
-                    Riwayat Transaksi Bahan Baku
-                  </h3>
+              {/* Top Controls - Matching QC Style */}
+              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3 mb-4">
+                {/* Search Input */}
+                <div className="relative w-full md:w-80">
+                  <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    placeholder="Cari transaksi, bahan baku..."
+                    className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 focus:border-amber-700 focus:ring-1 focus:ring-amber-700 text-xs outline-none bg-gray-50/50"
+                  />
+                </div>
+
+                {/* Controls */}
+                <div className="flex items-center gap-2.5 w-full md:w-auto justify-between md:justify-end flex-wrap">
+                  {/* Page Size Selector */}
+                  <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+                    <span className="hidden lg:inline text-[11px]">Tampilkan:</span>
+                    <select
+                      value={historyLimit}
+                      onChange={(e) => {
+                        setHistoryLimit(Number(e.target.value));
+                        setHistoryPage(1);
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl border border-gray-200 bg-white text-text-primary text-xs font-bold outline-none cursor-pointer focus:border-amber-700"
+                    >
+                      {historyLimitOptions.map((option) => (
+                        <option key={option} value={option}>{option} / hal</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {/* Refresh Button */}
                   <button
                     onClick={() => refetchHistory()}
                     disabled={historyLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 hover:bg-gray-100 cursor-pointer disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-text-secondary hover:text-text-primary transition-all shadow-xs disabled:opacity-50 cursor-pointer"
                   >
-                    <RefreshCw className={`w-3 h-3 ${historyLoading ? 'animate-spin' : ''}`} />
-                    Refresh
+                    <RefreshCw size={14} className={historyLoading ? 'animate-spin' : ''} />
+                    <span>Refresh</span>
                   </button>
                 </div>
+              </div>
 
+              {/* History Table - Matching QC Style */}
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
+                  <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase border-b border-gray-200">
-                        <th className="px-5 py-3.5">Tanggal</th>
-                        <th className="px-5 py-3.5">Bahan Baku</th>
-                        <th className="px-5 py-3.5">Aksi</th>
-                        <th className="px-5 py-3.5">Jumlah</th>
-                        <th className="px-5 py-3.5">Stok Sebelum</th>
-                        <th className="px-5 py-3.5">Stok Sesudah</th>
-                        <th className="px-5 py-3.5">Catatan</th>
-                        <th className="px-5 py-3.5">Oleh</th>
+                      <tr className="bg-gray-50/90 border-b border-gray-200 text-text-secondary uppercase text-[10.5px] font-bold tracking-wider">
+                        <th className="py-3.5 px-4">Tanggal</th>
+                        <th className="py-3.5 px-4">Bahan Baku</th>
+                        <th className="py-3.5 px-4">Aksi</th>
+                        <th className="py-3.5 px-4 text-right">Jumlah</th>
+                        <th className="py-3.5 px-4 text-right">Stok Sebelum</th>
+                        <th className="py-3.5 px-4 text-right">Stok Sesudah</th>
+                        <th className="py-3.5 px-4">Catatan</th>
+                        <th className="py-3.5 px-4">Oleh</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {materialHistory.length === 0 ? (
+                      {filteredHistory.length === 0 ? (
                         <tr>
-                          <td colSpan="8" className="text-center py-10 text-gray-400">
-                            <History className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                            Belum ada riwayat transaksi.
+                          <td colSpan="8" className="text-center py-12 text-gray-400">
+                            <History className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                            <p className="text-sm font-medium text-gray-500">Belum ada riwayat transaksi</p>
+                            <p className="text-xs text-gray-400 mt-1">Transaksi akan muncul di sini setelah Anda melakukan restok atau penyesuaian stok</p>
                           </td>
                         </tr>
                       ) : (
-                        materialHistory.map((item) => (
-                          <tr key={item.id} className="hover:bg-gray-50/50">
-                            <td className="px-5 py-3.5 font-semibold text-gray-900">
-                              {new Date(item.created_at).toLocaleDateString('id-ID', {
-                                weekday: 'short',
-                                day: 'numeric',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
+                        filteredHistory.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="font-semibold text-gray-900 text-sm">
+                                {new Date(item.created_at).toLocaleDateString('id-ID', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric'
+                                })}
+                              </div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                {new Date(item.created_at).toLocaleTimeString('id-ID', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
                             </td>
-                            <td className="px-5 py-3.5 text-gray-600">{item.material_name}</td>
-                            <td className="px-5 py-3.5">
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
-                                ${item.action === 'in' ? 'bg-green-100 text-green-800 border border-green-200' : ''}
-                                ${item.action === 'out' ? 'bg-red-100 text-red-800 border border-red-200' : ''}
-                                ${item.action === 'adjustment' ? 'bg-amber-100 text-amber-800 border border-amber-200' : ''}
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-gray-900">{item.material_name || '-'}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold
+                                ${item.action === 'in' ? 'bg-green-50 text-green-700 border border-green-200' : ''}
+                                ${item.action === 'out' ? 'bg-red-50 text-red-700 border border-red-200' : ''}
+                                ${item.action === 'adjustment' ? 'bg-amber-50 text-amber-700 border border-amber-200' : ''}
                               `}>
-                                {item.action === 'in' && <ArrowDownLeft className="w-3 h-3" />}
-                                {item.action === 'out' && <ArrowUpRight className="w-3 h-3" />}
-                                {item.action === 'adjustment' && <Sliders className="w-3 h-3" />}
+                                {item.action === 'in' && <ArrowDownLeft className="w-3.5 h-3.5" />}
+                                {item.action === 'out' && <ArrowUpRight className="w-3.5 h-3.5" />}
+                                {item.action === 'adjustment' && <Sliders className="w-3.5 h-3.5" />}
                                 {item.action === 'in' ? 'Masuk' : item.action === 'out' ? 'Keluar' : 'Penyesuaian'}
                               </span>
                             </td>
-                            <td className="px-5 py-3.5">
-                              <span className={`font-bold ${item.action === 'in' ? 'text-green-600' : item.action === 'out' ? 'text-red-600' : 'text-amber-600'}`}>
+                            <td className="px-4 py-3 text-right">
+                              <span className={`font-bold text-sm ${item.action === 'in' ? 'text-green-600' : item.action === 'out' ? 'text-red-600' : 'text-amber-600'}`}>
                                 {item.action === 'in' ? '+' : item.action === 'out' ? '-' : '±'}{item.quantity}
                               </span>
                             </td>
-                            <td className="px-5 py-3.5 text-gray-600">{item.previous_stock}</td>
-                            <td className="px-5 py-3.5 font-semibold text-gray-900">{item.new_stock}</td>
-                            <td className="px-5 py-3.5 text-xs text-gray-500 max-w-xs truncate">{item.notes || '-'}</td>
-                            <td className="px-5 py-3.5 text-xs text-gray-400">{item.created_by || '-'}</td>
+                            <td className="px-4 py-3 text-right">
+                              <span className="text-gray-600 font-medium">{item.previous_stock ?? '-'}</span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <span className="text-gray-900 font-bold">{item.new_stock ?? '-'}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="text-xs text-gray-500 max-w-[200px] truncate" title={item.notes || '-'}>
+                                {item.notes || '-'}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="text-xs text-gray-500">{item.creator_name || '-'}</div>
+                            </td>
                           </tr>
                         ))
                       )}
@@ -1849,29 +1945,130 @@ export default function AdminRawMaterials() {
                 </div>
               </div>
 
-              {/* Pagination */}
-              {historyPagination.totalPages > 1 && (
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600">
-                    Showing {((historyPagination.page - 1) * historyPagination.limit) + 1} to{' '}
-                    {Math.min(historyPagination.page * historyPagination.limit, historyPagination.total)} of{' '}
-                    {historyPagination.total} entries
+              {/* Pagination Info - Matching QC Style */}
+              {historyPagination.total > 0 && (
+                <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+                  {/* Left: Info Text */}
+                  <div className="text-sm text-gray-600 font-medium">
+                    Menampilkan {((historyPagination.page - 1) * historyLimit) + 1} - {Math.min(historyPagination.page * historyLimit, historyPagination.total || 0)} dari <span className="font-bold text-gray-900">{historyPagination.total || 0}</span> transaksi
                   </div>
-                  <div className="flex gap-2">
+                  
+                  {/* Right: Pagination Controls */}
+                  <div className="flex items-center gap-2">
+                    {/* Previous Button */}
                     <button
                       onClick={() => setHistoryPage(prev => Math.max(prev - 1, 1))}
                       disabled={historyPagination.page === 1 || historyLoading}
-                      className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="p-2 text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Halaman sebelumnya"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
-                    <span className="px-4 py-2 text-sm font-medium text-gray-900 flex items-center">
-                      Page {historyPagination.page} of {historyPagination.totalPages}
-                    </span>
+                    
+                    {/* Page Numbers - Smart Display */}
+                    <div className="flex items-center gap-1">
+                      {(() => {
+                        const pages = [];
+                        const totalPages = historyPagination.totalPages || 1;
+                        const currentPage = historyPagination.page;
+                        
+                        if (totalPages <= 7) {
+                          // Show all pages if 7 or less
+                          for (let i = 1; i <= totalPages; i++) {
+                            pages.push(
+                              <button
+                                key={i}
+                                onClick={() => setHistoryPage(i)}
+                                disabled={historyLoading}
+                                className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                                  currentPage === i 
+                                    ? 'bg-brand-blue text-white border border-brand-blue' 
+                                    : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
+                                } disabled:opacity-50`}
+                              >
+                                {i}
+                              </button>
+                            );
+                          }
+                        } else {
+                          // Smart pagination: first, last, current ±1
+                          // Always show first page
+                          pages.push(
+                            <button
+                              key={1}
+                              onClick={() => setHistoryPage(1)}
+                              disabled={historyLoading}
+                              className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                                currentPage === 1 
+                                  ? 'bg-brand-blue text-white border border-brand-blue' 
+                                  : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
+                              } disabled:opacity-50`}
+                            >
+                              1
+                            </button>
+                          );
+                          
+                          // Show ellipsis if needed
+                          if (currentPage > 3) {
+                            pages.push(
+                              <span key="start-ellipsis" className="px-1.5 py-1.5 text-gray-400 text-sm">...</span>
+                            );
+                          }
+                          
+                          // Show current ±1 pages (but not first or last)
+                          for (let i = Math.max(2, currentPage - 1); 
+                               i <= Math.min(totalPages - 1, currentPage + 1); 
+                               i++) {
+                            pages.push(
+                              <button
+                                key={i}
+                                onClick={() => setHistoryPage(i)}
+                                disabled={historyLoading}
+                                className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                                  currentPage === i 
+                                    ? 'bg-brand-blue text-white border border-brand-blue' 
+                                    : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
+                                } disabled:opacity-50`}
+                              >
+                                {i}
+                              </button>
+                            );
+                          }
+                          
+                          // Show ellipsis if needed
+                          if (currentPage < totalPages - 2) {
+                            pages.push(
+                              <span key="end-ellipsis" className="px-1.5 py-1.5 text-gray-400 text-sm">...</span>
+                            );
+                          }
+                          
+                          // Always show last page
+                          pages.push(
+                            <button
+                              key={totalPages}
+                              onClick={() => setHistoryPage(totalPages)}
+                              disabled={historyLoading}
+                              className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                                currentPage === totalPages 
+                                  ? 'bg-brand-blue text-white border border-brand-blue' 
+                                  : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
+                              } disabled:opacity-50`}
+                            >
+                              {totalPages}
+                            </button>
+                          );
+                        }
+                        
+                        return pages;
+                      })()}
+                    </div>
+                    
+                    {/* Next Button */}
                     <button
-                      onClick={() => setHistoryPage(prev => Math.min(prev + 1, historyPagination.totalPages))}
-                      disabled={historyPagination.page === historyPagination.totalPages || historyLoading}
-                      className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => setHistoryPage(prev => Math.min(prev + 1, historyPagination.totalPages || 1))}
+                      disabled={historyPagination.page === (historyPagination.totalPages || 1) || historyLoading}
+                      className="p-2 text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Halaman berikutnya"
                     >
                       <ChevronRight className="w-4 h-4" />
                     </button>
@@ -2157,6 +2354,142 @@ export default function AdminRawMaterials() {
           </div>
         </div>
       )}
+      {/* Modal Atur Target */}
+      {showTargetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-slideUp">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <h3 className="font-bold text-gray-800">Atur Target Gilingan</h3>
+              <button
+                onClick={() => setShowTargetModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">Target (Gilingan)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={targetModalInput}
+                  onChange={(e) => setTargetModalInput(e.target.value)}
+                  className="w-full text-center text-3xl font-black text-brand-blue px-4 py-3 bg-blue-50/30 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Isi Cepat</label>
+                <div className="flex flex-wrap gap-2">
+                  {[20, 25, 30, 36, 40, 50].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => setTargetModalInput(num.toString())}
+                      className="flex-1 min-w-[50px] px-2 py-1.5 bg-gray-100 hover:bg-brand-blue/10 text-gray-700 hover:text-brand-blue text-sm font-bold rounded-lg transition-colors cursor-pointer"
+                    >
+                      {num}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowTargetModal(false)}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors text-sm cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const num = parseInt(targetModalInput);
+                    if (!isNaN(num) && num > 0) {
+                      handleTargetGilinganChange(num);
+                      setShowTargetModal(false);
+                    }
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-brand-blue hover:bg-brand-blue-dark text-white font-bold rounded-xl transition-colors text-sm shadow-sm cursor-pointer"
+                >
+                  Atur
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Target Mingguan (Atur Jadwal) Modal */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-slideUp">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <h3 className="text-lg font-black font-heading text-gray-800 flex items-center gap-2">
+                <CalendarDays className="w-5 h-5 text-brand-blue" />
+                Atur Jadwal Produksi Mingguan
+              </h3>
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6">
+
+              {scheduleLoading ? (
+                <div className="py-8 flex flex-col items-center justify-center text-brand-blue">
+                  <RefreshCw className="w-6 h-6 animate-spin mb-2" />
+                  <span className="text-sm font-medium">Memuat pengaturan...</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map((dayName, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer"
+                      onClick={() => toggleActiveDay(idx)}
+                    >
+                      <span className={`text-sm font-semibold ${activeDays.includes(idx) ? 'text-gray-900' : 'text-gray-400'}`}>
+                        {dayName}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={activeDays.includes(idx)}
+                        readOnly
+                        className="w-5 h-5 rounded text-brand-blue border-gray-300 focus:ring-brand-blue cursor-pointer"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal(false)}
+                className="px-4 py-2 rounded-xl text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSchedule}
+                disabled={submittingSchedule || scheduleLoading}
+                className="px-4 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark shadow-sm transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              >
+                {submittingSchedule && <RefreshCw className="w-4 h-4 animate-spin" />}
+                Simpan Jadwal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

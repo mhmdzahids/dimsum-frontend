@@ -299,8 +299,10 @@ export const useP2Summary = (weekStart = null, options = {}) => {
         weeklyPlan 
       };
     },
-    staleTime: 1000 * 60 * 2, // 2 minutes
-    cacheTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60 * 2, // 2 minutes - data considered fresh for 2 minutes
+    cacheTime: 1000 * 60 * 5, // 5 minutes - keep in cache
+    refetchInterval: 1000 * 60 * 5, // Auto-refetch every 5 minutes (replaces manual interval)
+    refetchOnWindowFocus: true, // Refetch when user returns to tab
     ...options,
   });
 };
