@@ -20,6 +20,7 @@ import {
   QrCode,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Rocket,
   Edit3,
   Sliders,
@@ -49,6 +50,51 @@ const BATCH_STATUS_META = {
   planned: { label: 'Menunggu Verifikasi Checker', color: 'bg-amber-100 text-amber-800 border-amber-200' },
   completed: { label: 'Selesai Produksi', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
   cancelled: { label: 'Dibatalkan', color: 'bg-gray-100 text-gray-600 border-gray-200' }
+};
+
+const DeficitExpandablePill = ({ plan }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const deficits = plan.readiness?.deficits || [];
+  const count = plan.readiness?.shortage_count || deficits.length || 0;
+  
+  if (deficits.length === 0) return null;
+
+  return (
+    <div className="mb-3">
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="px-2.5 py-1.5 rounded-xl bg-red-50/80 border border-red-200/80 text-red-800 text-[11px] flex items-center justify-between gap-1.5 font-medium transition-colors hover:bg-red-100/60 cursor-pointer select-none"
+      >
+        <div className="flex items-center gap-1.5 font-semibold truncate">
+          <AlertTriangle size={13} className="text-red-600 shrink-0" />
+          <span className="truncate">Bahan Baku Kurang</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="px-1.5 py-0.2 rounded-md bg-red-100 text-red-700 text-[10px] font-bold shrink-0">
+            {count} Bahan
+          </span>
+          <ChevronDown size={14} className={`text-red-500 transition-transform duration-300 ${isOpen ? '-rotate-180' : 'rotate-0'} shrink-0`} />
+        </div>
+      </div>
+      
+      <div className={`grid transition-all duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr] opacity-100 mt-1.5' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
+        <div className="overflow-hidden">
+          <div className="px-3 py-2.5 bg-red-50/70 border border-red-100 rounded-xl text-red-900">
+            <div className="space-y-2 text-[10px]">
+              {deficits.map((d, i) => (
+                <div key={i} className="flex justify-between items-start gap-2 border-b border-red-100/60 pb-1.5 last:border-0 last:pb-0">
+                  <span className="flex-1 leading-tight">{d.name}</span>
+                  <span className="font-bold whitespace-nowrap shrink-0 text-red-700">
+                    -{Number(d.deficit).toLocaleString('id-ID', { maximumFractionDigits: 1 })} {d.unit}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default function AdminProduction() {
@@ -871,18 +917,7 @@ export default function AdminProduction() {
                           <span className="font-mono text-[10px]">Tercatat</span>
                         </div>
                       ) : hasDeficit ? (
-                        <div
-                          className="px-2.5 py-1.5 rounded-xl bg-red-50/80 border border-red-200/80 text-red-800 text-[11px] flex items-center justify-between gap-1.5 font-medium"
-                          title={plan.readiness?.deficits?.map(d => `${d.name} (-${Number(d.deficit).toLocaleString('id-ID', { maximumFractionDigits: 1 })} ${d.unit})`).join(', ')}
-                        >
-                          <div className="flex items-center gap-1.5 font-semibold truncate">
-                            <AlertTriangle size={13} className="text-red-600 shrink-0" />
-                            <span className="truncate">Bahan Baku Kurang</span>
-                          </div>
-                          <span className="px-1.5 py-0.2 rounded-md bg-red-100 text-red-700 text-[10px] font-bold shrink-0">
-                            {plan.readiness?.shortage_count || plan.readiness?.deficits?.length || 0} Bahan
-                          </span>
-                        </div>
+                        <DeficitExpandablePill plan={plan} />
                       ) : (
                         <div className="px-2.5 py-1.5 rounded-xl bg-emerald-50/80 border border-emerald-200/80 text-emerald-800 text-[11px] flex items-center justify-between gap-1.5 font-semibold">
                           <div className="flex items-center gap-1.5">

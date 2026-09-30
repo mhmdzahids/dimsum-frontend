@@ -19,6 +19,7 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ArrowRight,
   X,
   Edit2,
@@ -49,6 +50,51 @@ const CATEGORY_MAP = {
   flour: { label: 'Tepung & Pati', badge: 'bg-blue-50 text-blue-700 border-blue-200' },
   packaging: { label: 'Kemasan & Saos', badge: 'bg-purple-50 text-purple-700 border-purple-200' },
   other: { label: 'Lainnya', badge: 'bg-gray-50 text-gray-700 border-gray-200' }
+};
+
+const DeficitExpandablePill = ({ plan }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const deficits = plan.readiness?.deficits || [];
+  const count = plan.readiness?.shortage_count || deficits.length || 0;
+  
+  if (deficits.length === 0) return null;
+
+  return (
+    <div className="mb-3">
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="px-2.5 py-1.5 rounded-xl bg-red-50/80 border border-red-200/80 text-red-800 text-[11px] flex items-center justify-between gap-1.5 font-medium transition-colors hover:bg-red-100/60 cursor-pointer select-none"
+      >
+        <div className="flex items-center gap-1.5 font-semibold truncate">
+          <AlertTriangle size={13} className="text-red-600 shrink-0" />
+          <span className="truncate">Bahan Baku Kurang</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="px-1.5 py-0.2 rounded-md bg-red-100 text-red-700 text-[10px] font-bold shrink-0">
+            {count} Bahan
+          </span>
+          <ChevronDown size={14} className={`text-red-500 transition-transform duration-300 ${isOpen ? '-rotate-180' : 'rotate-0'} shrink-0`} />
+        </div>
+      </div>
+      
+      <div className={`grid transition-all duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr] opacity-100 mt-1.5' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
+        <div className="overflow-hidden">
+          <div className="px-3 py-2.5 bg-red-50/70 border border-red-100 rounded-xl text-red-900">
+            <div className="space-y-2 text-[10px]">
+              {deficits.map((d, i) => (
+                <div key={i} className="flex justify-between items-start gap-2 border-b border-red-100/60 pb-1.5 last:border-0 last:pb-0">
+                  <span className="flex-1 leading-tight">{d.name}</span>
+                  <span className="font-bold whitespace-nowrap shrink-0 text-red-700">
+                    -{Number(d.deficit).toLocaleString('id-ID', { maximumFractionDigits: 1 })} {d.unit}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default function AdminRawMaterials() {
@@ -117,8 +163,8 @@ export default function AdminRawMaterials() {
   const materialHistory = historyData?.history || [];
   const historyPagination = historyData?.pagination || { page: 1, limit: 50, total: 0, totalPages: 0 };
 
-  const filteredHistory = materialHistory.filter(item => 
-    !historySearch || 
+  const filteredHistory = materialHistory.filter(item =>
+    !historySearch ||
     item.material_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
     item.notes?.toLowerCase().includes(historySearch.toLowerCase()) ||
     item.creator_name?.toLowerCase().includes(historySearch.toLowerCase())
@@ -584,7 +630,13 @@ export default function AdminRawMaterials() {
 
   const formatNumber = (num) => {
     if (num === undefined || num === null) return '0';
-    return Number(num).toLocaleString('id-ID', { maximumFractionDigits: 1 });
+    const number = Number(num);
+    // If it's a decimal number, show 2 decimal places
+    if (number % 1 !== 0) {
+      return number.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    // For whole numbers, show without decimals
+    return number.toLocaleString('id-ID', { maximumFractionDigits: 0 });
   };
 
   // Show loading state
@@ -1554,7 +1606,7 @@ export default function AdminRawMaterials() {
               {canManage && (
                 <button
                   onClick={handleOpenScheduleModal}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm hover:shadow ml-2"
+                  className="hidden md:inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm hover:shadow"
                 >
                   <CalendarDays size={14} />
                   <span>Atur Hari Aktif</span>
@@ -1668,12 +1720,7 @@ export default function AdminRawMaterials() {
 
                     {/* Deficit detail if any */}
                     {gilingan > 0 && !isPast && hasDeficit && plan.readiness?.deficits && (
-                      <div className="text-[11px] text-red-600 bg-red-50 p-2 rounded-lg border border-red-200 mb-3 space-y-0.5">
-                        <div className="font-semibold">Bahan baku kurang:</div>
-                        {plan.readiness.deficits.slice(0, 2).map((d, i) => (
-                          <div key={i} className="truncate">• {d.name}: kurang {d.deficit} {d.unit}</div>
-                        ))}
-                      </div>
+                        <DeficitExpandablePill plan={plan} />
                     )}
                   </div>
 
@@ -1847,7 +1894,7 @@ export default function AdminRawMaterials() {
                       ))}
                     </select>
                   </div>
-                  
+
                   {/* Refresh Button */}
                   <button
                     onClick={() => refetchHistory()}
@@ -1920,14 +1967,14 @@ export default function AdminRawMaterials() {
                             </td>
                             <td className="px-4 py-3 text-right">
                               <span className={`font-bold text-sm ${item.action === 'in' ? 'text-green-600' : item.action === 'out' ? 'text-red-600' : 'text-amber-600'}`}>
-                                {item.action === 'in' ? '+' : item.action === 'out' ? '-' : '±'}{item.quantity}
+                                {item.action === 'in' ? '+' : item.action === 'out' ? '-' : '±'}{formatNumber(item.quantity)}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <span className="text-gray-600 font-medium">{item.previous_stock ?? '-'}</span>
+                              <span className="text-gray-600 font-medium">{item.previous_stock != null ? formatNumber(item.previous_stock) : '-'}</span>
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <span className="text-gray-900 font-bold">{item.new_stock ?? '-'}</span>
+                              <span className="text-gray-900 font-bold">{item.new_stock != null ? formatNumber(item.new_stock) : '-'}</span>
                             </td>
                             <td className="px-4 py-3">
                               <div className="text-xs text-gray-500 max-w-[200px] truncate" title={item.notes || '-'}>
@@ -1952,7 +1999,7 @@ export default function AdminRawMaterials() {
                   <div className="text-sm text-gray-600 font-medium">
                     Menampilkan {((historyPagination.page - 1) * historyLimit) + 1} - {Math.min(historyPagination.page * historyLimit, historyPagination.total || 0)} dari <span className="font-bold text-gray-900">{historyPagination.total || 0}</span> transaksi
                   </div>
-                  
+
                   {/* Right: Pagination Controls */}
                   <div className="flex items-center gap-2">
                     {/* Previous Button */}
@@ -1964,14 +2011,14 @@ export default function AdminRawMaterials() {
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
-                    
+
                     {/* Page Numbers - Smart Display */}
                     <div className="flex items-center gap-1">
                       {(() => {
                         const pages = [];
                         const totalPages = historyPagination.totalPages || 1;
                         const currentPage = historyPagination.page;
-                        
+
                         if (totalPages <= 7) {
                           // Show all pages if 7 or less
                           for (let i = 1; i <= totalPages; i++) {
@@ -1980,11 +2027,10 @@ export default function AdminRawMaterials() {
                                 key={i}
                                 onClick={() => setHistoryPage(i)}
                                 disabled={historyLoading}
-                                className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                                  currentPage === i 
-                                    ? 'bg-brand-blue text-white border border-brand-blue' 
-                                    : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
-                                } disabled:opacity-50`}
+                                className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${currentPage === i
+                                  ? 'bg-brand-blue text-white border border-brand-blue'
+                                  : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
+                                  } disabled:opacity-50`}
                               >
                                 {i}
                               </button>
@@ -1998,71 +2044,68 @@ export default function AdminRawMaterials() {
                               key={1}
                               onClick={() => setHistoryPage(1)}
                               disabled={historyLoading}
-                              className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                                currentPage === 1 
-                                  ? 'bg-brand-blue text-white border border-brand-blue' 
-                                  : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
-                              } disabled:opacity-50`}
+                              className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${currentPage === 1
+                                ? 'bg-brand-blue text-white border border-brand-blue'
+                                : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
+                                } disabled:opacity-50`}
                             >
                               1
                             </button>
                           );
-                          
+
                           // Show ellipsis if needed
                           if (currentPage > 3) {
                             pages.push(
                               <span key="start-ellipsis" className="px-1.5 py-1.5 text-gray-400 text-sm">...</span>
                             );
                           }
-                          
+
                           // Show current ±1 pages (but not first or last)
-                          for (let i = Math.max(2, currentPage - 1); 
-                               i <= Math.min(totalPages - 1, currentPage + 1); 
-                               i++) {
+                          for (let i = Math.max(2, currentPage - 1);
+                            i <= Math.min(totalPages - 1, currentPage + 1);
+                            i++) {
                             pages.push(
                               <button
                                 key={i}
                                 onClick={() => setHistoryPage(i)}
                                 disabled={historyLoading}
-                                className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                                  currentPage === i 
-                                    ? 'bg-brand-blue text-white border border-brand-blue' 
-                                    : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
-                                } disabled:opacity-50`}
+                                className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${currentPage === i
+                                  ? 'bg-brand-blue text-white border border-brand-blue'
+                                  : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
+                                  } disabled:opacity-50`}
                               >
                                 {i}
                               </button>
                             );
                           }
-                          
+
                           // Show ellipsis if needed
                           if (currentPage < totalPages - 2) {
                             pages.push(
                               <span key="end-ellipsis" className="px-1.5 py-1.5 text-gray-400 text-sm">...</span>
                             );
                           }
-                          
+
                           // Always show last page
                           pages.push(
                             <button
                               key={totalPages}
                               onClick={() => setHistoryPage(totalPages)}
                               disabled={historyLoading}
-                              className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                                currentPage === totalPages 
-                                  ? 'bg-brand-blue text-white border border-brand-blue' 
-                                  : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
-                              } disabled:opacity-50`}
+                              className={`min-w-[32px] px-2 py-1.5 text-sm font-medium rounded-md transition-colors ${currentPage === totalPages
+                                ? 'bg-brand-blue text-white border border-brand-blue'
+                                : 'text-gray-600 bg-white border border-gray-300 hover:border-gray-400'
+                                } disabled:opacity-50`}
                             >
                               {totalPages}
                             </button>
                           );
                         }
-                        
+
                         return pages;
                       })()}
                     </div>
-                    
+
                     {/* Next Button */}
                     <button
                       onClick={() => setHistoryPage(prev => Math.min(prev + 1, historyPagination.totalPages || 1))}
