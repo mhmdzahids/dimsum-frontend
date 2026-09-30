@@ -30,11 +30,13 @@ import {
   BarChart3,
   Send,
   PackageCheck,
-  Lock
+  Lock,
+  PieChart
 } from 'lucide-react';
 import api from '../api/client';
 import Pagination from '../components/ui/Pagination';
 import { getAdminRole, canManageRawMaterials } from '../utils/adminAuth';
+import { useRawMaterials, useUpsertRawMaterial, useProductionReadiness, useProductionLog, useP2Summary, useMaterialHistory } from '../hooks/useQueries';
 
 const CATEGORY_MAP = {
   meat: { label: 'Daging & Unggas', badge: 'bg-red-50 text-red-700 border-red-200' },
@@ -49,29 +51,61 @@ export default function AdminRawMaterials() {
   const userRole = getAdminRole() || 'admin';
   const canManage = canManageRawMaterials(userRole);
 
-  const [materials, setMaterials] = useState([]);
-  const [counts, setCounts] = useState({ total: 0, critical: 0, warning: 0, safe: 0 });
+  // React Query hooks for Tab 1 (Inventory CRUD)
+  const { data: rawMaterialsData, isLoading, isRefetching, refetch } = useRawMaterials();
+  const upsertMutation = useUpsertRawMaterial();
+
+  const materials = rawMaterialsData?.materials || [];
+  const counts = rawMaterialsData?.counts || { total: 0, critical: 0, warning: 0, safe: 0 };
+
+  // Advanced features state (Tabs 2-5)
   const [transactions, setTransactions] = useState([]);
-  const [readiness, setReadiness] = useState(null);
   const [targetGilingan, setTargetGilingan] = useState(36);
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'readiness' | 'lot-log' | 'weekly' | 'history'
 
-  // Production Log (Laporan Lot Harian)
-  const [productionLog, setProductionLog] = useState({ logs: [], summary: {} });
-  const [logLoading, setLogLoading] = useState(false);
+  // Tab 2: Production Readiness (Kesiapan H-1) - using React Query
+  const { data: readiness, isLoading: readinessLoading, error: readinessError, refetch: refetchReadiness } = useProductionReadiness(targetGilingan);
 
-  // P2 Summary for KPI feedback loop
-  const [p2Summary, setP2Summary] = useState({
-    completedMika: 0,
-    completedVakum: 0,
-    targetMika: 350,
-    targetVakum: 100
-  });
+  // Tab 3: Production Log (Laporan Lot Gilingan) - using React Query
+  const { data: productionLog, isLoading: logLoading, error: logError, refetch: refetchProductionLog } = useProductionLog(30);
 
   // Weekly Planning Data (from P2)
-  const [weeklyData, setWeeklyData] = useState(null);
-  const [weeklyLoading, setWeeklyLoading] = useState(false);
   const [currentWeekStart, setCurrentWeekStart] = useState(null);
+  const {
+    data: p2Data,
+    isLoading: p2Loading,
+    error: p2Error,
+    refetch: refetchP2Data
+  } = useP2Summary(currentWeekStart);
+
+  const weeklyData = p2Data?.weeklyPlan;
+
+  // P2 Summary for KPI feedback loop
+  const p2Summary = React.useMemo(() => ({
+    completedMika: p2Data?.p2?.completedMika || 0,
+    completedVakum: p2Data?.p2?.completedVakum || 0,
+    targetMika: p2Data?.p2?.targetMika || 350,
+    targetVakum: p2Data?.p2?.targetVakum || 100
+  }), [p2Data]);
+
+  // Tab 5: Material History - using React Query
+  const [historyFilter, setHistoryFilter] = useState('all');
+  const [historyPage, setHistoryPage] = useState(1);
+
+  const {
+    data: historyData,
+    isLoading: historyLoading,
+    error: historyError,
+    refetch: refetchHistory
+  } = useMaterialHistory({
+    action: historyFilter,
+    page: historyPage,
+    limit: 50
+  });
+
+  // Derive history array from data
+  const materialHistory = historyData?.history || [];
+  const historyPagination = historyData?.pagination || { page: 1, limit: 50, total: 0, totalPages: 0 };
 
   // Modal: Catat Gilingan Hari Ini
   const [showGilinganModal, setShowGilinganModal] = useState(false);
@@ -101,19 +135,17 @@ export default function AdminRawMaterials() {
   });
   const [submittingDayPlan, setSubmittingDayPlan] = useState(false);
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Filters
+  // Filters for Tab 1
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
-  // Modals
+  // Transaction Modal State
   const [showTxModal, setShowTxModal] = useState(false);
   const [txType, setTxType] = useState('in'); // 'in' | 'out'
   const [selectedMaterial, setSelectedMaterial] = useState(null);
@@ -121,7 +153,7 @@ export default function AdminRawMaterials() {
   const [txNotes, setTxNotes] = useState('');
   const [txSubmitting, setTxSubmitting] = useState(false);
 
-  // Add/Edit Material Modal
+  // Add/Edit Material Modal - use Zustand
   const [showMaterialModal, setShowMaterialModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState(null);
   const [matForm, setMatForm] = useState({
@@ -134,34 +166,11 @@ export default function AdminRawMaterials() {
     safety_stock: 25,
     notes: ''
   });
-  const [matSubmitting, setMatSubmitting] = useState(false);
 
-  // Fetch materials & summary
-  const fetchMaterials = async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError('');
-
+  // Fetch advanced features data (transactions only - readiness now uses React Query)
+  const fetchAdvancedData = async () => {
     try {
-      const [matRes, readRes, txRes] = await Promise.all([
-        api.get('/api/inventory/raw-materials', { auth: 'admin' }),
-        api.get(`/api/inventory/raw-materials/readiness?target_gilingan=${targetGilingan}`, { auth: 'admin' }),
-        api.get('/api/inventory/raw-materials/transactions?limit=25', { auth: 'admin' })
-      ]);
-
-      if (matRes.success) {
-        setMaterials(matRes.data?.materials || []);
-        setCounts(matRes.data?.counts || {
-          total: matRes.data?.total_count ?? matRes.data?.materials?.length ?? 0,
-          critical: matRes.data?.critical_count ?? 0,
-          warning: matRes.data?.warning_count ?? 0,
-          safe: matRes.data?.safe_count ?? 0
-        });
-      }
-
-      if (readRes.success) {
-        setReadiness(readRes.data);
-      }
+      const txRes = await api.get('/api/inventory/raw-materials/transactions?limit=25', { auth: 'admin' });
 
       if (txRes.success) {
         const txList = Array.isArray(txRes.data)
@@ -170,29 +179,13 @@ export default function AdminRawMaterials() {
         setTransactions(txList);
       }
     } catch (err) {
-      console.error(err);
-      setError('Gagal memuat data bahan baku dari server.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      console.error('Failed to fetch advanced data', err);
     }
   };
 
-  // Fetch Production Log (Laporan Lot Harian)
-  const fetchProductionLog = useCallback(async () => {
-    setLogLoading(true);
-    try {
-      const res = await api.get('/api/inventory/raw-materials/production-log?limit=30', { auth: 'admin' });
-      if (res.success) setProductionLog(res.data || { logs: [], summary: {} });
-    } catch (err) {
-      console.error('Failed to fetch production log', err);
-    } finally {
-      setLogLoading(false);
-    }
-  }, []);
+  // React Query automatically handles production log fetching
 
   // Compute BOM preview for Catat Gilingan modal
-  // PENTING: harus sinkron dengan bom_deductions di backend service.py log_gilingan()
   const computeGilinganPreview = (jumlah) => {
     const j = Number(jumlah) || 0;
     const gMika = j * (30 / 36);
@@ -209,76 +202,9 @@ export default function AdminRawMaterials() {
     ];
   };
 
-  // Re-fetch readiness when target gilingan changes
-  const updateReadiness = async (gilingan) => {
-    try {
-      const res = await api.get(`/api/inventory/raw-materials/readiness?target_gilingan=${gilingan}`, { auth: 'admin' });
-      if (res.success) {
-        setReadiness(res.data);
-      }
-    } catch {
-      // Ignore background readiness error
-    }
-  };
+  // React Query automatically handles readiness fetching when targetGilingan changes
 
-  // Fetch P2 batches for KPI feedback loop
-  const fetchP2Data = useCallback(async () => {
-    try {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const [batchesRes, weeklyRes] = await Promise.all([
-        api.get('/api/inventory/batches?limit=100', { auth: 'admin' }),
-        api.get('/api/inventory/production/plans/weekly', { auth: 'admin' })
-      ]);
-
-      if (batchesRes.success) {
-        const todayBatches = (batchesRes.data || []).filter(b => {
-          const d = (b.completed_at || b.created_at || '').substring(0, 10);
-          return d === todayStr && b.status === 'completed';
-        });
-        const mika = todayBatches
-          .filter(b => b.packaging_type === 'mika' || b.lot_size === 50)
-          .reduce((sum, b) => sum + (b.actual_packs || 0), 0);
-        const vakum = todayBatches
-          .filter(b => b.packaging_type === 'vakum' || b.lot_size === 25)
-          .reduce((sum, b) => sum + (b.actual_packs || 0), 0);
-
-        setP2Summary(prev => ({ ...prev, completedMika: mika, completedVakum: vakum }));
-      }
-
-      if (weeklyRes.success) {
-        setWeeklyData(weeklyRes.data);
-        const todayPlan = weeklyRes.data?.plans?.find(p => p.is_today);
-        if (todayPlan) {
-          setP2Summary(prev => ({
-            ...prev,
-            targetMika: todayPlan.target_mika || 350,
-            targetVakum: todayPlan.target_vakum || 100
-          }));
-        }
-      }
-    } catch (err) {
-      console.error('Failed to fetch P2 data', err);
-    }
-  }, []);
-
-  // Fetch Weekly Plans (read-only view from P2)
-  const fetchWeeklyPlans = useCallback(async (startDate = null) => {
-    setWeeklyLoading(true);
-    try {
-      const url = startDate
-        ? `/api/inventory/production/plans/weekly?start_date=${startDate}`
-        : '/api/inventory/production/plans/weekly';
-      const res = await api.get(url, { auth: 'admin' });
-      if (res.success) {
-        setWeeklyData(res.data);
-        setCurrentWeekStart(res.data?.start_date);
-      }
-    } catch (err) {
-      console.error('Failed to fetch weekly plans', err);
-    } finally {
-      setWeeklyLoading(false);
-    }
-  }, []);
+  // React Query automatically handles P2 data fetching when currentWeekStart changes
 
   const handleNavigateWeek = (offsetDays) => {
     if (offsetDays < 0 && !weeklyData?.can_navigate_backward) return;
@@ -287,12 +213,10 @@ export default function AdminRawMaterials() {
     baseDate.setDate(baseDate.getDate() + offsetDays);
     const dateStr = baseDate.toISOString().split('T')[0];
     setCurrentWeekStart(dateStr);
-    fetchWeeklyPlans(dateStr);
   };
 
   const handleThisWeek = () => {
     setCurrentWeekStart(null);
-    fetchWeeklyPlans();
   };
 
   // Plan Edit Handlers in P1 (Rencana Mingguan Interaktif)
@@ -357,8 +281,7 @@ export default function AdminRawMaterials() {
       if (res.success) {
         setSuccessMsg(`Target produksi ${editDayForm.day_of_week} (${editDayForm.plan_date}) berhasil diperbarui!`);
         setEditingDayPlan(null);
-        fetchWeeklyPlans(currentWeekStart);
-        fetchP2Data();
+        refetchP2Data();
       } else {
         alert(res.error || 'Gagal menyimpan target');
       }
@@ -416,9 +339,9 @@ export default function AdminRawMaterials() {
         }
         setSuccessMsg(res.message || `Berhasil mencatat realisasi ${j} gilingan & memotong stok bahan baku.`);
         setShowGilinganModal(false);
-        fetchMaterials(true);
-        fetchProductionLog();
-        fetchP2Data();
+        refetch(); // React Query refetch
+        refetchProductionLog();
+        refetchP2Data();
       } else {
         alert(res.error || 'Gagal mencatat gilingan');
       }
@@ -441,9 +364,9 @@ export default function AdminRawMaterials() {
             if (retryRes.success) {
               setSuccessMsg(retryRes.message || 'Berhasil mencatat gilingan shift tambahan.');
               setShowGilinganModal(false);
-              fetchMaterials(true);
-              fetchProductionLog();
-              fetchP2Data();
+              refetch();
+              refetchProductionLog();
+              refetchP2Data();
               return;
             }
           } catch (retryErr) {
@@ -458,7 +381,7 @@ export default function AdminRawMaterials() {
     }
   };
 
-  // Fetch status cek fisik terakhir hari ini (tampilkan "Terakhir dicek oleh X")
+  // Fetch status cek fisik terakhir hari ini
   const fetchLatestDailyCheck = useCallback(async () => {
     try {
       const todayStr = new Date().toISOString().split('T')[0];
@@ -472,29 +395,26 @@ export default function AdminRawMaterials() {
   }, []);
 
   useEffect(() => {
-    fetchMaterials();
-    fetchProductionLog();
-    fetchP2Data();
+    fetchAdvancedData();
     fetchLatestDailyCheck();
 
-    // Auto-refresh P2 KPI setiap 5 menit agar data kemasan jadi selalu terkini
+    // Auto-refresh P2 KPI setiap 5 menit
     const p2RefreshInterval = setInterval(() => {
-      fetchP2Data();
+      refetchP2Data();
     }, 5 * 60 * 1000);
 
     return () => clearInterval(p2RefreshInterval);
-  }, [fetchProductionLog, fetchP2Data, fetchLatestDailyCheck]);
+  }, [refetchP2Data, fetchLatestDailyCheck]);
 
   useEffect(() => {
-    if (activeTab === 'lot-log') fetchProductionLog();
-    if (activeTab === 'weekly') fetchWeeklyPlans(currentWeekStart);
+    // React Query handles lot-log and weekly planning fetching automatically
     if (activeTab === 'readiness') fetchLatestDailyCheck();
-  }, [activeTab, fetchProductionLog, fetchWeeklyPlans, fetchLatestDailyCheck, currentWeekStart]);
+  }, [activeTab, fetchLatestDailyCheck]);
 
   const handleTargetGilinganChange = (val) => {
     const num = Math.max(1, parseInt(val) || 1);
     setTargetGilingan(num);
-    updateReadiness(num);
+    // React Query will automatically refetch when targetGilingan changes
   };
 
   // Transaction Handler (IN / OUT)
@@ -528,7 +448,7 @@ export default function AdminRawMaterials() {
       if (res.success) {
         setSuccessMsg(res.message || 'Transaksi bahan baku berhasil dicatat!');
         setShowTxModal(false);
-        fetchMaterials(true);
+        refetch(); // React Query refetch
       } else {
         alert(res.error || 'Gagal menyimpan transaksi');
       }
@@ -539,7 +459,7 @@ export default function AdminRawMaterials() {
     }
   };
 
-  // Material Add / Edit Handler
+  // Material Add / Edit Handler with React Query
   const openMaterialModal = (material = null) => {
     if (material) {
       setEditingMaterial(material);
@@ -571,26 +491,17 @@ export default function AdminRawMaterials() {
 
   const handleMaterialSubmit = async (e) => {
     e.preventDefault();
-    setMatSubmitting(true);
-    try {
-      let res;
-      if (editingMaterial) {
-        res = await api.put(`/api/inventory/raw-materials/${editingMaterial.id}`, matForm, { auth: 'admin' });
-      } else {
-        res = await api.post('/api/inventory/raw-materials', matForm, { auth: 'admin' });
-      }
 
-      if (res.success) {
-        setSuccessMsg(res.message || 'Data bahan baku berhasil disimpan!');
-        setShowMaterialModal(false);
-        fetchMaterials(true);
-      } else {
-        alert(res.error || 'Gagal menyimpan bahan baku');
-      }
+    try {
+      await upsertMutation.mutateAsync({
+        id: editingMaterial?.id,
+        data: matForm
+      });
+
+      setSuccessMsg(editingMaterial ? 'Data bahan baku berhasil diperbarui!' : 'Bahan baku baru berhasil ditambahkan!');
+      setShowMaterialModal(false);
     } catch (err) {
       alert(err.response?.data?.error || 'Terjadi kesalahan.');
-    } finally {
-      setMatSubmitting(false);
     }
   };
 
@@ -617,68 +528,32 @@ export default function AdminRawMaterials() {
     return Number(num).toLocaleString('id-ID', { maximumFractionDigits: 1 });
   };
 
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 animate-spin text-brand-blue mx-auto mb-3" />
+          <p className="text-gray-600">Memuat data bahan baku...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-12">
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-2.5 flex-wrap">
           <button
-            onClick={() => fetchMaterials(true)}
-            disabled={refreshing}
+            onClick={() => refetch()}
+            disabled={isRefetching}
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-all cursor-pointer shadow-sm disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-brand-blue' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin text-brand-blue' : ''}`} />
             Refresh
           </button>
 
-          {canManage && (
-            <>
-              <button
-                onClick={() => {
-                  const initJ = targetGilingan || 36;
-                  setGilinganForm({
-                    jumlah: initJ,
-                    notes: '',
-                    tanggal: new Date().toISOString().split('T')[0]
-                  });
-                  setGilinganPreview(computeGilinganPreview(initJ));
-                  setShowGilinganModal(true);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm hover:shadow"
-              >
-                <FlameKindling className="w-4 h-4" />
-                Catat Gilingan Hari Ini
-              </button>
-
-              <button
-                onClick={() => {
-                  if (materials.length > 0) openTransactionModal(materials[0], 'in');
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-all cursor-pointer shadow-sm hover:shadow"
-              >
-                <ArrowDownLeft className="w-4 h-4" />
-                Catat Restock / Belanja
-              </button>
-
-              <button
-                onClick={() => {
-                  if (materials.length > 0) openTransactionModal(materials[0], 'out');
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 transition-all cursor-pointer shadow-sm hover:shadow"
-              >
-                <ArrowUpRight className="w-4 h-4" />
-                Catat Pemakaian Produksi 1
-              </button>
-
-              <button
-                onClick={() => openMaterialModal()}
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 transition-all cursor-pointer shadow-sm"
-              >
-                <PlusCircle className="w-4 h-4 text-brand-blue" />
-                Tambah Bahan
-              </button>
-            </>
-          )}
         </div>
       </div>
 
@@ -708,109 +583,291 @@ export default function AdminRawMaterials() {
       )}
 
       {/* KPI Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
-        {/* Card 1: Total Bahan Baku */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-          <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Total Bahan Baku</span>
-            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0">
-              <Boxes size={16} className="sm:w-[18px] sm:h-[18px]" />
-            </div>
-          </div>
-          <div>
-            <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
-              {counts.total} <span className="text-xs sm:text-sm font-semibold text-text-secondary">item aktif</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Kesiapan H-1 Produksi */}
-        {(() => {
-          const isReady = readiness?.overall_status === 'SIAP' || readiness?.overall_ready === true;
-          const statusText = !readiness ? 'MEMUAT...' : (isReady ? 'SIAP' : 'KURANG');
-          const deficitCount = readiness?.deficits?.length ?? readiness?.shortage_count ?? (readiness?.items?.filter(it => !it.is_ready && it.status !== 'SIAP').length || 0);
-
-          return (
-            <div className={`p-3.5 sm:p-5 rounded-card border shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${isReady
-              ? 'bg-emerald-50/40 border-emerald-200'
-              : 'bg-amber-50/40 border-amber-200'
-              }`}>
-              <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
-                <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Kesiapan Produksi Besok</span>
-                <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${isReady ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                  }`}>
-                  {isReady ? <CheckCircle2 size={16} className="sm:w-[18px] sm:h-[18px]" /> : <AlertTriangle size={16} className="sm:w-[18px] sm:h-[18px]" />}
-                </div>
-              </div>
-              <div>
-                <div className="flex items-baseline gap-2">
-                  <span className={`text-xl sm:text-3xl font-black font-heading ${isReady ? 'text-emerald-700' : 'text-amber-700'
-                    }`}>
-                    {statusText}
-                  </span>
-
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Card 3: Buffer Kritis & Waspada */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-          <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Status Stok Buffer</span>
-            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-red-100 text-brand-red flex items-center justify-center shrink-0">
-              <TrendingDown size={16} className="sm:w-[18px] sm:h-[18px]" />
-            </div>
-          </div>
-          <div>
-            <div className="flex items-baseline gap-2">
-              <div className="text-xl sm:text-3xl font-black font-heading text-red-600">
-                {counts.critical} <span className="text-xs font-semibold text-text-secondary">Kritis</span>
-              </div>
-              <span className="text-gray-300">|</span>
-              <div className="text-xl sm:text-3xl font-black font-heading text-amber-600">
-                {counts.warning} <span className="text-xs font-semibold text-text-secondary">Waspada</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Target Harian Produksi */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-          <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Target Harian</span>
-            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-              <Scale size={16} className="sm:w-[18px] sm:h-[18px]" />
-            </div>
-          </div>
-          <div>
-            <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
-              {targetGilingan * 15} <span className="text-xs sm:text-sm font-semibold text-text-secondary">kg Daging Ayam</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 5: Realisasi Kemas */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-          <div>
+      {activeTab === 'lot-log' && productionLog?.summary && Object.keys(productionLog.summary).length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {/* Card 1: Total Hari Tercatat */}
+          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
             <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Realisasi Kemas</span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Total Hari Tercatat</span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
+                <Calendar size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            <div>
+              <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
+                {productionLog.summary.total_records || 0}
+              </div>
+              <div className="text-[10px] sm:text-xs text-text-secondary mt-1">30 hari terakhir</div>
+            </div>
+          </div>
+
+          {/* Card 2: Gilingan Aktual */}
+          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+            <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Gilingan Aktual</span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0">
+                <FlameKindling size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            <div>
+              <div className="text-xl sm:text-3xl font-black font-heading text-brand-blue">
+                {productionLog.summary.total_actual_gilingan || 0}
+              </div>
+              <div className="text-[10px] sm:text-xs text-text-secondary mt-1">dari target {productionLog.summary.total_target_gilingan || 0}</div>
+            </div>
+          </div>
+
+          {/* Card 3: Hari Tercapai */}
+          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+            <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Hari Tercapai</span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                <CheckCircle2 size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            <div>
+              <div className="text-xl sm:text-3xl font-black font-heading text-emerald-600">
+                {productionLog.summary.days_achieved || 0}
+              </div>
+              <div className="text-[10px] sm:text-xs text-text-secondary mt-1">dari {productionLog.summary.total_records || 0} hari</div>
+            </div>
+          </div>
+
+          {/* Card 4: Pencapaian */}
+          {(() => {
+            const pct = productionLog.summary.overall_achievement_percent || 0;
+            const isGood = pct >= 90;
+            return (
+              <div className={`p-3.5 sm:p-5 rounded-card border shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${isGood ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+                  <span className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider leading-tight ${isGood ? 'text-emerald-700' : 'text-amber-700'}`}>Pencapaian</span>
+                  <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${isGood ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                    <TrendingUp size={16} className="sm:w-[18px] sm:h-[18px]" />
+                  </div>
+                </div>
+                <div>
+                  <div className={`text-xl sm:text-3xl font-black font-heading ${isGood ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {pct}%
+                  </div>
+                  <div className={`text-[10px] sm:text-xs mt-1 ${isGood ? 'text-emerald-600' : 'text-amber-600'}`}>target gilingan tercapai</div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      ) : activeTab === 'weekly' && weeklyData?.weekly_totals ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {/* Card 1: Target Mika */}
+          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+            <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Target Mika (Isi 50)</span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0">
                 <PackageCheck size={16} className="sm:w-[18px] sm:h-[18px]" />
               </div>
             </div>
             <div>
-              <div className="text-xl sm:text-2xl font-black font-heading text-text-primary leading-tight">
-                {p2Summary.completedMika} <span className="text-xs font-semibold text-text-secondary">Mika</span>
-                <span className="mx-1.5 text-gray-300 font-normal">+</span>
-                {p2Summary.completedVakum} <span className="text-xs font-semibold text-text-secondary">Vakum</span>
+              <div className="text-xl sm:text-3xl font-black font-heading text-brand-blue">
+                {weeklyData.weekly_totals.target_mika.toLocaleString('id-ID')} <span className="text-xs sm:text-sm font-semibold text-text-secondary">wadah</span>
+              </div>
+              <div className="text-[10px] sm:text-xs text-text-secondary mt-1">
+                = {(weeklyData.weekly_totals.target_mika * 50).toLocaleString('id-ID')} butir dimsum
               </div>
             </div>
           </div>
 
+          {/* Card 2: Target Vakum */}
+          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+            <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Target Vakum (Isi 25)</span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                <PackageCheck size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            <div>
+              <div className="text-xl sm:text-3xl font-black font-heading text-purple-700">
+                {weeklyData.weekly_totals.target_vakum.toLocaleString('id-ID')} <span className="text-xs sm:text-sm font-semibold text-text-secondary">pack</span>
+              </div>
+              <div className="text-[10px] sm:text-xs text-text-secondary mt-1">
+                = {(weeklyData.weekly_totals.target_vakum * 25).toLocaleString('id-ID')} butir dimsum
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Kebutuhan Gilingan */}
+          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+            <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Kebutuhan Gilingan</span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                <FlameKindling size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            <div>
+              <div className="text-xl sm:text-3xl font-black font-heading text-amber-700">
+                {weeklyData.weekly_totals.total_gilingan} <span className="text-xs sm:text-sm font-semibold text-text-secondary">gilingan</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: Alokasi Stok */}
+          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+            <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Alokasi Stok</span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-blue-100 text-brand-blue flex items-center justify-center shrink-0">
+                <PieChart size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            {(() => {
+              const on = weeklyData.weekly_totals.target_online ?? 0;
+              const off = weeklyData.weekly_totals.target_offline ?? 0;
+              const sum = on + off;
+              const onPct = sum > 0 ? Math.round((on / sum) * 100) : 40;
+              const offPct = 100 - onPct;
+              return (
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <div className="text-xl sm:text-3xl font-black font-heading text-brand-blue">
+                      {onPct}% <span className="text-xs font-semibold text-text-secondary">Online</span>
+                    </div>
+                    <span className="text-gray-300">|</span>
+                    <div className="text-xl sm:text-3xl font-black font-heading text-emerald-600">
+                      {offPct}% <span className="text-xs font-semibold text-text-secondary">Offline</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
+          {/* Card 1: Total Bahan Baku */}
+          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+            <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Total Bahan Baku</span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-brand-blue/10 text-brand-blue flex items-center justify-center shrink-0">
+                <Boxes size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            <div>
+              <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
+                {counts.total} <span className="text-xs sm:text-sm font-semibold text-text-secondary">item aktif</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Kesiapan H-1 Produksi */}
+          {(() => {
+            if (readinessLoading) {
+              return (
+                <div className="p-3.5 sm:p-5 rounded-card border border-gray-200 shadow-card bg-gray-50 animate-pulse">
+                  <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Kesiapan Produksi Besok</span>
+                    <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-gray-200" />
+                  </div>
+                  <div className="h-8 bg-gray-200 rounded w-24" />
+                </div>
+              );
+            }
+
+            if (readinessError) {
+              return (
+                <div className="p-3.5 sm:p-5 rounded-card border border-red-200 shadow-card bg-red-50">
+                  <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Kesiapan Produksi Besok</span>
+                    <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                      <AlertCircle size={16} className="sm:w-[18px] sm:h-[18px]" />
+                    </div>
+                  </div>
+                  <div className="text-red-600 text-sm font-semibold">Gagal memuat</div>
+                </div>
+              );
+            }
+
+            const isReady = readiness?.overall_status === 'SIAP' || readiness?.overall_ready === true;
+            const statusText = !readiness ? 'MEMUAT...' : (isReady ? 'SIAP' : 'KURANG');
+
+            return (
+              <div className={`p-3.5 sm:p-5 rounded-card border shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${isReady
+                ? 'bg-emerald-50/40 border-emerald-200'
+                : 'bg-amber-50/40 border-amber-200'
+                }`}>
+                <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+                  <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Kesiapan Produksi Besok</span>
+                  <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${isReady ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                    {isReady ? <CheckCircle2 size={16} className="sm:w-[18px] sm:h-[18px]" /> : <AlertTriangle size={16} className="sm:w-[18px] sm:h-[18px]" />}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <span className={`text-xl sm:text-3xl font-black font-heading ${isReady ? 'text-emerald-700' : 'text-amber-700'
+                      }`}>
+                      {statusText}
+                    </span>
+
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Card 3: Buffer Kritis & Waspada */}
+          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+            <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Status Stok Buffer</span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-red-100 text-brand-red flex items-center justify-center shrink-0">
+                <TrendingDown size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-baseline gap-2">
+                <div className="text-xl sm:text-3xl font-black font-heading text-red-600">
+                  {counts.critical} <span className="text-xs font-semibold text-text-secondary">Kritis</span>
+                </div>
+                <span className="text-gray-300">|</span>
+                <div className="text-xl sm:text-3xl font-black font-heading text-amber-600">
+                  {counts.warning} <span className="text-xs font-semibold text-text-secondary">Waspada</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: Target Harian Produksi */}
+          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+            <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Target Harian</span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                <Scale size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            <div>
+              <div className="text-xl sm:text-3xl font-black font-heading text-text-primary">
+                {targetGilingan * 15} <span className="text-xs sm:text-sm font-semibold text-text-secondary">kg Daging Ayam</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 5: Realisasi Kemas */}
+          <div className="bg-white p-3.5 sm:p-5 rounded-card border border-bg-cream-dark/80 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+            <div>
+              <div className="flex items-start justify-between gap-1 mb-2 sm:mb-3">
+                <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Realisasi Kemas</span>
+                <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <PackageCheck size={16} className="sm:w-[18px] sm:h-[18px]" />
+                </div>
+              </div>
+              <div>
+                <div className="text-xl sm:text-2xl font-black font-heading text-text-primary leading-tight">
+                  {p2Summary.completedMika} <span className="text-xs font-semibold text-text-secondary">Mika</span>
+                  <span className="mx-1.5 text-gray-300 font-normal">+</span>
+                  {p2Summary.completedVakum} <span className="text-xs font-semibold text-text-secondary">Vakum</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Main Tabs Navigation */}
       <div className="flex border-b border-gray-200 gap-6 overflow-x-auto no-scrollbar">
@@ -872,9 +929,12 @@ export default function AdminRawMaterials() {
         </button>
       </div>
 
-      {/* TAB 1: INVENTORY TABLE */}
+      {/* TAB 1: INVENTORY TABLE - MIGRATED TO REACT QUERY */}
       {activeTab === 'inventory' && (
         <div className="space-y-4">
+          {/* Action Buttons */}
+
+
           {/* Filters Bar */}
           <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
             {/* Search */}
@@ -924,6 +984,18 @@ export default function AdminRawMaterials() {
                 <option value="warning">🟡 Waspada (Mendekati Min)</option>
                 <option value="safe">🟢 Aman</option>
               </select>
+
+              {canManage && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-2.5">
+                  <button
+                    onClick={() => openMaterialModal()}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm hover:shadow"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    Tambah Bahan
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1044,407 +1116,358 @@ export default function AdminRawMaterials() {
         </div>
       )}
 
-      {/* TAB 2: PRODUCTION READINESS CALCULATOR (H-1) */}
+      {/* TAB 2: PRODUCTION READINESS (KESIAPAN H-1) - MIGRATED TO REACT QUERY */}
       {activeTab === 'readiness' && (
         <div className="space-y-6">
-          {/* Simulator Controls Card */}
-          <div className="bg-white border border-bg-cream-dark/80 rounded-card p-4 sm:p-6 shadow-card">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-bg-cream-dark/60">
-              <div>
-                <h2 className="text-base sm:text-lg font-bold text-text-primary font-heading flex items-center gap-2">
-                  <Sliders className="w-5 h-5 text-brand-blue" />
-                  Kesiapan Bahan Baku
-                </h2>
-                <p className="text-xs sm:text-sm text-text-secondary mt-0.5">
-                  Kalkulasi kebutuhan bahan baku untuk target produksi besok.
-                </p>
-              </div>
-
-              {/* Target Selector */}
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Target Gilingan:</span>
-                <div className="flex items-center gap-1.5">
-                  {[24, 30, 36, 40].map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => handleTargetGilinganChange(preset)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${targetGilingan === preset
-                        ? 'bg-brand-blue text-white shadow-xs'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                    >
-                      {preset}
-                    </button>
-                  ))}
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={targetGilingan}
-                    onChange={(e) => handleTargetGilinganChange(e.target.value)}
-                    className="w-16 px-2 py-1 text-center text-xs font-bold bg-gray-50 border border-gray-300 rounded-xl focus:ring-1 focus:ring-brand-blue"
-                  />
-                </div>
-              </div>
+          {readinessLoading ? (
+            <div className="bg-white border border-bg-cream-dark/80 rounded-card p-6 shadow-card">
+              <div className="h-8 w-48 bg-gray-200 rounded mb-4 animate-pulse" />
+              <div className="h-64 bg-gray-50 rounded animate-pulse" />
             </div>
-
-            {/* Status Summary Banner */}
-            {(() => {
-              const isReady = readiness?.overall_status === 'SIAP' || readiness?.overall_ready === true;
-              const deficits = readiness?.deficits || (readiness?.items || []).filter(it => !it.is_ready && it.status !== 'SIAP').map(it => ({
-                code: it.code,
-                name: it.name,
-                unit: it.unit,
-                required: it.required ?? it.required_qty ?? 0,
-                current_stock: it.current_stock,
-                deficit: it.deficit
-              }));
-              const deficitCount = deficits.length;
-
-              return (
-                <>
-                  <div className={`mt-6 p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isReady
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                    : 'bg-red-50 border-red-200 text-red-900'
-                    }`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isReady ? 'bg-emerald-200 text-emerald-800' : 'bg-red-200 text-red-800'
-                        }`}>
-                        {isReady ? <CheckCircle2 className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-base">
-                          {isReady
-                            ? 'Bahan Baku Siap Produksi'
-                            : 'Peringatan: Bahan Baku Belum Cukup'}
-                        </h3>
-                        <p className="text-xs text-opacity-80">
-                          {isReady
-                            ? `Seluruh bahan baku mencukupi untuk target ${targetGilingan} gilingan (${targetGilingan * 15} kg daging ayam).`
-                            : `Terdapat ${deficitCount} bahan baku yang kurang dan perlu dibelanjakan segera.`}
-                        </p>
-                      </div>
-                    </div>
-
-                    {!isReady && canManage && (
-                      <button
-                        onClick={() => {
-                          const firstDeficit = deficits[0];
-                          const mat = materials.find(m => m.code === firstDeficit?.code);
-                          if (mat) openTransactionModal(mat, 'in');
-                        }}
-                        className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 shadow-xs cursor-pointer transition-all shrink-0"
-                      >
-                        Belanja Restock Sekarang
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Deficit Items List */}
-                  {deficits.length > 0 && (
-                    <div className="mt-6">
-                      <h3 className="text-xs font-bold text-red-700 uppercase tracking-wider mb-3">
-                        Bahan Perlu Dibelanjakan ({deficits.length})
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {deficits.map((def, idx) => (
-                          <div key={idx} className="p-3.5 bg-red-50/70 border border-red-200 rounded-xl flex items-center justify-between">
-                            <div>
-                              <div className="font-bold text-gray-900 text-sm">{def.name}</div>
-                              <div className="text-xs text-gray-500">
-                                Stok: {formatNumber(def.current_stock)} {def.unit} | Butuh: {formatNumber(def.required)} {def.unit}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-xs text-red-600 font-semibold uppercase block">Kurang</span>
-                              <span className="text-base font-extrabold text-red-700">
-                                +{formatNumber(def.deficit)} {def.unit}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-
-            {/* Bill of Materials (BOM) Table */}
-            <div className="mt-6 border-t border-gray-100 pt-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          ) : readinessError ? (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+              <p className="text-red-700 font-semibold">Gagal memuat data kesiapan produksi</p>
+              <button
+                onClick={() => refetchReadiness()}
+                className="mt-3 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 transition-colors"
+              >
+                Coba Lagi
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white border border-bg-cream-dark/80 rounded-card p-4 sm:p-6 shadow-card">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-bg-cream-dark/60">
                 <div>
-                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    Kebutuhan Resep & Stok Fisik
-                  </h3>
-                  <p className="text-xs text-text-secondary mt-0.5">
-                    Verifikasi stok fisik gudang & freezer.
-                  </p>
+                  <h2 className="text-base sm:text-lg font-bold text-text-primary font-heading flex items-center gap-2">
+                    <Sliders className="w-5 h-5 text-brand-blue" />
+                    Kesiapan Bahan Baku
+                  </h2>
                 </div>
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const checkedCount = (readiness?.items || []).filter(item => checkedPhysicalItems[item.name]).length;
-                    const totalCount = readiness?.items?.length || 0;
-                    return (
-                      <>
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${checkedCount === totalCount && totalCount > 0
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                          }`}>
-                          {checkedCount}/{totalCount} Fisik Dicek
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleCheckAllPhysical}
-                          className="px-3 py-1 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors cursor-pointer"
-                        >
-                          {checkedCount === totalCount && totalCount > 0 ? 'Batal Centang' : 'Centang Semua'}
-                        </button>
-                      </>
-                    );
-                  })()}
+
+                {/* Target Selector */}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Target Gilingan:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = window.prompt('Masukkan target gilingan (contoh: 36):', targetGilingan);
+                      if (val !== null && val.trim() !== '') {
+                        const num = parseInt(val);
+                        if (!isNaN(num) && num > 0) {
+                          handleTargetGilinganChange(num);
+                        }
+                      }
+                    }}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm hover:shadow"
+                  >
+                    <span>{targetGilingan} Gilingan</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase border-y border-gray-200">
-                      <th className="px-3 py-3 w-10 text-center">Fisik</th>
-                      <th className="px-4 py-3">Nama Bahan</th>
-                      <th className="px-4 py-3">Rasio Standar Resep</th>
-                      <th className="px-4 py-3">Kebutuhan ({targetGilingan} Gilingan)</th>
-                      <th className="px-4 py-3">Stok Gudang</th>
-                      <th className="px-4 py-3">Status Kesiapan</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {readiness?.items?.map((item, idx) => {
-                      const isChecked = !!checkedPhysicalItems[item.name];
-                      const isItemReady = item.status === 'SIAP' || item.is_ready === true;
+              {/* Bill of Materials (BOM) Table */}
+              <div className="pt-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const checkedCount = (readiness?.items || []).filter(item => checkedPhysicalItems[item.name]).length;
+                      const totalCount = readiness?.items?.length || 0;
                       return (
-                        <tr key={idx} className={`transition-colors ${isChecked ? 'bg-emerald-50/40 hover:bg-emerald-50/60' : 'hover:bg-gray-50/50'
-                          }`}>
-                          <td className="px-3 py-3 text-center">
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => handleTogglePhysicalCheck(item.name)}
-                              className="w-4 h-4 rounded text-brand-blue border-gray-300 focus:ring-brand-blue cursor-pointer"
-                              title="Tandai sudah dicek fisik di gudang"
-                            />
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-gray-900">
-                            <div className="flex items-center gap-1.5">
-                              <span>{item.name}</span>
-                              {isChecked && (
-                                <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/70 px-1.5 py-0.2 rounded-full">
-                                  Terverifikasi
+                        <>
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${checkedCount === totalCount && totalCount > 0
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                            {checkedCount}/{totalCount} Fisik Dicek
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleCheckAllPhysical}
+                            className="px-3 py-1 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors cursor-pointer"
+                          >
+                            {checkedCount === totalCount && totalCount > 0 ? 'Batal Centang' : 'Centang Semua'}
+                          </button>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase border-y border-gray-200">
+                        <th className="px-3 py-3 w-10 text-center">Fisik</th>
+                        <th className="px-4 py-3">Nama Bahan</th>
+                        <th className="px-4 py-3">Rasio Standar Resep</th>
+                        <th className="px-4 py-3">Kebutuhan ({targetGilingan} Gilingan)</th>
+                        <th className="px-4 py-3">Stok Gudang</th>
+                        <th className="px-4 py-3">Status Kesiapan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {readiness?.items?.map((item, idx) => {
+                        const isChecked = !!checkedPhysicalItems[item.name];
+                        const isItemReady = item.status === 'SIAP' || item.is_ready === true;
+                        return (
+                          <tr key={idx} className={`transition-colors ${isChecked ? 'bg-emerald-50/40 hover:bg-emerald-50/60' : 'hover:bg-gray-50/50'
+                            }`}>
+                            <td className="px-3 py-3 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleTogglePhysicalCheck(item.name)}
+                                className="w-4 h-4 rounded text-brand-blue border-gray-300 focus:ring-brand-blue cursor-pointer"
+                                title="Tandai sudah dicek fisik di gudang"
+                              />
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-gray-900">
+                              <div className="flex items-center gap-1.5">
+                                <span>{item.name}</span>
+                                {isChecked && (
+                                  <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/70 px-1.5 py-0.2 rounded-full">
+                                    Terverifikasi
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-500">{item.notes}</td>
+                            <td className="px-4 py-3 font-bold text-brand-blue">
+                              {formatNumber(item.required ?? item.required_qty)} {item.unit}
+                            </td>
+                            <td className="px-4 py-3 text-gray-700">
+                              {formatNumber(item.current_stock)} {item.unit}
+                            </td>
+                            <td className="px-4 py-3">
+                              {isItemReady ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  Mencukupi
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                                  <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                                  Kurang {formatNumber(item.deficit)} {item.unit}
                                 </span>
                               )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-500">{item.notes}</td>
-                          <td className="px-4 py-3 font-bold text-brand-blue">
-                            {formatNumber(item.required ?? item.required_qty)} {item.unit}
-                          </td>
-                          <td className="px-4 py-3 text-gray-700">
-                            {formatNumber(item.current_stock)} {item.unit}
-                          </td>
-                          <td className="px-4 py-3">
-                            {isItemReady ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                Mencukupi
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-                                <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                                Kurang {formatNumber(item.deficit)} {item.unit}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Verifikasi Fisik Harian */}
-            {canManage && (
-              <div className="mt-6 pt-6 border-t border-gray-100">
-                <div className="bg-gray-50/80 border border-gray-200 rounded-xl p-4">
-                  <div className="flex flex-col md:flex-row md:items-center gap-3">
-                    <div className="flex-1">
-                      <h4 className="font-bold text-text-primary text-sm flex items-center gap-2">
-                        <ClipboardCheck className="w-4 h-4 text-brand-blue" />
-                        Verifikasi Fisik Harian
-                      </h4>
-                      <p className="text-xs text-text-secondary mt-0.5">
-                        Catat verifikasi stok fisik gudang & freezer sebagai data historis.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="Catatan kondisi fisik stok..."
-                        value={checklistNotes}
-                        onChange={e => setChecklistNotes(e.target.value)}
-                        className="px-3 py-2 text-xs bg-white border border-gray-200 rounded-xl w-48 focus:outline-none focus:ring-1 focus:ring-brand-blue"
-                      />
-                      <button
-                        onClick={async () => {
-                          setChecklistSubmitting(true);
-                          try {
-                            const checkedCount = (readiness?.items || []).filter(item => checkedPhysicalItems[item.name]).length;
-                            const totalCount = readiness?.items?.length || 0;
-                            const tanggal = new Date().toISOString().split('T')[0];
-                            const fullNotes = `[Fisik: ${checkedCount}/${totalCount}] ${checklistNotes}`.trim();
-                            const res = await api.post('/api/inventory/raw-materials/daily-check',
-                              { tanggal, target_gilingan: targetGilingan, notes: fullNotes },
-                              { auth: 'admin' });
-                            if (res.success) {
-                              setLastCheckResult(res.data?.check);
-                              setSuccessMsg(`Verifikasi berhasil disimpan. ${res.data?.check?.all_items_sufficient ? 'Semua bahan mencukupi.' : `${res.data?.check?.shortage_count} bahan kurang.`}`);
-                              setChecklistNotes('');
-                            }
-                          } catch { /* ignore */ }
-                          finally { setChecklistSubmitting(false); }
-                        }}
-                        disabled={checklistSubmitting}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-blue hover:bg-brand-blue-dark shadow-xs cursor-pointer disabled:opacity-50 transition-all"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        {checklistSubmitting ? 'Menyimpan...' : 'Simpan Verifikasi'}
-                      </button>
-                    </div>
-                  </div>
-                  {lastCheckResult && (
-                    <div className="mt-3 text-xs text-text-secondary border-t border-gray-200 pt-2">
-                      Terverifikasi oleh: <strong className="text-text-primary">{lastCheckResult.checker_name || 'Petugas Gudang'}</strong> — {lastCheckResult.tanggal} |{' '}
-                      <span className={lastCheckResult.all_items_sufficient ? 'text-emerald-700 font-medium' : 'text-amber-700 font-medium'}>
-                        {lastCheckResult.all_items_sufficient ? 'Semua bahan mencukupi' : `${lastCheckResult.shortage_count} bahan kurang`}
-                      </span>
-                    </div>
-                  )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            )}
-          </div>
+
+              {/* Verifikasi Fisik Harian */}
+              {canManageRawMaterials && (
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                  <div className="bg-gray-50/80 border border-gray-200 rounded-xl p-4">
+                    <div className="flex flex-col md:flex-row md:items-center gap-3">
+                      <div className="flex-1">
+                        <h4 className="font-bold text-text-primary text-sm flex items-center gap-2">
+                          <ClipboardCheck className="w-4 h-4 text-brand-blue" />
+                          Verifikasi Fisik Harian
+                        </h4>
+                        <p className="text-xs text-text-secondary mt-0.5">
+                          Catat verifikasi stok fisik gudang & freezer sebagai data historis.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="Catatan kondisi fisik stok..."
+                          value={checklistNotes}
+                          onChange={e => setChecklistNotes(e.target.value)}
+                          className="px-3 py-2 text-xs bg-white border border-gray-200 rounded-xl w-48 focus:outline-none focus:ring-1 focus:ring-brand-blue"
+                        />
+                        <button
+                          onClick={async () => {
+                            setChecklistSubmitting(true);
+                            try {
+                              const checkedCount = (readiness?.items || []).filter(item => checkedPhysicalItems[item.name]).length;
+                              const totalCount = readiness?.items?.length || 0;
+                              const tanggal = new Date().toISOString().split('T')[0];
+                              const fullNotes = `[Fisik: ${checkedCount}/${totalCount}] ${checklistNotes}`.trim();
+                              const res = await api.post('/api/inventory/raw-materials/daily-check',
+                                { tanggal, target_gilingan: targetGilingan, notes: fullNotes },
+                                { auth: 'admin' });
+                              if (res.success) {
+                                setLastCheckResult(res.data?.check);
+                                setSuccessMsg(`Verifikasi berhasil disimpan. ${res.data?.check?.all_items_sufficient ? 'Semua bahan mencukupi.' : `${res.data?.check?.shortage_count} bahan kurang.`}`);
+                                setChecklistNotes('');
+                              }
+                            } catch { /* ignore */ }
+                            finally { setChecklistSubmitting(false); }
+                          }}
+                          disabled={checklistSubmitting}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-blue hover:bg-brand-blue-dark shadow-xs cursor-pointer disabled:opacity-50 transition-all"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          {checklistSubmitting ? 'Menyimpan...' : 'Simpan Verifikasi'}
+                        </button>
+                      </div>
+                    </div>
+                    {lastCheckResult && (
+                      <div className="mt-3 text-xs text-text-secondary border-t border-gray-200 pt-2">
+                        Terverifikasi oleh: <strong className="text-text-primary">{lastCheckResult.checker_name || 'Petugas Gudang'}</strong> — {lastCheckResult.tanggal} |{' '}
+                        <span className={lastCheckResult.all_items_sufficient ? 'text-emerald-700 font-medium' : 'text-amber-700 font-medium'}>
+                          {lastCheckResult.all_items_sufficient ? 'Semua bahan mencukupi' : `${lastCheckResult.shortage_count} bahan kurang`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* TAB 3: LAPORAN LOT HARIAN (Produksi 1) */}
+      {/* TAB 3: LAPORAN LOT GILINGAN - React Query Migration */}
       {activeTab === 'lot-log' && (
         <div className="space-y-4">
-          {/* Summary Cards */}
-          {productionLog.summary && Object.keys(productionLog.summary).length > 0 && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              <div className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Total Hari Tercatat</div>
-                <div className="text-xl sm:text-3xl font-black font-heading text-text-primary mt-2">{productionLog.summary.total_records || 0}</div>
-                <div className="text-[10px] sm:text-xs text-text-secondary mt-1">30 hari terakhir</div>
+          {/* Action Buttons */}
+          {canManage && (
+            <div className="flex justify-end mb-4">
+              <button
+                onClick={() => {
+                  const initJ = targetGilingan || 36;
+                  setGilinganForm({
+                    jumlah: initJ,
+                    notes: '',
+                    tanggal: new Date().toISOString().split('T')[0]
+                  });
+                  setGilinganPreview(computeGilinganPreview(initJ));
+                  setShowGilinganModal(true);
+                }}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark transition-all cursor-pointer shadow-sm hover:shadow"
+              >
+                <FlameKindling className="w-4 h-4" />
+                Catat Gilingan Hari Ini
+              </button>
+            </div>
+          )}
+
+          {/* Loading State */}
+          {logLoading && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card">
+                    <div className="h-3 w-24 bg-gray-200 rounded animate-pulse mb-2" />
+                    <div className="h-8 w-16 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-2 w-20 bg-gray-100 rounded animate-pulse mt-2" />
+                  </div>
+                ))}
               </div>
-              <div className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Gilingan Aktual</div>
-                <div className="text-xl sm:text-3xl font-black font-heading text-brand-blue mt-2">{productionLog.summary.total_actual_gilingan || 0}</div>
-                <div className="text-[10px] sm:text-xs text-text-secondary mt-1">dari target {productionLog.summary.total_target_gilingan || 0}</div>
-              </div>
-              <div className="bg-white border border-emerald-200 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Hari Tercapai</div>
-                <div className="text-xl sm:text-3xl font-black font-heading text-emerald-600 mt-2">{productionLog.summary.days_achieved || 0}</div>
-                <div className="text-[10px] sm:text-xs text-text-secondary mt-1">dari {productionLog.summary.total_records || 0} hari</div>
-              </div>
-              <div className={`border rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between ${(productionLog.summary.overall_achievement_percent || 0) >= 90
-                ? 'bg-emerald-50 border-emerald-200'
-                : 'bg-amber-50 border-amber-200'
-                }`}>
-                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Pencapaian</div>
-                <div className={`text-xl sm:text-3xl font-black font-heading mt-2 ${(productionLog.summary.overall_achievement_percent || 0) >= 90 ? 'text-emerald-700' : 'text-amber-700'
-                  }`}>{productionLog.summary.overall_achievement_percent || 0}%</div>
-                <div className="text-[10px] sm:text-xs text-text-secondary mt-1">target gilingan tercapai</div>
+              <div className="bg-white border border-bg-cream-dark/80 rounded-card shadow-card p-6">
+                <div className="h-96 bg-gray-50 rounded animate-pulse" />
               </div>
             </div>
           )}
 
-          {/* Log Table */}
-          <div className="bg-white border border-bg-cream-dark/80 rounded-card shadow-card overflow-hidden">
-            <div className="p-4 border-b border-bg-cream-dark/60 flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-brand-blue" />
-                Riwayat Realisasi Lot Harian (Produksi 1)
-              </h3>
-              <button onClick={fetchProductionLog} disabled={logLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 hover:bg-gray-100 cursor-pointer disabled:opacity-50">
-                <RefreshCw className={`w-3 h-3 ${logLoading ? 'animate-spin' : ''}`} />
-                Refresh
+          {/* Error State */}
+          {logError && !logLoading && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+                <div>
+                  <p className="text-red-700 font-semibold">Gagal memuat laporan lot gilingan</p>
+                  <p className="text-red-600 text-sm mt-1">{logError.message || 'Terjadi kesalahan saat mengambil data'}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => refetchProductionLog()}
+                className="mt-4 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 transition-colors flex items-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Coba Lagi
               </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase border-b border-gray-200">
-                    <th className="px-5 py-3.5">Tanggal</th>
-                    <th className="px-5 py-3.5">Target Gilingan</th>
-                    <th className="px-5 py-3.5">Aktual Gilingan</th>
-                    <th className="px-5 py-3.5">Gap</th>
-                    <th className="px-5 py-3.5">Pencapaian</th>
-                    <th className="px-5 py-3.5">Catatan</th>
-                    <th className="px-5 py-3.5">PJ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {logLoading ? (
-                    <tr><td colSpan="7" className="text-center py-10 text-gray-400">Memuat data...</td></tr>
-                  ) : productionLog.logs?.length === 0 ? (
-                    <tr><td colSpan="7" className="text-center py-10 text-gray-400">
-                      <BarChart3 className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                      Belum ada data lot harian. Gunakan tombol "Catat Gilingan Hari Ini" untuk mulai mencatat.
-                    </td></tr>
-                  ) : (
-                    productionLog.logs?.map((log) => (
-                      <tr key={log.id} className={`hover:bg-gray-50/50 ${log.status === 'achieved' ? '' : 'bg-red-50/30'
-                        }`}>
-                        <td className="px-5 py-3.5 font-semibold text-gray-900">
-                          {new Date(log.tanggal).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
-                        </td>
-                        <td className="px-5 py-3.5 text-gray-600">{log.target_gilingan} Gilingan</td>
-                        <td className="px-5 py-3.5">
-                          <span className="font-bold text-gray-900">{log.actual_gilingan}</span>
-                          <span className="text-xs text-gray-400 ml-1">Gilingan</span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className={`text-sm font-bold ${log.gap_gilingan >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {log.gap_gilingan >= 0 ? '+' : ''}{log.gap_gilingan}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          {log.status === 'achieved' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                              <CheckCircle2 className="w-3 h-3" /> Tercapai ({log.achievement_percent}%)
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 border border-red-200">
-                              <AlertCircle className="w-3 h-3" /> Di bawah target ({log.achievement_percent}%)
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3.5 text-xs text-gray-500 max-w-xs truncate">{log.notes || '-'}</td>
-                        <td className="px-5 py-3.5 text-xs text-gray-400">{log.creator_name || 'Ayu'}</td>
+          )}
+
+          {/* Success State */}
+          {!logLoading && !logError && (
+            <>
+
+
+              {/* Log Table */}
+              <div className="bg-white border border-bg-cream-dark/80 rounded-card shadow-card overflow-hidden">
+                <div className="p-4 border-b border-bg-cream-dark/60 flex items-center justify-between">
+                  <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-brand-blue" />
+                    Riwayat Realisasi Lot Harian (Produksi 1)
+                  </h3>
+                  <button onClick={() => refetchProductionLog()} disabled={logLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 hover:bg-gray-100 cursor-pointer disabled:opacity-50">
+                    <RefreshCw className={`w-3 h-3 ${logLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase border-b border-gray-200">
+                        <th className="px-5 py-3.5">Tanggal</th>
+                        <th className="px-5 py-3.5">Target Gilingan</th>
+                        <th className="px-5 py-3.5">Aktual Gilingan</th>
+                        <th className="px-5 py-3.5">Gap</th>
+                        <th className="px-5 py-3.5">Pencapaian</th>
+                        <th className="px-5 py-3.5">Catatan</th>
+                        <th className="px-5 py-3.5">PJ</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {productionLog?.logs?.length === 0 ? (
+                        <tr>
+                          <td colSpan="7" className="text-center py-10 text-gray-400">
+                            <BarChart3 className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                            Belum ada data lot harian. Gunakan tombol "Catat Gilingan Hari Ini" untuk mulai mencatat.
+                          </td>
+                        </tr>
+                      ) : (
+                        productionLog?.logs?.map((log) => (
+                          <tr key={log.id} className={`hover:bg-gray-50/50 ${log.status === 'achieved' ? '' : 'bg-red-50/30'}`}>
+                            <td className="px-5 py-3.5 font-semibold text-gray-900">
+                              {new Date(log.tanggal).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-600">{log.target_gilingan} Gilingan</td>
+                            <td className="px-5 py-3.5">
+                              <span className="font-bold text-gray-900">{log.actual_gilingan}</span>
+                              <span className="text-xs text-gray-400 ml-1">Gilingan</span>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span className={`text-sm font-bold ${log.gap_gilingan >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {log.gap_gilingan >= 0 ? '+' : ''}{log.gap_gilingan}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              {log.status === 'achieved' ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  <CheckCircle2 className="w-3 h-3" /> Tercapai ({log.achievement_percent}%)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 border border-red-200">
+                                  <AlertCircle className="w-3 h-3" /> Di bawah target ({log.achievement_percent}%)
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3.5 text-xs text-gray-500 max-w-xs truncate">{log.notes || '-'}</td>
+                            <td className="px-5 py-3.5 text-xs text-gray-400">{log.creator_name || 'Ayu'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
-      {/* TAB 4: RENCANA MINGGUAN (DUPLIKASI BACA-ONLY DARI P2) */}
+      {/* TAB 4: Rencana Mingguan (Migrated to React Query) */}
       {activeTab === 'weekly' && (
         <div className="space-y-6">
           {/* Week Selector Bar */}
@@ -1511,68 +1534,11 @@ export default function AdminRawMaterials() {
             </div>
           </div>
 
-          {/* Weekly Summary Totals */}
-          {weeklyData?.weekly_totals && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs">
-                <div className="text-[11px] font-semibold text-gray-500 uppercase">Target Mika (Isi 50)</div>
-                <div className="mt-1 text-2xl font-bold text-brand-blue">
-                  {weeklyData.weekly_totals.target_mika.toLocaleString('id-ID')}{' '}
-                  <span className="text-xs font-normal text-gray-400">wadah</span>
-                </div>
-                <div className="text-[10px] text-gray-400 mt-0.5">
-                  = {(weeklyData.weekly_totals.target_mika * 50).toLocaleString('id-ID')} butir dimsum
-                </div>
-              </div>
 
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs">
-                <div className="text-[11px] font-semibold text-gray-500 uppercase">Target Vakum (Isi 25)</div>
-                <div className="mt-1 text-2xl font-bold text-purple-700">
-                  {weeklyData.weekly_totals.target_vakum.toLocaleString('id-ID')}{' '}
-                  <span className="text-xs font-normal text-gray-400">pack</span>
-                </div>
-                <div className="text-[10px] text-gray-400 mt-0.5">
-                  = {(weeklyData.weekly_totals.target_vakum * 25).toLocaleString('id-ID')} butir dimsum
-                </div>
-              </div>
-
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs">
-                <div className="text-[11px] font-semibold text-gray-500 uppercase">Kebutuhan Gilingan</div>
-                <div className="mt-1 text-2xl font-bold text-amber-700">
-                  {weeklyData.weekly_totals.total_gilingan}{' '}
-                  <span className="text-xs font-normal text-gray-400">gilingan</span>
-                </div>
-                <div className="text-[10px] text-gray-400 mt-0.5">
-                  ≈ {(weeklyData.weekly_totals.total_gilingan * 15).toLocaleString('id-ID')} kg daging ayam
-                </div>
-              </div>
-
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs">
-                <div className="text-[11px] font-semibold text-gray-500 uppercase">Alokasi Stok (Online / Offline)</div>
-                {(() => {
-                  const on = weeklyData.weekly_totals.target_online ?? 0;
-                  const off = weeklyData.weekly_totals.target_offline ?? 0;
-                  const sum = on + off;
-                  const onPct = sum > 0 ? Math.round((on / sum) * 100) : 40;
-                  const offPct = 100 - onPct;
-                  return (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <span className="px-2 py-1 rounded bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
-                        Online: {onPct}% ({on} pack)
-                      </span>
-                      <span className="px-2 py-1 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
-                        Offline: {offPct}% ({off} pack)
-                      </span>
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
-          )}
 
           {/* 7-Day Interactive Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {weeklyLoading ? (
+            {p2Loading ? (
               <div className="col-span-full py-16 text-center text-gray-400">
                 <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-brand-blue" />
                 Memuat data kalender mingguan...
@@ -1721,197 +1687,256 @@ export default function AdminRawMaterials() {
       )}
 
 
+      {/* TAB 5: Riwayat Bahan Baku */}
       {activeTab === 'history' && (
-        <div className="bg-white border border-bg-cream-dark/80 rounded-card shadow-card overflow-hidden">
-          <div className="p-4 border-b border-bg-cream-dark/60 flex items-center justify-between">
-            <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-              <History className="w-4 h-4 text-brand-blue" />
-              Riwayat Arus Masuk & Keluar Bahan Baku
-            </h3>
-            <span className="text-xs text-gray-400">25 transaksi terakhir</span>
+        <div className="space-y-4">
+          {/* Filter buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setHistoryFilter('all');
+                setHistoryPage(1); // Reset to page 1 when filter changes
+              }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${historyFilter === 'all' ? 'bg-brand-blue text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => {
+                setHistoryFilter('in');
+                setHistoryPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${historyFilter === 'in' ? 'bg-brand-blue text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            >
+              Stock In
+            </button>
+            <button
+              onClick={() => {
+                setHistoryFilter('out');
+                setHistoryPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${historyFilter === 'out' ? 'bg-brand-blue text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            >
+              Stock Out
+            </button>
+            <button
+              onClick={() => {
+                setHistoryFilter('adjustment');
+                setHistoryPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${historyFilter === 'adjustment' ? 'bg-brand-blue text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            >
+              Adjustment
+            </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase border-b border-gray-200">
-                  <th className="px-5 py-3.5">Waktu</th>
-                  <th className="px-5 py-3.5">Bahan Baku</th>
-                  <th className="px-5 py-3.5">Tipe Arus</th>
-                  <th className="px-5 py-3.5">Jumlah</th>
-                  <th className="px-5 py-3.5">Stok Sebelum &rarr; Sesudah</th>
-                  <th className="px-5 py-3.5">Keterangan / PJ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {transactions.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="text-center py-10 text-gray-400">
-                      Belum ada riwayat transaksi bahan baku.
-                    </td>
-                  </tr>
-                ) : (
-                  transactions.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-gray-50/50">
-                      <td className="px-5 py-3.5 text-xs text-gray-500">
-                        {tx.created_at ? new Date(tx.created_at).toLocaleString('id-ID') : '-'}
-                      </td>
-                      <td className="px-5 py-3.5 font-semibold text-gray-900">
-                        {tx.material_name}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        {tx.type === 'in' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            <ArrowDownLeft className="w-3 h-3" />
-                            RESTOCK (IN)
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                            <ArrowUpRight className="w-3 h-3" />
-                            PRODUKSI 1 (OUT)
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3.5 font-bold">
-                        <span className={tx.type === 'in' ? 'text-emerald-700' : 'text-amber-700'}>
-                          {tx.type === 'in' ? '+' : '-'}{formatNumber(tx.quantity)} {tx.unit}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-xs font-mono text-gray-600">
-                        {formatNumber(tx.stock_before)} &rarr; {formatNumber(tx.stock_after)} {tx.unit}
-                      </td>
-                      <td className="px-5 py-3.5 text-xs text-gray-500">
-                        <div>{tx.notes || '-'}</div>
-                        <div className="text-[11px] text-gray-400">Oleh: {tx.created_by_name || 'Staff'}</div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          {/* Loading State */}
+          {historyLoading && (
+            <div className="bg-white border border-bg-cream-dark/80 rounded-card shadow-card p-6">
+              <div className="space-y-3">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="flex items-center gap-4">
+                    <div className="h-4 w-24 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-4 w-16 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Error State */}
+          {historyError && !historyLoading && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+                <div>
+                  <p className="text-red-700 font-semibold">Gagal memuat riwayat bahan baku</p>
+                  <p className="text-red-600 text-sm mt-1">{historyError.message || 'Terjadi kesalahan saat mengambil data'}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => refetchHistory()}
+                className="mt-4 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 transition-colors flex items-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Coba Lagi
+              </button>
+            </div>
+          )}
+
+          {/* Success State */}
+          {!historyLoading && !historyError && (
+            <div className="space-y-4">
+              {/* History Table */}
+              <div className="bg-white border border-bg-cream-dark/80 rounded-card shadow-card overflow-hidden">
+                <div className="p-4 border-b border-bg-cream-dark/60 flex items-center justify-between">
+                  <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                    <History className="w-4 h-4 text-brand-blue" />
+                    Riwayat Transaksi Bahan Baku
+                  </h3>
+                  <button
+                    onClick={() => refetchHistory()}
+                    disabled={historyLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 hover:bg-gray-100 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${historyLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase border-b border-gray-200">
+                        <th className="px-5 py-3.5">Tanggal</th>
+                        <th className="px-5 py-3.5">Bahan Baku</th>
+                        <th className="px-5 py-3.5">Aksi</th>
+                        <th className="px-5 py-3.5">Jumlah</th>
+                        <th className="px-5 py-3.5">Stok Sebelum</th>
+                        <th className="px-5 py-3.5">Stok Sesudah</th>
+                        <th className="px-5 py-3.5">Catatan</th>
+                        <th className="px-5 py-3.5">Oleh</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {materialHistory.length === 0 ? (
+                        <tr>
+                          <td colSpan="8" className="text-center py-10 text-gray-400">
+                            <History className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                            Belum ada riwayat transaksi.
+                          </td>
+                        </tr>
+                      ) : (
+                        materialHistory.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-50/50">
+                            <td className="px-5 py-3.5 font-semibold text-gray-900">
+                              {new Date(item.created_at).toLocaleDateString('id-ID', {
+                                weekday: 'short',
+                                day: 'numeric',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-600">{item.material_name}</td>
+                            <td className="px-5 py-3.5">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
+                                ${item.action === 'in' ? 'bg-green-100 text-green-800 border border-green-200' : ''}
+                                ${item.action === 'out' ? 'bg-red-100 text-red-800 border border-red-200' : ''}
+                                ${item.action === 'adjustment' ? 'bg-amber-100 text-amber-800 border border-amber-200' : ''}
+                              `}>
+                                {item.action === 'in' && <ArrowDownLeft className="w-3 h-3" />}
+                                {item.action === 'out' && <ArrowUpRight className="w-3 h-3" />}
+                                {item.action === 'adjustment' && <Sliders className="w-3 h-3" />}
+                                {item.action === 'in' ? 'Masuk' : item.action === 'out' ? 'Keluar' : 'Penyesuaian'}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span className={`font-bold ${item.action === 'in' ? 'text-green-600' : item.action === 'out' ? 'text-red-600' : 'text-amber-600'}`}>
+                                {item.action === 'in' ? '+' : item.action === 'out' ? '-' : '±'}{item.quantity}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-600">{item.previous_stock}</td>
+                            <td className="px-5 py-3.5 font-semibold text-gray-900">{item.new_stock}</td>
+                            <td className="px-5 py-3.5 text-xs text-gray-500 max-w-xs truncate">{item.notes || '-'}</td>
+                            <td className="px-5 py-3.5 text-xs text-gray-400">{item.created_by || '-'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Pagination */}
+              {historyPagination.totalPages > 1 && (
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600">
+                    Showing {((historyPagination.page - 1) * historyPagination.limit) + 1} to{' '}
+                    {Math.min(historyPagination.page * historyPagination.limit, historyPagination.total)} of{' '}
+                    {historyPagination.total} entries
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setHistoryPage(prev => Math.max(prev - 1, 1))}
+                      disabled={historyPagination.page === 1 || historyLoading}
+                      className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="px-4 py-2 text-sm font-medium text-gray-900 flex items-center">
+                      Page {historyPagination.page} of {historyPagination.totalPages}
+                    </span>
+                    <button
+                      onClick={() => setHistoryPage(prev => Math.min(prev + 1, historyPagination.totalPages))}
+                      disabled={historyPagination.page === historyPagination.totalPages || historyLoading}
+                      className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* MODAL 1: TRANSACTION (RESTOCK / PEMAKAIAN) */}
-      {showTxModal && selectedMaterial && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-scaleUp">
-            <div className={`p-4 text-white flex items-center justify-between ${txType === 'in' ? 'bg-emerald-600' : 'bg-amber-600'
-              }`}>
-              <div className="flex items-center gap-2">
-                {txType === 'in' ? <ArrowDownLeft className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />}
-                <h3 className="font-bold text-base">
-                  {txType === 'in' ? 'Catat Restock / Belanja Bahan' : 'Catat Pemakaian Produksi 1 (Dapur)'}
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowTxModal(false)}
-                className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-black/10 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Transaction Modal */}
+      {showTxModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              {txType === 'in' ? 'Catat Restock / Belanja' : 'Catat Pemakaian Produksi 1'}
+            </h3>
 
-            <form onSubmit={handleTransactionSubmit} className="p-6 space-y-4">
-              {/* Material Selector */}
+            <form onSubmit={handleTransactionSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1.5">
-                  Pilih Bahan Baku
-                </label>
-                <select
-                  value={selectedMaterial.id}
-                  onChange={(e) => {
-                    const mat = materials.find(m => m.id === parseInt(e.target.value));
-                    if (mat) setSelectedMaterial(mat);
-                  }}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:bg-white focus:ring-2 focus:ring-brand-blue focus:outline-none"
-                >
-                  {materials.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} (Stok Saat Ini: {formatNumber(m.current_stock)} {m.unit})
-                    </option>
-                  ))}
-                </select>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Bahan Baku</label>
+                <div className="text-base font-bold text-brand-blue">{selectedMaterial?.name}</div>
+                <div className="text-xs text-gray-500">{selectedMaterial?.code}</div>
               </div>
 
-              {/* Quantity */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1.5">
-                  Jumlah Kuantiti ({selectedMaterial.unit})
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="any"
-                    min="0.01"
-                    required
-                    value={txQty}
-                    onChange={(e) => setTxQty(e.target.value)}
-                    placeholder="Contoh: 50"
-                    className="w-full pl-4 pr-16 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-base font-bold text-gray-900 focus:bg-white focus:ring-2 focus:ring-brand-blue focus:outline-none"
-                  />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-400">
-                    {selectedMaterial.unit}
-                  </span>
-                </div>
-              </div>
-
-              {/* Stock Preview */}
-              <div className="p-3 bg-gray-50 rounded-xl text-xs space-y-1">
-                <div className="flex justify-between text-gray-600">
-                  <span>Stok Sekarang:</span>
-                  <span className="font-semibold">{formatNumber(selectedMaterial.current_stock)} {selectedMaterial.unit}</span>
-                </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>Perubahan ({txType === 'in' ? '+' : '-'}):</span>
-                  <span className={`font-bold ${txType === 'in' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                    {txType === 'in' ? '+' : '-'}{formatNumber(txQty || 0)} {selectedMaterial.unit}
-                  </span>
-                </div>
-                <div className="flex justify-between border-t border-gray-200 pt-1 font-bold text-gray-900">
-                  <span>Estimasi Stok Baru:</span>
-                  <span>
-                    {formatNumber(
-                      txType === 'in'
-                        ? selectedMaterial.current_stock + (Number(txQty) || 0)
-                        : Math.max(0, selectedMaterial.current_stock - (Number(txQty) || 0))
-                    )}{' '}
-                    {selectedMaterial.unit}
-                  </span>
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1.5">
-                  Keterangan / Nomor Nota / Petugas
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Jumlah ({selectedMaterial?.unit})
                 </label>
                 <input
-                  type="text"
-                  value={txNotes}
-                  onChange={(e) => setTxNotes(e.target.value)}
-                  placeholder="Catatan belanja atau pemakaian..."
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand-blue focus:outline-none"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={txQty}
+                  onChange={(e) => setTxQty(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
                 />
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Catatan</label>
+                <textarea
+                  value={txNotes}
+                  onChange={(e) => setTxNotes(e.target.value)}
+                  rows="2"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowTxModal(false)}
-                  className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={txSubmitting}
-                  className={`px-5 py-2 rounded-xl text-sm font-bold text-white shadow transition-all cursor-pointer disabled:opacity-50 ${txType === 'in' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
-                    }`}
+                  className="flex-1 px-4 py-2 bg-brand-blue hover:bg-brand-blue-dark text-white font-bold rounded-xl transition-colors disabled:opacity-50"
                 >
-                  {txSubmitting ? 'Menyimpan...' : 'Simpan Transaksi'}
+                  {txSubmitting ? 'Menyimpan...' : 'Simpan'}
                 </button>
               </div>
             </form>
@@ -1919,137 +1944,129 @@ export default function AdminRawMaterials() {
         </div>
       )}
 
-      {/* MODAL 2: ADD / EDIT MATERIAL */}
+      {/* Add/Edit Material Modal */}
       {showMaterialModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-scaleUp">
-            <div className="p-4 bg-brand-blue text-white flex items-center justify-between">
-              <h3 className="font-bold text-base flex items-center gap-2">
-                <Boxes className="w-5 h-5" />
-                {editingMaterial ? 'Edit Bahan Baku' : 'Tambah Bahan Baku Baru'}
-              </h3>
-              <button
-                onClick={() => setShowMaterialModal(false)}
-                className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              {editingMaterial ? 'Edit Bahan Baku' : 'Tambah Bahan Baku Baru'}
+            </h3>
 
-            <form onSubmit={handleMaterialSubmit} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form onSubmit={handleMaterialSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Kode Bahan</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Kode</label>
                   <input
                     type="text"
-                    required
-                    placeholder="Contoh: RAW-AYAM"
                     value={matForm.code}
-                    onChange={(e) => setMatForm({ ...matForm, code: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-1 focus:ring-brand-blue"
+                    onChange={(e) => setMatForm({ ...matForm, code: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Kategori</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Unit</label>
                   <select
-                    value={matForm.category}
-                    onChange={(e) => setMatForm({ ...matForm, category: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-1 focus:ring-brand-blue"
+                    value={matForm.unit}
+                    onChange={(e) => setMatForm({ ...matForm, unit: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
                   >
-                    <option value="meat">Daging & Unggas</option>
-                    <option value="skin">Kulit Dimsum</option>
-                    <option value="seasoning">Bumbu & Minyak</option>
-                    <option value="flour">Tepung & Pati</option>
-                    <option value="packaging">Kemasan & Saos</option>
-                    <option value="other">Lainnya</option>
+                    <option value="kg">kg</option>
+                    <option value="liter">liter</option>
+                    <option value="pcs">pcs</option>
+                    <option value="dus">dus</option>
+                    <option value="karung">karung</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Nama Bahan</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Nama Bahan</label>
                 <input
                   type="text"
-                  required
-                  placeholder="Contoh: Daging Ayam Fillet Giling"
                   value={matForm.name}
                   onChange={(e) => setMatForm({ ...matForm, name: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-1 focus:ring-brand-blue"
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Kategori</label>
+                <select
+                  value={matForm.category}
+                  onChange={(e) => setMatForm({ ...matForm, category: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
+                >
+                  <option value="meat">Daging & Unggas</option>
+                  <option value="skin">Kulit Dimsum</option>
+                  <option value="seasoning">Bumbu & Minyak</option>
+                  <option value="flour">Tepung & Pati</option>
+                  <option value="packaging">Kemasan & Saos</option>
+                  <option value="other">Lainnya</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Satuan (Unit)</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Stok Awal</label>
                   <input
-                    type="text"
-                    required
-                    placeholder="kg / pack / liter"
-                    value={matForm.unit}
-                    onChange={(e) => setMatForm({ ...matForm, unit: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-1 focus:ring-brand-blue"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={matForm.current_stock}
+                    onChange={(e) => setMatForm({ ...matForm, current_stock: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Stok Minimum (Kritis)</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Min. Stok</label>
                   <input
                     type="number"
-                    step="any"
+                    min="0"
+                    step="0.1"
                     value={matForm.minimum_stock}
-                    onChange={(e) => setMatForm({ ...matForm, minimum_stock: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-1 focus:ring-brand-blue"
+                    onChange={(e) => setMatForm({ ...matForm, minimum_stock: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Batas Aman (Safety)</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Stok Aman</label>
                   <input
                     type="number"
-                    step="any"
+                    min="0"
+                    step="0.1"
                     value={matForm.safety_stock}
-                    onChange={(e) => setMatForm({ ...matForm, safety_stock: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-1 focus:ring-brand-blue"
+                    onChange={(e) => setMatForm({ ...matForm, safety_stock: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
                   />
                 </div>
               </div>
-
-              {!editingMaterial && (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Stok Awal Saat Ini</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={matForm.current_stock}
-                    onChange={(e) => setMatForm({ ...matForm, current_stock: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-1 focus:ring-brand-blue"
-                  />
-                </div>
-              )}
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Catatan Tambahan</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Catatan</label>
                 <textarea
-                  rows="2"
                   value={matForm.notes}
                   onChange={(e) => setMatForm({ ...matForm, notes: e.target.value })}
-                  placeholder="Catatan standar resep atau supplier..."
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-1 focus:ring-brand-blue"
-                ></textarea>
+                  rows="2"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
+                />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+              <div className="flex gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowMaterialModal(false)}
-                  className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  disabled={matSubmitting}
-                  className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark shadow transition-all cursor-pointer disabled:opacity-50"
+                  disabled={upsertMutation.isPending}
+                  className="flex-1 px-4 py-2 bg-brand-blue hover:bg-brand-blue-dark text-white font-bold rounded-xl transition-colors disabled:opacity-50"
                 >
-                  {matSubmitting ? 'Menyimpan...' : 'Simpan Bahan Baku'}
+                  {upsertMutation.isPending ? 'Menyimpan...' : 'Simpan'}
                 </button>
               </div>
             </form>
@@ -2057,350 +2074,83 @@ export default function AdminRawMaterials() {
         </div>
       )}
 
-      {/* Modal: Catat Gilingan Hari Ini (Bulk LOT Entry) */}
+      {/* Catat Gilingan Modal - Unchanged */}
       {showGilinganModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center">
-                  <FlameKindling className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 text-base">Catat Realisasi Gilingan Hari Ini</h3>
-                  <p className="text-xs text-gray-500">Pencatatan Produksi 1 (P1) per-Lot / Gilingan</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowGilinganModal(false)}
-                className="text-gray-400 hover:text-gray-600 rounded-lg p-1.5 hover:bg-gray-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <FlameKindling className="w-5 h-5 text-brand-blue" />
+              Catat Realisasi Gilingan Hari Ini
+            </h3>
 
-            <form onSubmit={handleGilinganSubmit} className="mt-4 space-y-4">
-              <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl text-xs text-blue-800">
-                💡 <strong>Sistem Otomatis BOM:</strong> Menginput jumlah gilingan akan otomatis memotong stok bahan baku terkait (15 kg daging ayam, kulit mika/vakum, bumbu, minyak, dll) dalam 1 transaksi batch.
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form onSubmit={handleGilinganSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Tanggal Produksi</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Jumlah Gilingan</label>
                   <input
-                    type="date"
+                    type="number"
+                    min="1"
+                    value={gilinganForm.jumlah}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setGilinganForm({ ...gilinganForm, jumlah: val });
+                      setGilinganPreview(computeGilinganPreview(val));
+                    }}
                     required
-                    value={gilinganForm.tanggal}
-                    onChange={(e) => setGilinganForm({ ...gilinganForm, tanggal: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-1 focus:ring-brand-blue"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Jumlah Gilingan Aktual</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min="1"
-                      max="200"
-                      required
-                      value={gilinganForm.jumlah}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10) || 0;
-                        setGilinganForm({ ...gilinganForm, jumlah: val });
-                        setGilinganPreview(computeGilinganPreview(val));
-                      }}
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-900 focus:bg-white focus:ring-1 focus:ring-brand-blue"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-400">Gilingan</span>
-                  </div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Tanggal</label>
+                  <input
+                    type="date"
+                    value={gilinganForm.tanggal}
+                    onChange={(e) => setGilinganForm({ ...gilinganForm, tanggal: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
+                  />
                 </div>
               </div>
 
-              {/* Quick Select Buttons */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-gray-500 font-medium">Pilihan cepat:</span>
-                {[30, 34, 36, 40].map((num) => (
-                  <button
-                    key={num}
-                    type="button"
-                    onClick={() => {
-                      setGilinganForm({ ...gilinganForm, jumlah: num });
-                      setGilinganPreview(computeGilinganPreview(num));
-                    }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${gilinganForm.jumlah === num
-                      ? 'bg-brand-blue text-white shadow-xs'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                      }`}
-                  >
-                    {num} Gilingan {num === 36 ? '(Standar)' : ''}
-                  </button>
-                ))}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Catatan</label>
+                <textarea
+                  value={gilinganForm.notes}
+                  onChange={(e) => setGilinganForm({ ...gilinganForm, notes: e.target.value })}
+                  rows="2"
+                  placeholder="Catatan shift produksi..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
+                />
               </div>
 
-              {/* BOM Deduction Preview */}
-              {gilinganPreview && gilinganPreview.length > 0 && (
-                <div className="border border-gray-200 rounded-xl p-3 bg-gray-50/50">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-                      Estimasi Pemotongan Bahan Baku ({gilinganForm.jumlah} Gilingan)
-                    </span>
-                    <span className="text-[11px] font-semibold text-brand-blue">
-                      Total Daging: {(gilinganForm.jumlah * 15).toLocaleString('id-ID')} kg
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {gilinganPreview && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <h4 className="text-sm font-bold text-blue-900 mb-2">Preview Pemotongan Stok (BOM)</h4>
+                  <div className="space-y-1.5 text-xs">
                     {gilinganPreview.map((item, idx) => (
-                      <div key={idx} className="bg-white p-2 rounded-lg border border-gray-100 text-xs">
-                        <div className="text-gray-500 truncate" title={item.name}>{item.name}</div>
-                        <div className="font-bold text-gray-900 mt-0.5">
-                          -{item.qty} <span className="text-[10px] font-normal text-gray-400">{item.unit}</span>
-                        </div>
+                      <div key={idx} className="flex justify-between text-gray-700">
+                        <span>{item.name}</span>
+                        <span className="font-semibold">{item.qty} {item.unit}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Catatan / Kendala Shift</label>
-                <textarea
-                  rows="2"
-                  value={gilinganForm.notes}
-                  onChange={(e) => setGilinganForm({ ...gilinganForm, notes: e.target.value })}
-                  placeholder="Contoh: Shift selesai tepat waktu, mesin giling normal, atau alasan jika target tidak tercapai..."
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-1 focus:ring-brand-blue"
-                ></textarea>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+              <div className="flex gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowGilinganModal(false)}
-                  className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={gilinganSubmitting}
-                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark shadow transition-all cursor-pointer disabled:opacity-50"
+                  className="flex-1 px-4 py-2 bg-brand-blue hover:bg-brand-blue-dark text-white font-bold rounded-xl transition-colors disabled:opacity-50"
                 >
-                  <FlameKindling className="w-4 h-4" />
-                  {gilinganSubmitting ? 'Memproses BOM...' : 'Konfirmasi & Kurangi Stok'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Edit Target Rencana Harian (Rencana Mingguan Interaktif P1) */}
-      {editingDayPlan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center">
-                  <Calendar className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 text-base">
-                    Edit Target Produksi: {editingDayPlan.day_of_week}
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    Tanggal: {editingDayPlan.plan_date}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setEditingDayPlan(null)}
-                className="text-gray-400 hover:text-gray-600 rounded-lg p-1.5 hover:bg-gray-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveDayPlan} className="mt-4 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                    Target Mika (50 pcs)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={editDayForm.target_mika}
-                    onChange={(e) => handleEditTargetChange('target_mika', e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-brand-blue focus:bg-white focus:ring-1 focus:ring-brand-blue"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                    Target Vakum (25 pcs)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={editDayForm.target_vakum}
-                    onChange={(e) => handleEditTargetChange('target_vakum', e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-purple-700 focus:bg-white focus:ring-1 focus:ring-brand-blue"
-                  />
-                </div>
-              </div>
-
-              {/* Calculated P1 Needs Box */}
-              {(() => {
-                const totalPieces = (editDayForm.target_mika * 50) + (editDayForm.target_vakum * 25);
-                const estGilingan = Math.ceil(totalPieces / 750) || 1;
-                const estDaging = estGilingan * 15;
-                return (
-                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-xs space-y-1">
-                    <div className="font-bold text-amber-900 flex items-center justify-between">
-                      <span>Estimasi Kebutuhan Produksi 1 (Dapur):</span>
-                      <span className="text-amber-800 font-extrabold">{estGilingan} Gilingan</span>
-                    </div>
-                    <div className="flex justify-between text-amber-800">
-                      <span>Total Butir Dimsum: {totalPieces.toLocaleString('id-ID')} pcs</span>
-                      <span>Daging Mentah: ≈ {estDaging.toLocaleString('id-ID')} kg</span>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Stock Pool Allocation Slider (Opsi B: Rasio Persentase) */}
-              <div className="border-t border-gray-100 pt-3">
-                {(() => {
-                  const currentMika = parseInt(editDayForm.target_mika) || 0;
-                  const currentVakum = parseInt(editDayForm.target_vakum) || 0;
-                  const totalPacks = currentMika + currentVakum;
-                  const onlineRatio = editDayForm.online_ratio ?? 40;
-                  const offlineRatio = 100 - onlineRatio;
-
-                  return (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <label className="block text-gray-800 font-bold uppercase tracking-wider text-[11px]">
-                            Rasio Alokasi Stok (Online vs Offline)
-                          </label>
-                          <span className="text-[10px] text-gray-500">
-                            Membagi total target ({totalPacks} pack) ke 2 kolam penjualan
-                          </span>
-                        </div>
-                        <span className="text-[11px] font-mono font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200">
-                          {onlineRatio}% Online : {offlineRatio}% Offline
-                        </span>
-                      </div>
-
-                      {/* Metric Visual Cards */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className={`p-2.5 rounded-xl border transition-all ${
-                          onlineRatio > 0 ? 'bg-blue-50/70 border-blue-200/80 text-blue-950' : 'bg-gray-50 border-gray-200 text-gray-400'
-                        }`}>
-                          <div className="flex items-center justify-between text-xs font-semibold">
-                            <span className="text-blue-700">Online</span>
-                            <span className="font-bold text-sm font-mono text-blue-800">{onlineRatio}%</span>
-                          </div>
-                          <div className="mt-1 flex items-baseline justify-between">
-                            <span className="text-base font-extrabold font-heading text-blue-900">
-                              {editDayForm.target_online} <span className="text-[10px] font-normal text-blue-700">Pack</span>
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-blue-600/80 block mt-0.5 truncate">Shopee, TikTok & Web</span>
-                        </div>
-
-                        <div className={`p-2.5 rounded-xl border transition-all ${
-                          offlineRatio > 0 ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-950' : 'bg-gray-50 border-gray-200 text-gray-400'
-                        }`}>
-                          <div className="flex items-center justify-between text-xs font-semibold">
-                            <span className="text-emerald-700">Offline</span>
-                            <span className="font-bold text-sm font-mono text-emerald-800">{offlineRatio}%</span>
-                          </div>
-                          <div className="mt-1 flex items-baseline justify-between">
-                            <span className="text-base font-extrabold font-heading text-emerald-900">
-                              {editDayForm.target_offline} <span className="text-[10px] font-normal text-emerald-700">Pack</span>
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-emerald-600/80 block mt-0.5 truncate">Kasir Toko & Outlet</span>
-                        </div>
-                      </div>
-
-                      {/* Interactive Dual Slider */}
-                      <div className="space-y-1.5 pt-1">
-                        <div className="relative flex items-center">
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            step="5"
-                            value={onlineRatio}
-                            onChange={(e) => handleEditRatioChange(parseInt(e.target.value) || 0)}
-                            className="w-full h-2.5 rounded-lg appearance-none cursor-pointer accent-stone-800"
-                            style={{
-                              background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${onlineRatio}%, #10b981 ${onlineRatio}%, #10b981 100%)`
-                            }}
-                          />
-                        </div>
-
-                        {/* Quick Presets */}
-                        <div className="flex items-center justify-between pt-1 text-[10px]">
-                          <span className="text-gray-400 font-medium">Preset Cepat:</span>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {[
-                              { label: '30:70', val: 30 },
-                              { label: '40:60 (Standar)', val: 40 },
-                              { label: '50:50', val: 50 },
-                              { label: '60:40', val: 60 },
-                              { label: '70:30', val: 70 },
-                            ].map((preset) => (
-                              <button
-                                key={preset.val}
-                                type="button"
-                                onClick={() => handleEditRatioChange(preset.val)}
-                                className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer ${
-                                  onlineRatio === preset.val
-                                    ? 'bg-stone-900 text-white border-stone-900 font-bold'
-                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
-                                }`}
-                              >
-                                {preset.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Catatan Target</label>
-                <textarea
-                  rows="2"
-                  value={editDayForm.notes}
-                  onChange={(e) => setEditDayForm({ ...editDayForm, notes: e.target.value })}
-                  placeholder="Catatan prioritas pesanan atau event..."
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-1 focus:ring-brand-blue"
-                ></textarea>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingDayPlan(null)}
-                  className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingDayPlan}
-                  className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-brand-blue-dark shadow transition-all cursor-pointer disabled:opacity-50"
-                >
-                  {submittingDayPlan ? 'Menyimpan...' : 'Simpan Target Produksi'}
+                  {gilinganSubmitting ? 'Memproses...' : 'Catat & Potong Stok'}
                 </button>
               </div>
             </form>

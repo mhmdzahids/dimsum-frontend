@@ -1,32 +1,43 @@
-import React, { createContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useEffect, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   getCustomerToken,
   getCustomerUser,
   getCustomerCoins,
-  setCustomerCoins as persistCustomerCoins,
-  loginCustomer as persistLoginCustomer,
-  logoutCustomer as persistLogoutCustomer,
-  updateCustomerUser as persistUpdateCustomerUser,
   subscribeCustomerAuth
 } from '../utils/customerAuth';
 import api from '../api/client';
+import { useCustomerAuthStore } from '../stores/authStore';
 
 export const AuthContext = createContext(null);
 
+/**
+ * Enhanced AuthProvider with Zustand + React Query integration
+ * 
+ * Improvements:
+ * - Uses Zustand for state management (single source of truth)
+ * - Integrates with React Query for automatic cache clearing on logout
+ * - Backwards compatible with existing code
+ */
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => getCustomerToken());
-  const [user, setUser] = useState(() => getCustomerUser());
-  const [coins, setCoinsState] = useState(() => getCustomerCoins());
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  
+  // Get state and actions from Zustand store
+  const token = useCustomerAuthStore((state) => state.customerToken);
+  const user = useCustomerAuthStore((state) => state.customerUser);
+  const coins = useCustomerAuthStore((state) => state.coins);
+  const setAuth = useCustomerAuthStore((state) => state.setAuth);
+  const clearAuth = useCustomerAuthStore((state) => state.clearAuth);
+  const setCoinsState = useCustomerAuthStore((state) => state.setCoins);
+  const updateUser = useCustomerAuthStore((state) => state.updateUser);
+  const rehydrate = useCustomerAuthStore((state) => state.rehydrate);
 
   const isLoggedIn = Boolean(token && user);
 
   // Sync state from customerAuth utilities and events
-  const syncStateFromStorage = useCallback(() => {
-    setToken(getCustomerToken());
-    setUser(getCustomerUser());
-    setCoinsState(getCustomerCoins());
-  }, []);
+  const syncStateFromStorage = () => {
+    rehydrate();
+  };
 
   // On mount: verify / refresh session if token exists
   useEffect(() => {
@@ -35,7 +46,6 @@ export function AuthProvider({ children }) {
     async function checkSession() {
       const activeToken = getCustomerToken();
       if (!activeToken) {
-        if (isMounted) setLoading(false);
         return;
       }
 
@@ -43,15 +53,10 @@ export function AuthProvider({ children }) {
         const res = await api.get('/api/auth/me', { auth: 'customer' });
         if (isMounted && res.success && res.data) {
           const fetchedUser = res.data.user || res.data;
-          persistUpdateCustomerUser(fetchedUser);
-          setUser(fetchedUser);
+          updateUser(fetchedUser);
         }
       } catch (err) {
         console.warn('Session verification failed or offline:', err);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
       }
     }
 
@@ -79,33 +84,24 @@ export function AuthProvider({ children }) {
       unsubscribe();
       window.removeEventListener('storage', handleStorage);
     };
-  }, [syncStateFromStorage]);
-
-  const login = useCallback((authToken, authUser, initialCoins = 1500) => {
-    persistLoginCustomer(authToken, authUser, initialCoins);
-    setToken(authToken);
-    setUser(authUser);
-    setCoinsState(initialCoins);
   }, []);
 
-  const logout = useCallback(() => {
-    persistLogoutCustomer();
-    setToken('');
-    setUser(null);
-    setCoinsState(0);
-  }, []);
+  const login = (authToken, authUser, initialCoins = 1500) => {
+    setAuth(authToken, authUser, initialCoins);
+  };
 
-  const updateUser = useCallback((updatedUserData) => {
-    persistUpdateCustomerUser(updatedUserData);
-    setUser(updatedUserData);
-  }, []);
+  const logout = () => {
+    clearAuth();
+    // Security: Clear all React Query cache on logout
+    queryClient.cancelQueries();
+    queryClient.clear();
+  };
 
-  const setCoins = useCallback((amount) => {
-    persistCustomerCoins(amount);
+  const setCoins = (amount) => {
     setCoinsState(amount);
-  }, []);
+  };
 
-  const refreshSession = useCallback(async () => {
+  const refreshSession = async () => {
     const activeToken = getCustomerToken();
     if (!activeToken) return null;
     try {
@@ -119,20 +115,20 @@ export function AuthProvider({ children }) {
       return null;
     }
     return null;
-  }, [updateUser]);
+  };
 
   const value = useMemo(() => ({
     token,
     user,
     isLoggedIn,
-    loading,
+    loading: false, // Zustand rehydrates synchronously
     coins,
     login,
     logout,
     updateUser,
     setCoins,
     refreshSession
-  }), [token, user, isLoggedIn, loading, coins, login, logout, updateUser, setCoins, refreshSession]);
+  }), [token, user, isLoggedIn, coins]);
 
   return (
     <AuthContext.Provider value={value}>

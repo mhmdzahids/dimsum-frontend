@@ -32,7 +32,8 @@ import {
   ChefHat,
   Boxes,
   Play,
-  Lock
+  Lock,
+  Info
 } from 'lucide-react';
 import api from '../api/client';
 import LotStickerModal from '../components/inventory/LotStickerModal';
@@ -86,6 +87,7 @@ export default function AdminProduction() {
   });
   const [submittingDayPlan, setSubmittingDayPlan] = useState(false);
   const [generatingPlanId, setGeneratingPlanId] = useState(null);
+  const [planToStart, setPlanToStart] = useState(null);
 
   // Plan Modal State (Single Batch)
   const [showPlanModal, setShowPlanModal] = useState(false);
@@ -273,10 +275,6 @@ export default function AdminProduction() {
 
   // Generate batches instantly from daily plan
   const handleGenerateBatches = async (plan) => {
-    if (!window.confirm(`Mulai produksi untuk ${plan.day_of_week} (${plan.plan_date})?\nTarget: ${plan.target_mika} Mika & ${plan.target_vakum} Vakum.`)) {
-      return;
-    }
-
     setGeneratingPlanId(plan.id);
     try {
       const res = await api.post(`/api/inventory/production/plans/${plan.id}/generate-batches`, {}, { auth: 'admin' });
@@ -512,8 +510,8 @@ export default function AdminProduction() {
               <button
                 onClick={() => setActiveTab('weekly')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${activeTab === 'weekly'
-                    ? 'bg-brand-blue text-white shadow-xs'
-                    : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
+                  ? 'bg-brand-blue text-white shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
                   }`}
               >
                 <Calendar size={15} />
@@ -523,8 +521,8 @@ export default function AdminProduction() {
               <button
                 onClick={() => setActiveTab('planner')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${activeTab === 'planner'
-                    ? 'bg-brand-blue text-white shadow-xs'
-                    : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
+                  ? 'bg-brand-blue text-white shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
                   }`}
               >
                 <FileText size={15} />
@@ -538,8 +536,8 @@ export default function AdminProduction() {
               <button
                 onClick={() => setActiveTab('checker')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all relative cursor-pointer ${activeTab === 'checker'
-                    ? 'bg-amber-700 text-white shadow-xs'
-                    : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
+                  ? 'bg-amber-700 text-white shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
                   }`}
               >
                 <ShieldCheck size={15} />
@@ -599,11 +597,10 @@ export default function AdminProduction() {
                 Pasokan Adonan Hari Ini
               </span>
               {p1TodayLot ? (
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border leading-none ${
-                  p1TodayLot.status === 'achieved'
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/70'
-                    : 'bg-amber-50 text-amber-700 border-amber-200/70'
-                }`}>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border leading-none ${p1TodayLot.status === 'achieved'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200/70'
+                  : 'bg-amber-50 text-amber-700 border-amber-200/70'
+                  }`}>
                   {p1TodayLot.status === 'achieved' ? (
                     <>
                       <CheckCircle2 size={11} className="text-emerald-600" />
@@ -681,11 +678,10 @@ export default function AdminProduction() {
               <button
                 onClick={() => handleNavigateWeek(-7)}
                 disabled={!weeklyData?.can_navigate_backward}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
-                  !weeklyData?.can_navigate_backward
-                    ? 'border-gray-200/60 text-gray-300 bg-gray-50/50 cursor-not-allowed'
-                    : 'border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer'
-                }`}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${!weeklyData?.can_navigate_backward
+                  ? 'border-gray-200/60 text-gray-300 bg-gray-50/50 cursor-not-allowed'
+                  : 'border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer'
+                  }`}
                 title={!weeklyData?.can_navigate_backward ? 'Tidak ada data riwayat sebelum minggu ini' : 'Lihat minggu sebelumnya'}
               >
                 <ChevronLeft size={14} />
@@ -693,22 +689,20 @@ export default function AdminProduction() {
               </button>
               <button
                 onClick={handleThisWeek}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  !currentWeekStart || currentWeekStart === weeklyData?.current_week_start
-                    ? 'bg-gray-900 text-white shadow-xs'
-                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                }`}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${!currentWeekStart || currentWeekStart === weeklyData?.current_week_start
+                  ? 'bg-gray-900 text-white shadow-xs'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
               >
                 Minggu Ini
               </button>
               <button
                 onClick={() => handleNavigateWeek(7)}
                 disabled={!weeklyData?.can_navigate_forward}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
-                  !weeklyData?.can_navigate_forward
-                    ? 'border-gray-200/60 text-gray-300 bg-gray-50/50 cursor-not-allowed'
-                    : 'border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer'
-                }`}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${!weeklyData?.can_navigate_forward
+                  ? 'border-gray-200/60 text-gray-300 bg-gray-50/50 cursor-not-allowed'
+                  : 'border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer'
+                  }`}
                 title={!weeklyData?.can_navigate_forward ? 'Maksimal perencanaan hanya hingga 2 minggu ke depan' : 'Lihat minggu berikutnya'}
               >
                 <span>Minggu Depan</span>
@@ -788,13 +782,12 @@ export default function AdminProduction() {
               return (
                 <div
                   key={plan.id}
-                  className={`rounded-card border p-3.5 sm:p-4 shadow-xs transition-all flex flex-col justify-between ${
-                    isToday
-                      ? 'bg-white border-brand-blue ring-1 ring-brand-blue/30'
-                      : isPast
+                  className={`rounded-card border p-3.5 sm:p-4 shadow-xs transition-all flex flex-col justify-between ${isToday
+                    ? 'bg-white border-brand-blue ring-1 ring-brand-blue/30'
+                    : isPast
                       ? 'bg-[#fafaf9] border-gray-200/80 text-gray-600'
                       : 'bg-white border-bg-cream-dark/80 hover:border-gray-300'
-                  }`}
+                    }`}
                 >
                   <div>
                     {/* Header: Day & Date */}
@@ -865,7 +858,7 @@ export default function AdminProduction() {
                         <span>{plan.total_gilingan} Gilingan</span>
                       </div>
                       <div className="flex justify-between text-[11px] text-amber-800">
-                        <span>Daging Mentah:</span>
+                        <span></span>
                         <span>≈ {plan.total_gilingan * 15} kg</span>
                       </div>
                     </div>
@@ -887,7 +880,7 @@ export default function AdminProduction() {
                             <span className="truncate">Bahan Baku Kurang</span>
                           </div>
                           <span className="px-1.5 py-0.2 rounded-md bg-red-100 text-red-700 text-[10px] font-bold shrink-0">
-                            {plan.readiness?.shortage_count || plan.readiness?.deficits?.length || 0} Defisit
+                            {plan.readiness?.shortage_count || plan.readiness?.deficits?.length || 0} Bahan
                           </span>
                         </div>
                       ) : (
@@ -923,16 +916,13 @@ export default function AdminProduction() {
                     {(() => {
                       const onPacks = plan.target_online ?? 0;
                       const offPacks = plan.target_offline ?? 0;
-                      const sum = onPacks + offPacks;
-                      const onPct = sum > 0 ? Math.round((onPacks / sum) * 100) : 40;
-                      const offPct = 100 - onPct;
                       return (
-                        <div className="flex flex-wrap gap-1.5 text-[11px] mb-4">
-                          <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200/60 text-blue-700 font-medium">
-                            Online: {onPct}% ({onPacks} pack)
+                        <div className="grid grid-cols-2 gap-1.5 text-[11px] mb-4">
+                          <span className="px-2 py-1 rounded-md bg-blue-50 border border-blue-200/60 text-blue-700 font-medium text-center truncate">
+                            Online: {onPacks} pack
                           </span>
-                          <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200/60 text-emerald-700 font-medium">
-                            Offline: {offPct}% ({offPacks} pack)
+                          <span className="px-2 py-1 rounded-md bg-emerald-50 border border-emerald-200/60 text-emerald-700 font-medium text-center truncate">
+                            Offline: {offPacks} pack
                           </span>
                         </div>
                       );
@@ -961,7 +951,7 @@ export default function AdminProduction() {
                     ) : isToday ? (
                       !hasBatches ? (
                         <button
-                          onClick={() => handleGenerateBatches(plan)}
+                          onClick={() => setPlanToStart(plan)}
                           disabled={generatingPlanId === plan.id}
                           className="w-full py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer bg-emerald-700 hover:bg-emerald-800 text-white"
                         >
@@ -969,18 +959,30 @@ export default function AdminProduction() {
                           <span>{generatingPlanId === plan.id ? 'Memproses...' : 'Mulai Produksi Hari Ini'}</span>
                         </button>
                       ) : (
-                        <div className="flex items-center justify-between text-xs py-2 px-3 rounded-xl bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
-                          <span className="flex items-center gap-1.5">
-                            <CheckCircle2 size={14} className="text-emerald-600" />
-                            <span>Batch Aktif</span>
-                          </span>
-                          <button
-                            onClick={() => setActiveTab('checker')}
-                            className="text-[11px] font-semibold text-emerald-900 hover:underline cursor-pointer flex items-center gap-1"
-                          >
-                            <span>Cek QC</span>
-                            <ArrowRight size={12} />
-                          </button>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between text-xs py-2 px-3 rounded-xl bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
+                            <span className="flex items-center gap-1.5">
+                              <CheckCircle2 size={14} className="text-emerald-600" />
+                              <span>Batch Aktif</span>
+                            </span>
+                            <button
+                              onClick={() => setActiveTab('checker')}
+                              className="text-[11px] font-semibold text-emerald-900 hover:underline cursor-pointer flex items-center gap-1"
+                            >
+                              <span>Cek QC</span>
+                              <ArrowRight size={12} />
+                            </button>
+                          </div>
+                          {plan.total_target_packs > (plan.total_target_packs_generated || plan.total_actual_packs || 0) && (
+                            <button
+                              onClick={() => setPlanToStart(plan)}
+                              disabled={generatingPlanId === plan.id}
+                              className="w-full py-1.5 px-3 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer bg-amber-500 hover:bg-amber-600 text-white"
+                            >
+                              <span className="text-white/80">+</span>
+                              <span>{generatingPlanId === plan.id ? 'Memproses...' : `Susulan ${(plan.total_target_packs - (plan.total_target_packs_generated || plan.total_actual_packs || 0))} Pack`}</span>
+                            </button>
+                          )}
                         </div>
                       )
                     ) : (
@@ -1065,20 +1067,20 @@ export default function AdminProduction() {
                   Kapasitas Kemasan (Hari Ini)
                 </span>
                 <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${todayTotalPacks > NORMAL_CAPACITY_PACKS
-                    ? 'bg-rose-100 text-rose-700'
-                    : todayTotalPacks >= 380
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-brand-blue/10 text-brand-blue'
+                  ? 'bg-rose-100 text-rose-700'
+                  : todayTotalPacks >= 380
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-brand-blue/10 text-brand-blue'
                   }`}>
                   <Layers size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
               </div>
               <div>
                 <div className={`text-xl sm:text-3xl font-black font-heading ${todayTotalPacks > NORMAL_CAPACITY_PACKS
-                    ? 'text-rose-700'
-                    : todayTotalPacks >= 380
-                      ? 'text-amber-700'
-                      : 'text-text-primary'
+                  ? 'text-rose-700'
+                  : todayTotalPacks >= 380
+                    ? 'text-amber-700'
+                    : 'text-text-primary'
                   }`}>
                   {todayTotalPacks}
                   <span className="text-xs sm:text-sm font-semibold text-text-secondary ml-1 sm:ml-1.5">
@@ -1368,7 +1370,7 @@ export default function AdminProduction() {
                   <div className="relative">
                     <input
                       type="number"
-                      min="0"
+                      min={editingDayPlan?.generated_mika || 0}
                       required
                       value={editDayForm.target_mika}
                       onChange={(e) => handleEditTargetChange('target_mika', e.target.value)}
@@ -1385,7 +1387,7 @@ export default function AdminProduction() {
                   <div className="relative">
                     <input
                       type="number"
-                      min="0"
+                      min={editingDayPlan?.generated_vakum || 0}
                       required
                       value={editDayForm.target_vakum}
                       onChange={(e) => handleEditTargetChange('target_vakum', e.target.value)}
@@ -1423,9 +1425,8 @@ export default function AdminProduction() {
 
                       {/* Metric Visual Cards */}
                       <div className="grid grid-cols-2 gap-2">
-                        <div className={`p-2.5 rounded-xl border transition-all ${
-                          onlineRatio > 0 ? 'bg-blue-50/70 border-blue-200/80 text-blue-950' : 'bg-gray-50 border-gray-200 text-gray-400'
-                        }`}>
+                        <div className={`p-2.5 rounded-xl border transition-all ${onlineRatio > 0 ? 'bg-blue-50/70 border-blue-200/80 text-blue-950' : 'bg-gray-50 border-gray-200 text-gray-400'
+                          }`}>
                           <div className="flex items-center justify-between text-xs font-semibold">
                             <span className="text-blue-700">Online</span>
                             <span className="font-bold text-sm font-mono text-blue-800">{onlineRatio}%</span>
@@ -1438,9 +1439,8 @@ export default function AdminProduction() {
                           <span className="text-[10px] text-blue-600/80 block mt-0.5 truncate">Shopee, TikTok & Web</span>
                         </div>
 
-                        <div className={`p-2.5 rounded-xl border transition-all ${
-                          offlineRatio > 0 ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-950' : 'bg-gray-50 border-gray-200 text-gray-400'
-                        }`}>
+                        <div className={`p-2.5 rounded-xl border transition-all ${offlineRatio > 0 ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-950' : 'bg-gray-50 border-gray-200 text-gray-400'
+                          }`}>
                           <div className="flex items-center justify-between text-xs font-semibold">
                             <span className="text-emerald-700">Offline</span>
                             <span className="font-bold text-sm font-mono text-emerald-800">{offlineRatio}%</span>
@@ -1486,11 +1486,10 @@ export default function AdminProduction() {
                                 key={preset.val}
                                 type="button"
                                 onClick={() => handleEditRatioChange(preset.val)}
-                                className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer ${
-                                  onlineRatio === preset.val
-                                    ? 'bg-stone-900 text-white border-stone-900 font-bold'
-                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
-                                }`}
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer ${onlineRatio === preset.val
+                                  ? 'bg-stone-900 text-white border-stone-900 font-bold'
+                                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                                  }`}
                               >
                                 {preset.label}
                               </button>
@@ -1839,6 +1838,91 @@ export default function AdminProduction() {
           </div>
         );
       })()}
+
+      {/* MODAL: MULAI PRODUKSI */}
+      {planToStart && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+            {/* Header */}
+            <div className={`p-5 text-white ${!planToStart.readiness?.overall_ready ? 'bg-rose-600' : 'bg-emerald-600'}`}>
+              <div className="flex items-center gap-3">
+                {!planToStart.readiness?.overall_ready ? (
+                  <AlertTriangle className="w-8 h-8 opacity-90" />
+                ) : (
+                  <CheckCircle2 className="w-8 h-8 opacity-90" />
+                )}
+                <div>
+                  <h3 className="text-lg font-bold">
+                    {!planToStart.readiness?.overall_ready ? 'Bahan Baku Kurang!' : 'Bahan Baku Siap'}
+                  </h3>
+                  <p className="text-xs text-white/80 mt-0.5">
+                    Target: {planToStart.target_mika} Mika & {planToStart.target_vakum} Vakum
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-5">
+              {!planToStart.readiness?.overall_ready ? (
+                <div className="mb-4">
+                  <p className="text-sm text-gray-700 mb-3 font-medium">
+                    Apakah Anda yakin ingin tetap memulai produksi? Berikut adalah bahan yang kurang:
+                  </p>
+                  <div className="max-h-40 overflow-y-auto bg-rose-50 border border-rose-100 rounded-xl p-3 space-y-2">
+                    {planToStart.readiness?.deficits?.map((d, i) => (
+                      <div key={i} className="flex justify-between items-center text-xs">
+                        <span className="font-semibold text-rose-800">{d.name}</span>
+                        <span className="font-mono bg-white px-2 py-0.5 rounded text-rose-600 border border-rose-200">
+                          -{Number(d.deficit).toLocaleString('id-ID', { maximumFractionDigits: 1 })} {d.unit}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-rose-600 mt-3 font-medium flex items-start gap-1.5">
+                    <Info className="w-4 h-4 shrink-0" />
+                    <span>Memulai produksi akan mencatat pemakaian. Stok akan menjadi minus.</span>
+                  </p>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-600 font-medium mb-2">
+                    {planToStart.batches_generated 
+                      ? `Semua bahan baku tercukupi untuk batch susulan. Anda yakin ingin membuat batch tambahan untuk ${planToStart.day_of_week}?` 
+                      : `Semua bahan baku tercukupi. Anda yakin ingin memulai produksi untuk ${planToStart.day_of_week} (${new Date(planToStart.plan_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })})?`
+                    }
+                  </p>
+                  {planToStart.batches_generated && (
+                    <div className="text-xs text-emerald-700 bg-emerald-50 rounded-lg p-2 font-medium mx-auto max-w-fit">
+                      Terdapat target tambahan: {planToStart.target_mika - (planToStart.generated_mika || 0)} Mika & {planToStart.target_vakum - (planToStart.generated_vakum || 0)} Vakum
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-gray-50 border-t border-gray-100 flex gap-2">
+              <button
+                onClick={() => setPlanToStart(null)}
+                className="flex-1 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => {
+                  handleGenerateBatches(planToStart);
+                  setPlanToStart(null);
+                }}
+                className={`flex-1 px-4 py-2 rounded-xl text-sm font-bold text-white transition-colors cursor-pointer ${!planToStart.readiness?.overall_ready ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
+              >
+                Tetap Mulai
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL 4: LOT STICKER PRINT */}
       {selectedStickerBatch && (

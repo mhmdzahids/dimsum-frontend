@@ -524,7 +524,6 @@ export default function AdminInventoryDashboard() {
                 <th className="py-3.5 px-4 text-center">Produk & SKU</th>
                 <th className="py-3.5 px-4 text-center">Stok Freezer</th>
                 <th className="py-3.5 px-4 text-center">Alokasi Kuota</th>
-                <th className="py-3.5 px-4 text-center">Total Butir</th>
                 <th className="py-3.5 px-4 text-center">Buffer Status</th>
                 <th className="py-3.5 px-4 text-center">Aksi</th>
               </tr>
@@ -612,15 +611,6 @@ export default function AdminInventoryDashboard() {
                             Online: {prod.stock_online ?? Math.round(stock * 0.4)} pk
                           </span>
                         </div>
-                      </td>
-
-                      {/* Total Butir Dimsum */}
-                      <td className="py-3.5 px-4 text-center">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-brand-blue font-bold text-xs border border-blue-100">
-                          <Layers size={13} />
-                          <span>~{totalPcs.toLocaleString('id-ID')} butir</span>
-                        </span>
-                        <span className="block text-[10px] text-gray-400 mt-0.5">({packSize} butir / {isMika ? 'mika' : 'pack'})</span>
                       </td>
 
                       {/* Buffer Target Progress Bar & Status */}
@@ -711,9 +701,6 @@ export default function AdminInventoryDashboard() {
                   <h3 className="text-base font-bold text-text-primary font-heading">
                     Transfer Kuota Stok
                   </h3>
-                  <p className="text-xs text-text-secondary">
-                    Menyeimbangkan kuota penjualan tanpa mengubah fisik stok di freezer.
-                  </p>
                 </div>
               </div>
 
@@ -740,7 +727,7 @@ export default function AdminInventoryDashboard() {
                   >
                     {products.map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.name} (Total: {p.stock_qty} pack)
+                        {p.name}
                       </option>
                     ))}
                   </select>
@@ -803,7 +790,7 @@ export default function AdminInventoryDashboard() {
                       Jumlah Pack Yang Ditransfer *
                     </label>
                     <span className="text-[11px] text-text-secondary">
-                      Tersedia di {rebalanceFromPool.toUpperCase()}: <strong>{maxTransfer} pack</strong>
+                      Tersedia: <strong>{maxTransfer} pack</strong>
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -814,7 +801,7 @@ export default function AdminInventoryDashboard() {
                       required
                       value={rebalanceQty}
                       onChange={(e) => setRebalanceQty(e.target.value)}
-                      className="w-32 px-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none font-bold text-sm"
+                      className="w-20 px-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none font-bold text-sm"
                     />
                     <div className="flex items-center gap-1">
                       {[5, 10, 25].map(n => (
@@ -849,7 +836,6 @@ export default function AdminInventoryDashboard() {
                     type="text"
                     value={rebalanceReason}
                     onChange={(e) => setRebalanceReason(e.target.value)}
-                    placeholder="Contoh: Persiapan event TikTok Live atau PO Katering MBG"
                     className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none text-xs"
                   />
                 </div>
