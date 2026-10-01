@@ -84,6 +84,38 @@ export default function AdminPOS() {
     return () => clearInterval(timer);
   }, []);
 
+  // POS Session Heartbeat - Keep token alive for cashier operations
+  // Refreshes token every 15 minutes to prevent session timeout during active POS use
+  useEffect(() => {
+    const HEARTBEAT_INTERVAL = 15 * 60 * 1000; // 15 minutes
+
+    const heartbeat = async () => {
+      try {
+        const res = await api.post('/api/auth/refresh', {}, { auth: 'admin' });
+        if (res.success && res.data?.token) {
+          localStorage.setItem('adminToken', res.data.token);
+          console.log('[POS Heartbeat] Token refreshed successfully');
+        }
+      } catch (err) {
+        console.warn('[POS Heartbeat] Failed to refresh token:', err.message);
+      }
+    };
+
+    // Initial heartbeat after 15 minutes
+    const heartbeatTimer = setInterval(heartbeat, HEARTBEAT_INTERVAL);
+
+    // Also refresh on window focus (when cashier returns from another tab)
+    const handleFocus = () => {
+      heartbeat();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(heartbeatTimer);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
   // --- CATALOG & PRODUCTS STATE ---
   const [products, setProducts] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);

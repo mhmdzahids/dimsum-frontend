@@ -190,11 +190,10 @@ export default function AdminQCHistory() {
               type="button"
               onClick={() => handleViewModeChange('grid')}
               title="Tampilan Kartu (Grid)"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                viewMode === 'grid'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${viewMode === 'grid'
                   ? 'bg-white text-amber-900 shadow-xs'
                   : 'text-text-secondary hover:text-text-primary'
-              }`}
+                }`}
             >
               <LayoutGrid size={14} />
               <span className="hidden sm:inline">Grid</span>
@@ -203,11 +202,10 @@ export default function AdminQCHistory() {
               type="button"
               onClick={() => handleViewModeChange('list')}
               title="Tampilan Tabel (List)"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                viewMode === 'list'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${viewMode === 'list'
                   ? 'bg-white text-amber-900 shadow-xs'
                   : 'text-text-secondary hover:text-text-primary'
-              }`}
+                }`}
             >
               <List size={14} />
               <span className="hidden sm:inline">List</span>
@@ -465,9 +463,6 @@ export default function AdminQCHistory() {
                           <td className="py-3 px-4 text-center">
                             <span className="inline-block px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 font-black text-xs">
                               {actualLots} Pack
-                            </span>
-                            <span className="text-[10px] text-gray-500 block font-normal">
-                              (~{producedQty} butir)
                             </span>
                           </td>
 

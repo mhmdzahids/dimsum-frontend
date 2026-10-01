@@ -12,7 +12,9 @@ import {
   AlertCircle,
   ArrowRight,
   Plus,
-  Package
+  Package,
+  Leaf,
+  Beaker
 } from 'lucide-react';
 import api from '../api/client';
 import { getAdminRole, canManageProducts } from '../utils/adminAuth';
@@ -21,11 +23,16 @@ export default function AdminProducts() {
   const userRole = getAdminRole() || 'admin';
   const isAdmin = canManageProducts(userRole);
 
+  const [activeTab, setActiveTab] = useState('products'); // 'products' or 'ingredients'
   const [products, setProducts] = useState([]);
+  const [ingredients, setIngredients] = useState([]);
+  const [productRecipes, setProductRecipes] = useState({});
 
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [sku, setSku] = useState('');
+  const [unit, setUnit] = useState('pack');
+  const [packSize, setPackSize] = useState('25');
 
   // Order Limit state
   const [orderLimit, setOrderLimit] = useState(50);
@@ -42,6 +49,16 @@ export default function AdminProducts() {
   const [discountError, setDiscountError] = useState('');
   const [discountSuccessMsg, setDiscountSuccessMsg] = useState('');
 
+  // Recipe modal state
+  const [recipeModalOpen, setRecipeModalOpen] = useState(false);
+  const [selectedProductForRecipe, setSelectedProductForRecipe] = useState(null);
+  const [newRecipeIngredient, setNewRecipeIngredient] = useState('');
+  const [newRecipeAmount, setNewRecipeAmount] = useState('');
+  const [newRecipeUnit, setNewRecipeUnit] = useState('gram');
+  const [newRecipeNotes, setNewRecipeNotes] = useState('');
+  const [recipeSavingLoading, setRecipeSavingLoading] = useState(false);
+  const [recipeError, setRecipeError] = useState('');
+
   const fetchProducts = async () => {
     const res = await api.get('/api/products');
     if (res.success && Array.isArray(res.data)) {
@@ -49,10 +66,75 @@ export default function AdminProducts() {
     }
   };
 
+  const fetchIngredients = async () => {
+    const res = await api.get('/api/ingredients');
+    if (res.success && Array.isArray(res.data)) {
+      setIngredients(res.data);
+    }
+  };
+
+  const fetchProductRecipe = async (productId) => {
+    const res = await api.get(`/api/ingredients/product/${productId}/recipe`);
+    if (res.success && Array.isArray(res.data)) {
+      setProductRecipes(prev => ({ ...prev, [productId]: res.data }));
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
+    fetchIngredients();
     fetchOrderLimit();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'ingredients') {
+      products.forEach(p => fetchProductRecipe(p.id));
+    }
+  }, [activeTab, products]);
+
+  const addRecipeItem = async (e) => {
+    e.preventDefault();
+    if (!newRecipeIngredient) {
+      setRecipeError('Bahan harus dipilih');
+      return;
+    }
+    setRecipeSavingLoading(true);
+    const res = await api.post(`/api/ingredients/product/${selectedProductForRecipe.id}/recipe`, {
+      ingredient_id: newRecipeIngredient,
+      amount_per_pack: 0.0,
+      unit_measure: 'pcs',
+      notes: newRecipeNotes
+    });
+    if (res.success) {
+      fetchProductRecipe(selectedProductForRecipe.id);
+      closeRecipeModal();
+    } else {
+      setRecipeError('Gagal menyimpan resep');
+    }
+    setRecipeSavingLoading(false);
+  };
+
+  const removeRecipeItem = async (productId, ingredientId) => {
+    if (confirm('Hapus bahan ini dari resep?')) {
+      const res = await api.delete(`/api/ingredients/product/${productId}/recipe/${ingredientId}`);
+      if (res.success) {
+        fetchProductRecipe(productId);
+      }
+    }
+  };
+
+  const openRecipeModal = (p) => {
+    setSelectedProductForRecipe(p);
+    setNewRecipeIngredient('');
+    setNewRecipeAmount('');
+    setRecipeModalOpen(true);
+  };
+
+  const closeRecipeModal = () => {
+    setRecipeModalOpen(false);
+    setSelectedProductForRecipe(null);
+    setRecipeError('');
+  };
 
   const fetchOrderLimit = async () => {
     try {
@@ -70,6 +152,7 @@ export default function AdminProducts() {
     e.preventDefault();
     const val = parseInt(orderLimitInput, 10);
     if (isNaN(val) || val < 1 || val > 500) {
+
       setLimitMsg({ text: 'Limit harus antara 1 dan 500', type: 'error' });
       return;
     }
@@ -93,6 +176,8 @@ export default function AdminProducts() {
       name,
       price,
       sku,
+      unit,
+      pack_size: packSize,
       is_active: true,
       category: 'Dimsum'
     }, { auth: 'admin' });
@@ -101,6 +186,8 @@ export default function AdminProducts() {
       setName('');
       setPrice('');
       setSku('');
+      setUnit('pack');
+      setPackSize('25');
     } else {
       alert(res.error || 'Gagal menambahkan produk');
     }
@@ -216,8 +303,32 @@ export default function AdminProducts() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Order Limit Settings (Admin only) */}
+      {/* Tab Navigation */}
       {isAdmin && (
+        <div className="flex border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('products')}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 ${activeTab === 'products'
+              ? 'text-brand-blue border-brand-blue'
+              : 'text-gray-500 border-transparent hover:text-gray-700'}`}
+          >
+            <Package size={16} className="inline mr-2 align-text-bottom" />
+            Produk
+          </button>
+          <button
+            onClick={() => setActiveTab('ingredients')}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 ${activeTab === 'ingredients'
+              ? 'text-brand-blue border-brand-blue'
+              : 'text-gray-500 border-transparent hover:text-gray-700'}`}
+          >
+            <Leaf size={16} className="inline mr-2 align-text-bottom" />
+            Bahan Baku & Resep
+          </button>
+        </div>
+      )}
+
+      {/* Order Limit Settings (Admin only) */}
+      {isAdmin && activeTab === 'products' && (
         <div className="bg-amber-50/70 border border-amber-200/80 p-5 rounded-card shadow-xs">
           <h2 className="font-bold mb-2 text-amber-800 flex items-center gap-2">
             <Settings size={18} /> Pengaturan Order Limit
@@ -259,6 +370,29 @@ export default function AdminProducts() {
               <input required className="border border-gray-300 bg-white p-2 flex-1 min-w-[180px] rounded-lg text-sm" placeholder="Nama Menu" value={name} onChange={e => setName(e.target.value)} />
               <input required className="border border-gray-300 bg-white p-2 w-36 rounded-lg text-sm" type="number" placeholder="Harga Jual" value={price} onChange={e => setPrice(e.target.value)} />
               <input required className="border border-gray-300 bg-white p-2 w-36 rounded-lg text-sm" placeholder="SKU" value={sku} onChange={e => setSku(e.target.value)} />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <select
+                required
+                className="border border-gray-300 bg-white p-2 rounded-lg text-sm flex-1 min-w-[140px]"
+                value={unit}
+                onChange={e => setUnit(e.target.value)}
+              >
+                <option value="pack">Pack</option>
+                <option value="mika">Mika</option>
+                <option value="vakum">Vakum</option>
+                <option value="pcs">Pcs</option>
+                <option value="custom">Custom</option>
+              </select>
+              <input
+                required
+                className="border border-gray-300 bg-white p-2 w-32 rounded-lg text-sm"
+                type="number"
+                min="1"
+                placeholder="Isi per unit"
+                value={packSize}
+                onChange={e => setPackSize(e.target.value)}
+              />
               <button type="submit" className="bg-green-600 text-white px-5 py-2 rounded-lg font-medium text-sm hover:bg-green-700 transition-colors">
                 Tambah Menu
               </button>
@@ -267,6 +401,69 @@ export default function AdminProducts() {
               <span className="font-semibold text-gray-600">Catatan:</span> Stok menu baru otomatis <strong>0 pack</strong>. Penambahan stok fisik dilakukan melalui menu <strong className="text-gray-700">Produksi Kemasan (P2)</strong> setelah diverifikasi Checker.
             </p>
           </form>
+        </div>
+      )}
+
+      {/* Ingredients Tab */}
+      {isAdmin && activeTab === 'ingredients' && (
+        <div className="space-y-6">
+          {/* Product Recipes Section */}
+          <div className="space-y-4">
+            <h3 className="font-bold text-gray-800 text-base flex items-center gap-2">
+              <Flame size={18} /> Resep Produk
+            </h3>
+
+            {products.map(product => {
+              const productRecipe = productRecipes[product.id] || [];
+              return (
+                <div key={product.id} className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="font-bold text-gray-900">{product.name}</p>
+                      <p className="text-xs text-gray-500">{product.sku}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => openRecipeModal(product)}
+                        className="text-xs bg-brand-blue text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        + Tambah Bahan
+                      </button>
+                      <button
+                        onClick={() => fetchProductRecipe(product.id)}
+                        className="text-xs bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                  </div>
+
+                  {productRecipe.length > 0 ? (
+                    <div className="space-y-2">
+                      {productRecipe.map(item => (
+                        <div key={item.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-100">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-900">{item.ingredient_name}</span>
+                            {item.notes && (
+                              <span className="text-xs text-gray-500 italic">({item.notes})</span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => removeRecipeItem(product.id, item.ingredient_id)}
+                            className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded hover:bg-red-100 transition-colors"
+                          >
+                            Hapus
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400 italic">Belum ada resep bahan baku untuk produk ini</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -283,8 +480,8 @@ export default function AdminProducts() {
             <div
               key={p.id}
               className={`p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white shadow-xs rounded-xl border transition-all ${hasDiscount
-                  ? 'border-brand-red/30 bg-red-50/20'
-                  : 'border-gray-200'
+                ? 'border-brand-red/30 bg-red-50/20'
+                : 'border-gray-200'
                 }`}
             >
               <div className="flex gap-4 items-center min-w-0">
@@ -354,8 +551,8 @@ export default function AdminProducts() {
                     type="button"
                     onClick={() => openDiscountModal(p)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all w-full md:w-32 cursor-pointer ${hasDiscount
-                        ? 'bg-brand-red text-white hover:bg-red-700 shadow-xs'
-                        : 'bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100'
+                      ? 'bg-brand-red text-white hover:bg-red-700 shadow-xs'
+                      : 'bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100'
                       }`}
                   >
                     <Flame size={13} className={hasDiscount ? "fill-white text-white -skew-x-[14deg] -rotate-[6deg] transform" : "text-amber-700"} />
@@ -495,8 +692,8 @@ export default function AdminProducts() {
                           type="button"
                           onClick={() => setDiscountPercentInput(val)}
                           className={`px-2.5 py-1 text-xs rounded-lg font-bold border transition-colors cursor-pointer ${numPercent === val
-                              ? 'bg-brand-red text-white border-brand-red'
-                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                            ? 'bg-brand-red text-white border-brand-red'
+                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
                             }`}
                         >
                           {val}%
@@ -598,6 +795,105 @@ export default function AdminProducts() {
                     <>
                       <Check size={14} strokeWidth={2.5} />
                       Simpan Perubahan
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Recipe Management Modal */}
+      {recipeModalOpen && selectedProductForRecipe && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-100">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-green-100 text-green-700 flex items-center justify-center border border-green-200">
+                  <Beaker size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base leading-tight">Tambah Bahan ke Resep</h3>
+                  <p className="text-xs text-gray-500 truncate max-w-[240px]">{selectedProductForRecipe.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeRecipeModal}
+                disabled={recipeSavingLoading}
+                className="text-gray-400 hover:text-gray-700 p-1.5 rounded-full hover:bg-gray-200 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={addRecipeItem} className="p-5 space-y-4">
+              {/* Ingredient Select */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                  Pilih Bahan Baku
+                </label>
+                <select
+                  required
+                  value={newRecipeIngredient}
+                  onChange={(e) => setNewRecipeIngredient(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+                >
+                  <option value="">-- Pilih Bahan --</option>
+                  {ingredients.map(ing => (
+                    <option key={ing.id} value={ing.id}>
+                      {ing.name} ({ing.unit})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Notes Input */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                  Catatan (Opsional)
+                </label>
+                <input
+                  type="text"
+                  value={newRecipeNotes}
+                  onChange={(e) => setNewRecipeNotes(e.target.value)}
+                  placeholder="Contoh: untuk isian"
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+                />
+              </div>
+
+              {/* Error Message */}
+              {recipeError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{recipeError}</span>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeRecipeModal}
+                  disabled={recipeSavingLoading}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={recipeSavingLoading}
+                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-md transition-colors flex items-center justify-center gap-1.5"
+                >
+                  {recipeSavingLoading ? (
+                    <span>Menyimpan...</span>
+                  ) : (
+                    <>
+                      <Check size={14} strokeWidth={2.5} />
+                      Simpan Bahan
                     </>
                   )}
                 </button>

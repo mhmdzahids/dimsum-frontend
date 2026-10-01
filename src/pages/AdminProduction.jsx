@@ -158,6 +158,19 @@ export default function AdminProduction() {
   const [p1TodayLot, setP1TodayLot] = useState(null);
   const [loadingP1Lot, setLoadingP1Lot] = useState(false);
 
+  // Phase 3: Production Realization
+  const handleViewRealizations = async (planId) => {
+    setLoadingRealizations(true);
+    try {
+      const res = await api.get(`/api/inventory/plans/${planId}/daily-progress`);
+      setPlanRealizations(res.data.targets || []);
+    } catch (err) {
+      console.error('Failed to load realizations:', err);
+    } finally {
+      setLoadingRealizations(false);
+    }
+  };
+
   // Fetch batches & products
   const fetchData = async () => {
     setLoading(true);
@@ -205,6 +218,39 @@ export default function AdminProduction() {
     }
   };
 
+  // Check for insufficient ingredients
+  const checkInsufficient = async (dayPlans) => {
+    const productTargets = [];
+    dayPlans.forEach(plan => {
+      if (plan.product_targets) {
+        productTargets.push(...plan.product_targets.map(t => ({
+          product_id: t.product_id,
+          quantity: t.target_quantity
+        })));
+      }
+    });
+
+    if (productTargets.length === 0) return;
+
+    try {
+      const res = await api.post('/api/ingredients/check-insufficient', { product_targets: productTargets });
+      if (res.success) {
+        // Update weeklyData with readiness info
+        setWeeklyData(prev => {
+          if (!prev) return prev;
+          const newData = { ...prev };
+          newData.plans = newData.plans.map(p => {
+             // For simplicity, attach the same deficits to each plan for now or map correctly
+             return { ...p, readiness: { deficits: res.data.insufficient_ingredients, shortage_count: res.data.insufficient_count } };
+          });
+          return newData;
+        });
+      }
+    } catch (err) {
+      console.error('Failed to check ingredients', err);
+    }
+  };
+
   // Fetch Weekly Plans (Lala)
   const fetchWeeklyPlans = async (startDate = null) => {
     setLoadingWeekly(true);
@@ -216,6 +262,9 @@ export default function AdminProduction() {
       if (res.success) {
         setWeeklyData(res.data);
         setCurrentWeekStart(res.data.start_date);
+        
+        // Auto-check ingredients after data load
+        checkInsufficient(res.data.plans);
       }
     } catch {
       // Ignore background fetch error
@@ -603,6 +652,22 @@ export default function AdminProduction() {
                 <span>Riwayat QC ({completedBatches.length})</span>
                 <ArrowRight size={13} className="text-amber-600" />
               </Link>
+
+              <button
+                onClick={() => {
+                  setActiveTab('realization');
+                  if (weeklyData?.plans?.length > 0) {
+                    handleViewRealizations(weeklyData.plans[0].id);
+                  }
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all relative cursor-pointer ${activeTab === 'realization'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary bg-white border border-gray-200'
+                  }`}
+              >
+                <FileText size={15} />
+                <span>Realisasi (Bertahap)</span>
+              </button>
             </>
           )}
         </div>
@@ -760,27 +825,48 @@ export default function AdminProduction() {
           {/* Weekly Summary Totals Grid */}
           {weeklyData?.weekly_totals && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              <div className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Target Mika (Isi 50)</div>
-                <div className="mt-2 text-xl sm:text-3xl font-black font-heading text-brand-blue">
-                  {weeklyData.weekly_totals.target_mika.toLocaleString('id-ID')}{' '}
-                  <span className="text-xs sm:text-sm font-semibold text-text-secondary">wadah</span>
-                </div>
-                <div className="text-[10px] sm:text-xs text-text-secondary mt-1">
-                  = {(weeklyData.weekly_totals.target_mika * 50).toLocaleString('id-ID')} butir dimsum
-                </div>
-              </div>
+              {/* Dynamic Product Targets */}
+              {weeklyData.weekly_totals.product_targets && weeklyData.weekly_totals.product_targets.length > 0 ? (
+                weeklyData.weekly_totals.product_targets.map((target, idx) => (
+                  <div key={idx} className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+                    <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">
+                      Target {target.product_name} (Isi {target.pack_size})
+                    </div>
+                    <div className="mt-2 text-xl sm:text-3xl font-black font-heading text-brand-blue">
+                      {target.total_quantity.toLocaleString('id-ID')}{' '}
+                      <span className="text-xs sm:text-sm font-semibold text-text-secondary">unit</span>
+                    </div>
+                    <div className="text-[10px] sm:text-xs text-text-secondary mt-1">
+                      = {(target.total_quantity * target.pack_size).toLocaleString('id-ID')} butir dimsum
+                    </div>
+                  </div>
+                ))
+              ) : (
+                // Legacy fallback
+                <>
+                  <div className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+                    <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Target Mika (Isi 50)</div>
+                    <div className="mt-2 text-xl sm:text-3xl font-black font-heading text-brand-blue">
+                      {(weeklyData.weekly_totals.target_mika || 0).toLocaleString('id-ID')}{' '}
+                      <span className="text-xs sm:text-sm font-semibold text-text-secondary">wadah</span>
+                    </div>
+                    <div className="text-[10px] sm:text-xs text-text-secondary mt-1">
+                      = {((weeklyData.weekly_totals.target_mika || 0) * 50).toLocaleString('id-ID')} butir dimsum
+                    </div>
+                  </div>
 
-              <div className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
-                <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Target Vakum (Isi 25)</div>
-                <div className="mt-2 text-xl sm:text-3xl font-black font-heading text-purple-700">
-                  {weeklyData.weekly_totals.target_vakum.toLocaleString('id-ID')}{' '}
-                  <span className="text-xs sm:text-sm font-semibold text-text-secondary">pack</span>
-                </div>
-                <div className="text-[10px] sm:text-xs text-text-secondary mt-1">
-                  = {(weeklyData.weekly_totals.target_vakum * 25).toLocaleString('id-ID')} butir dimsum
-                </div>
-              </div>
+                  <div className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
+                    <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Target Vakum (Isi 25)</div>
+                    <div className="mt-2 text-xl sm:text-3xl font-black font-heading text-purple-700">
+                      {(weeklyData.weekly_totals.target_vakum || 0).toLocaleString('id-ID')}{' '}
+                      <span className="text-xs sm:text-sm font-semibold text-text-secondary">pack</span>
+                    </div>
+                    <div className="text-[10px] sm:text-xs text-text-secondary mt-1">
+                      = {((weeklyData.weekly_totals.target_vakum || 0) * 25).toLocaleString('id-ID')} butir dimsum
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="bg-white border border-bg-cream-dark/80 rounded-card p-3.5 sm:p-5 shadow-card hover:shadow-elevated transition-all flex flex-col justify-between">
                 <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary leading-tight">Kebutuhan Gilingan</div>
@@ -874,27 +960,60 @@ export default function AdminProduction() {
                       )}
                     </div>
 
-                    {/* Target Quantities */}
+                    {/* Dynamic Product Targets */}
                     <div className="space-y-2 mb-3">
-                      <div className="flex items-center justify-between p-2 rounded-xl bg-gray-50/80 text-xs">
-                        <span className="font-semibold text-gray-700 flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                          Mika (Isi 50)
-                        </span>
-                        <span className="font-bold text-brand-blue text-sm">
-                          {plan.target_mika} <span className="text-[11px] font-normal text-gray-500">wadah</span>
-                        </span>
-                      </div>
+                      {plan.product_targets && plan.product_targets.length > 0 ? (
+                        plan.product_targets.map((target, idx) => {
+                          const colors = [
+                            'bg-blue-500', 'bg-purple-500', 'bg-emerald-500', 'bg-amber-500', 
+                            'bg-rose-500', 'bg-indigo-500', 'bg-teal-500', 'bg-pink-500'
+                          ];
+                          const colorClasses = [
+                            'text-brand-blue', 'text-purple-700', 'text-emerald-700', 'text-amber-700',
+                            'text-rose-700', 'text-indigo-700', 'text-teal-700', 'text-pink-700'
+                          ];
+                          const color = colors[idx % colors.length];
+                          const textColor = colorClasses[idx % colorClasses.length];
+                          
+                          return (
+                            <div key={target.id || idx} className="flex items-center justify-between p-2 rounded-xl bg-gray-50/80 text-xs">
+                              <span className="font-semibold text-gray-700 flex items-center gap-1">
+                                <span className={`w-2 h-2 rounded-full ${color}`}></span>
+                                {target.product_name || 'Produk'}
+                                <span className="text-[10px] font-normal text-gray-500 ml-1">
+                                  ({target.pack_size} pcs)
+                                </span>
+                              </span>
+                              <span className={`font-bold ${textColor} text-sm`}>
+                                {target.target_quantity} <span className="text-[11px] font-normal text-gray-500">unit</span>
+                              </span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        // Legacy fallback: Mika & Vakum only
+                        <>
+                          <div className="flex items-center justify-between p-2 rounded-xl bg-gray-50/80 text-xs">
+                            <span className="font-semibold text-gray-700 flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                              Mika (Isi 50)
+                            </span>
+                            <span className="font-bold text-brand-blue text-sm">
+                              {plan.target_mika || 0} <span className="text-[11px] font-normal text-gray-500">wadah</span>
+                            </span>
+                          </div>
 
-                      <div className="flex items-center justify-between p-2 rounded-xl bg-gray-50/80 text-xs">
-                        <span className="font-semibold text-gray-700 flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                          Vakum (Isi 25)
-                        </span>
-                        <span className="font-bold text-purple-700 text-sm">
-                          {plan.target_vakum} <span className="text-[11px] font-normal text-gray-500">pack</span>
-                        </span>
-                      </div>
+                          <div className="flex items-center justify-between p-2 rounded-xl bg-gray-50/80 text-xs">
+                            <span className="font-semibold text-gray-700 flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                              Vakum (Isi 25)
+                            </span>
+                            <span className="font-bold text-purple-700 text-sm">
+                              {plan.target_vakum || 0} <span className="text-[11px] font-normal text-gray-500">pack</span>
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     {/* Dough Conversion Pill */}
@@ -1364,6 +1483,119 @@ export default function AdminProduction() {
                     >
                       <Check size={16} />
                       <span>Verifikasi Fisik & Label</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: PRODUCTION REALIZATION (BERTAHAP) */}
+      {activeTab === 'realization' && (
+        <div className="space-y-4">
+          <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-center gap-2.5">
+            <FileText size={18} className="text-emerald-700 shrink-0" />
+            <p className="text-xs text-emerald-800">
+              Catat realisasi produksi bertahap per produk. Sistem akan melacak progres harian secara otomatis.
+            </p>
+          </div>
+
+          {loadingRealizations ? (
+            <div className="bg-white rounded-2xl p-12 text-center border border-gray-200 shadow-xs">
+              <RefreshCw size={24} className="text-gray-400 mx-auto mb-2 animate-spin" />
+              <p className="text-xs text-text-secondary">Memuat data realisasi...</p>
+            </div>
+          ) : planRealizations.length === 0 ? (
+            <div className="bg-white rounded-2xl p-12 text-center border border-gray-200 shadow-xs">
+              <FileText size={36} className="text-gray-400 mx-auto mb-2" />
+              <h4 className="font-bold text-sm text-text-primary">Belum Ada Target Produksi</h4>
+              <p className="text-xs text-text-secondary mt-1">
+                Buat rencana produksi mingguan terlebih dahulu untuk mencatat realisasi.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {planRealizations.map((target) => {
+                const progressPercent = target.target_quantity > 0 
+                  ? Math.min(100, (target.produced_qty / target.target_quantity) * 100)
+                  : 0;
+                const isCompleted = target.produced_qty >= target.target_quantity;
+                const isOverproduced = target.produced_qty > target.target_quantity;
+
+                return (
+                  <div key={target.id} className="bg-white rounded-2xl border border-gray-200 p-5 shadow-xs">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <h4 className="font-bold text-sm text-text-primary">{target.product_name}</h4>
+                        <span className="text-[11px] font-mono text-gray-600">{target.product_sku}</span>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+                        isOverproduced ? 'bg-purple-100 text-purple-800' :
+                        isCompleted ? 'bg-emerald-100 text-emerald-800' :
+                        'bg-amber-100 text-amber-800'
+                      }`}>
+                        {isOverproduced ? 'Overproduksi' : isCompleted ? 'Selesai' : 'Dalam Proses'}
+                      </span>
+                    </div>
+
+                    <div className="mb-3">
+                      <div className="flex justify-between items-center text-xs mb-1">
+                        <span className="text-gray-600">Progres:</span>
+                        <span className="font-bold text-text-primary">
+                          {target.produced_qty} / {target.target_quantity} {target.pack_unit || 'pack'}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full transition-all ${isOverproduced ? 'bg-purple-500' : isCompleted ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {target.realizations && target.realizations.length > 0 && (
+                      <div className="mb-3 bg-gray-50 rounded-xl p-3 text-xs">
+                        <div className="font-semibold text-gray-700 mb-2">Riwayat Realisasi:</div>
+                        <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                          {target.realizations.map((r, idx) => (
+                            <div key={r.id || idx} className="flex justify-between items-center">
+                              <div>
+                                <span className="font-mono text-gray-600">Batch {r.batch_number}</span>
+                                <span className="text-gray-400 mx-1">•</span>
+                                <span className="text-gray-600">{r.tanggal}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-emerald-700">+{r.produced_qty} pack</span>
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                  r.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                                  r.status === 'in_progress' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {r.status}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        setSelectedTargetForRealization(target);
+                        setShowRealizationModal(true);
+                      }}
+                      disabled={isCompleted && !isOverproduced}
+                      className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                        isCompleted && !isOverproduced
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer'
+                      }`}
+                    >
+                      <PlusCircle size={14} />
+                      <span>Tambah Realisasi</span>
                     </button>
                   </div>
                 );

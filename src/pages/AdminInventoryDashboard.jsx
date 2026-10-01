@@ -278,7 +278,7 @@ export default function AdminInventoryDashboard() {
             {todayProd.completed_pcs > 0 ? (
               <div className="mt-0.5 sm:mt-1 flex items-center gap-1 text-[10px] sm:text-xs text-emerald-700 font-semibold truncate">
                 <CheckCircle2 size={12} className="shrink-0" />
-                <span>{todayProd.completed_pcs} butir lolos QC</span>
+                <span>{todayProd.completed_pcs} pack lolos QC</span>
               </div>
             ) : (
               <div className="mt-0.5 sm:mt-1 flex items-center gap-1 text-[10px] sm:text-xs text-text-secondary">
@@ -544,7 +544,22 @@ export default function AdminInventoryDashboard() {
                   const totalPcs = stock * packSize;
                   const minBuffer = prod.min_buffer_stock || 70;
                   const safeTarget = 100;
-                  const bufferRatio = Math.min(100, Math.round((stock / safeTarget) * 100));
+
+                  // Calculate buffer ratio proportional to status ranges
+                  // Kritis (0-69): 0-33% | Waspada (70-100): 34-66% | Aman (>100): 67-100%
+                  let bufferRatio = 0;
+                  if (stock < minBuffer) {
+                    // Kritis: map 0-69 to 0-33%
+                    bufferRatio = Math.round((stock / minBuffer) * 33);
+                  } else if (stock <= safeTarget) {
+                    // Waspada: map 70-100 to 34-66%
+                    bufferRatio = 34 + Math.round(((stock - minBuffer) / (safeTarget - minBuffer)) * 32);
+                  } else {
+                    // Aman: map 100+ to 67-100%
+                    const excessRatio = Math.min(1, (stock - safeTarget) / safeTarget);
+                    bufferRatio = 67 + Math.round(excessRatio * 33);
+                  }
+                  bufferRatio = Math.min(100, Math.max(0, bufferRatio));
 
                   let statusBadge = {
                     label: 'Aman',
