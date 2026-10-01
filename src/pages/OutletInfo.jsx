@@ -33,9 +33,9 @@ function OutletInfo() {
     <div className="max-w-[480px] mx-auto min-h-screen bg-white shadow-2xl overflow-x-hidden flex flex-col">
       {/* 1. Header with Share Button */}
       <header className="bg-white flex items-center justify-between px-4 py-3.5 border-b border-gray-100 sticky top-0 z-20">
-        <button 
+        <button
           type="button"
-          onClick={() => navigate(-1)} 
+          onClick={() => navigate(-1)}
           className="text-text-primary p-1.5 rounded-full hover:bg-gray-100 active:scale-95 transition-all cursor-pointer"
           aria-label="Kembali"
         >
@@ -121,19 +121,15 @@ function OutletInfo() {
           {days.map((day, index) => {
             const isToday = index === todayIndex;
             return (
-              <div 
-                key={day} 
+              <div
+                key={day}
                 className="flex justify-between items-center py-3.5"
               >
                 <div className="flex items-center gap-2">
                   <span className={`font-body text-[13.5px] tracking-wide ${isToday ? 'font-bold text-text-primary' : 'text-text-secondary font-medium'}`}>
                     {day}
                   </span>
-                  {isToday && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-brand-gold/15 text-brand-gold font-body font-bold text-[10px]">
-                      Hari ini
-                    </span>
-                  )}
+
                 </div>
                 <span className={`font-body text-[13.5px] ${isToday ? 'font-bold text-text-primary' : 'text-text-secondary'}`}>
                   08:00 - 22:00

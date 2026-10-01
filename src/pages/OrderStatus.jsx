@@ -20,7 +20,34 @@ export default function OrderStatus() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryParams = new URLSearchParams(location.search);
-  const orderId = location.state?.orderId || queryParams.get('orderId');
+
+  // Support multiple URL formats:
+  //   Internal (navigate state): location.state.orderId
+  //   Internal (query):          ?orderId=xxx
+  //   WhatsApp link:             ?id=xxx  (sent by backend WA receipt)
+  const orderId = location.state?.orderId
+    || queryParams.get('orderId')
+    || queryParams.get('id');
+
+  // Access token for guest order verification (no JWT needed):
+  //   1. From navigate state (right after checkout)
+  //   2. From URL query ?token= (embedded in WA link by backend)
+  //   3. From localStorage (persisted after first load)
+  //   4. From local order history (saved at checkout time)
+  const urlToken = queryParams.get('token');
+  const historyOrder = getOrderHistory().find(o => o.orderId === orderId);
+  const token = location.state?.accessToken
+    || urlToken
+    || historyOrder?.accessToken
+    || localStorage.getItem('dimsum_current_order_token');
+  const headers = token ? { 'X-Order-Token': token } : {};
+
+  // Persist URL token to localStorage so refresh still works
+  useEffect(() => {
+    if (urlToken) {
+      localStorage.setItem('dimsum_current_order_token', urlToken);
+    }
+  }, [urlToken]);
 
   const [status, setStatus] = useState('Checking...');
   const [qrToken, setQrToken] = useState(null);
@@ -78,11 +105,6 @@ export default function OrderStatus() {
   };
 
   const [isManualSyncing, setIsManualSyncing] = useState(false);
-
-  // Prepare order token header
-  const historyOrder = getOrderHistory().find(o => o.orderId === orderId);
-  const token = location.state?.accessToken || historyOrder?.accessToken || localStorage.getItem('dimsum_current_order_token');
-  const headers = token ? { 'X-Order-Token': token } : {};
 
   const handleOrderData = (data) => {
     if (!data) return;

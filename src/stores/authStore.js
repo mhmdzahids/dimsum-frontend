@@ -78,6 +78,24 @@ export const useCustomerAuthStore = create(
         // Actions
         setAuth: (token, user, coins = 0) => {
           set({ customerToken: token, customerUser: user, coins });
+          try {
+            if (token) localStorage.setItem('dimsum_customer_token', token);
+            if (user) {
+              localStorage.setItem('dimsum_customer_user', JSON.stringify(user));
+              if (user.full_name) localStorage.setItem('dimsum_customer_name', user.full_name);
+              if (user.email) {
+                if (user.email.includes('@')) {
+                  localStorage.setItem('dimsum_customer_email', user.email);
+                } else {
+                  localStorage.setItem('dimsum_customer_phone', user.email);
+                }
+              }
+            }
+            localStorage.setItem('dimsum_customer_coins', String(coins));
+            window.dispatchEvent(new CustomEvent('dimsum_customer_auth_changed', { detail: { loggedIn: true, user } }));
+          } catch (err) {
+            console.error('Error saving customer auth to localStorage:', err);
+          }
         },
 
         clearAuth: () => {
@@ -86,6 +104,7 @@ export const useCustomerAuthStore = create(
             localStorage.removeItem('dimsum_customer_token');
             localStorage.removeItem('dimsum_customer_user');
             localStorage.removeItem('dimsum_customer_coins');
+            window.dispatchEvent(new CustomEvent('dimsum_customer_auth_changed', { detail: { loggedIn: false } }));
           } catch (err) {
             console.error('Error clearing customer auth from localStorage:', err);
           }
@@ -93,10 +112,27 @@ export const useCustomerAuthStore = create(
 
         setCoins: (amount) => {
           set({ coins: amount });
+          try {
+            localStorage.setItem('dimsum_customer_coins', String(amount));
+            window.dispatchEvent(new CustomEvent('dimsum_customer_auth_changed', { detail: { coins: amount } }));
+          } catch (err) {
+            console.error('Error setting customer coins in localStorage:', err);
+          }
         },
 
         updateUser: (user) => {
           set({ customerUser: user });
+          try {
+            if (user) {
+              localStorage.setItem('dimsum_customer_user', JSON.stringify(user));
+              if (user.full_name) localStorage.setItem('dimsum_customer_name', user.full_name);
+              if (user.email && user.email.includes('@')) localStorage.setItem('dimsum_customer_email', user.email);
+              if (user.phone) localStorage.setItem('dimsum_customer_phone', user.phone);
+              window.dispatchEvent(new CustomEvent('dimsum_customer_auth_changed', { detail: { loggedIn: true, user } }));
+            }
+          } catch (err) {
+            console.error('Error updating customer user in localStorage:', err);
+          }
         },
 
         rehydrate: () => {
@@ -105,11 +141,17 @@ export const useCustomerAuthStore = create(
             const userStr = localStorage.getItem('dimsum_customer_user');
             const coins = localStorage.getItem('dimsum_customer_coins');
             
-            if (token) {
+            if (token && userStr) {
               set({
                 customerToken: token,
-                customerUser: userStr ? JSON.parse(userStr) : null,
+                customerUser: JSON.parse(userStr),
                 coins: coins ? parseInt(coins, 10) : 0,
+              });
+            } else if (!token) {
+              set({
+                customerToken: null,
+                customerUser: null,
+                coins: 0
               });
             }
           } catch (err) {

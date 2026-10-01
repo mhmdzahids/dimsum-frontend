@@ -4,6 +4,7 @@ import {
   getCustomerToken,
   getCustomerUser,
   getCustomerCoins,
+  logoutCustomer,
   subscribeCustomerAuth
 } from '../utils/customerAuth';
 import api from '../api/client';
@@ -20,7 +21,12 @@ export const AuthContext = createContext(null);
  * - Backwards compatible with existing code
  */
 export function AuthProvider({ children }) {
-  const queryClient = useQueryClient();
+  let queryClient = null;
+  try {
+    queryClient = useQueryClient();
+  } catch {
+    queryClient = null;
+  }
   
   // Get state and actions from Zustand store
   const token = useCustomerAuthStore((state) => state.customerToken);
@@ -91,10 +97,16 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    logoutCustomer();
     clearAuth();
-    // Security: Clear all React Query cache on logout
-    queryClient.cancelQueries();
-    queryClient.clear();
+    if (queryClient) {
+      try {
+        queryClient.cancelQueries();
+        queryClient.clear();
+      } catch (err) {
+        console.warn('Error clearing query client cache:', err);
+      }
+    }
   };
 
   const setCoins = (amount) => {
@@ -118,7 +130,7 @@ export function AuthProvider({ children }) {
   };
 
   const value = useMemo(() => ({
-    token,
+    token: token || '',
     user,
     isLoggedIn,
     loading: false, // Zustand rehydrates synchronously

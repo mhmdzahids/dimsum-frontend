@@ -5,13 +5,13 @@ import {
   ChevronRight,
   Minus,
   Plus,
-  ConciergeBell,
+  Flame,
+  Ticket,
+  ShoppingBag,
   PenLine,
   CheckCircle2,
   ChevronDown,
   X,
-  Flame,
-  Ticket,
   Truck,
   MapPin,
   Coins,
@@ -155,11 +155,11 @@ export default function Checkout() {
 
   const deliveryDistanceKm = deliveryCoords
     ? calculateHaversineDistance(
-        OUTLET_COORDS.latitude,
-        OUTLET_COORDS.longitude,
-        deliveryCoords.latitude,
-        deliveryCoords.longitude
-      )
+      OUTLET_COORDS.latitude,
+      OUTLET_COORDS.longitude,
+      deliveryCoords.latitude,
+      deliveryCoords.longitude
+    )
     : null;
 
   // Refresh delivery info on navigation
@@ -553,7 +553,7 @@ export default function Checkout() {
                   : 'text-text-secondary hover:text-text-primary'
                   }`}
               >
-                <ConciergeBell size={14} className={orderType === 'pickup' ? 'text-brand-blue' : ''} />
+                <ShoppingBag size={14} className={orderType === 'pickup' ? 'text-brand-blue' : ''} />
                 <span>Pick Up Outlet</span>
               </button>
               <button
@@ -576,7 +576,7 @@ export default function Checkout() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-brand-blue/10 flex items-center justify-center text-brand-blue shrink-0">
-                  <ConciergeBell size={18} />
+                  <ShoppingBag size={18} />
                 </div>
                 <div className="flex flex-col">
                   <span className="font-body text-[11px] text-text-secondary font-medium">Waktu Pengambilan</span>
@@ -860,8 +860,7 @@ export default function Checkout() {
             {totalMenuDiscount > 0 && (
               <div className="flex justify-between items-center py-2.5">
                 <div className="flex items-center gap-1.5 text-brand-red">
-                  <Flame size={13} className="fill-brand-red text-brand-red" />
-                  <span className="font-body text-[13px] font-medium">Diskon Menu Promo</span>
+                  <span className="font-body text-[13px] text-text-secondary">Diskon Menu Promo</span>
                 </div>
                 <span className="font-body font-semibold text-[13px] text-brand-red">
                   -Rp{totalMenuDiscount.toLocaleString('id-ID')}
@@ -873,8 +872,7 @@ export default function Checkout() {
             {voucherDiscount > 0 && (
               <div className="flex justify-between items-center py-2.5">
                 <div className="flex items-center gap-1.5 text-brand-gold">
-                  <Ticket size={13} className="text-brand-gold" />
-                  <span className="font-body text-[13px] font-medium">
+                  <span className="font-body text-[13px] text-text-secondary">
                     Diskon Voucher ({appliedVoucher?.code})
                   </span>
                 </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Store,
   QrCode,
@@ -23,6 +23,7 @@ import {
   Upload,
   User,
   Phone,
+  Mail,
   FileText,
   UtensilsCrossed,
   PackageCheck,
@@ -36,7 +37,11 @@ import {
   LogOut,
   LayoutDashboard,
   Copy,
-  ShieldCheck
+  ShieldCheck,
+  Bell,
+  BellOff,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -53,6 +58,7 @@ import jsQR from 'jsqr';
 import api from '../api/client';
 import { getAdminUser, getAdminRole } from '../utils/adminAuth';
 import SwipeToConfirm from '../components/ui/SwipeToConfirm';
+import { usePolling } from '../hooks/usePolling';
 import logoImg from '../assets/logo.webp';
 
 export default function AdminPOS() {
@@ -114,6 +120,137 @@ export default function AdminPOS() {
       clearInterval(heartbeatTimer);
       window.removeEventListener('focus', handleFocus);
     };
+  }, []);
+
+  // =========================================================================
+  // ORDER NOTIFICATION SYSTEM (Smart Polling + Audio + Desktop Notification)
+  // =========================================================================
+
+  // State for notification bell dropdown & mute
+  const [notifAlerts, setNotifAlerts] = useState([]);      // orders pending pickup
+  const [notifCount, setNotifCount] = useState(0);         // unacknowledged new orders
+  const [isMuted, setIsMuted] = useState(false);           // mute audio chime
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [bellRinging, setBellRinging] = useState(false);   // animate bell icon
+  const notifDropdownRef = useRef(null);
+  const dropdownHideTimer = useRef(null);
+  const seenOrderIdsRef = useRef(null); // null = not initialized yet (first poll)
+  const audioCtxRef = useRef(null);
+
+  // Request browser notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  /** Play a double-note "Ting-Tung!" chime using Web Audio API (no external file needed) */
+  const playChime = useCallback(() => {
+    if (isMuted) return;
+    try {
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const playNote = (freq, startTime, duration = 0.35) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(0.45, startTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+      };
+
+      const now = ctx.currentTime;
+      playNote(880, now);         // "Ting" — A5
+      playNote(659, now + 0.22);  // "Tung" — E5
+    } catch (e) {
+      console.warn('[POS Notif] Audio chime failed:', e.message);
+    }
+  }, [isMuted]);
+
+  /** Send a Browser Desktop Notification when tab is hidden */
+  const sendDesktopNotif = useCallback((order) => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+      const notif = new Notification('🔔 Pesanan Web Baru Masuk!', {
+        body: `${order.customer_name} — ${order.items_summary}\n⏰ Ambil: ${order.pickup_time}`,
+        icon: '/favicon.ico',
+        tag: `pos-order-${order.id}`,
+        requireInteraction: false,
+      });
+      setTimeout(() => notif.close(), 8000);
+    } catch (e) {
+      console.warn('[POS Notif] Desktop notification failed:', e.message);
+    }
+  }, []);
+
+  /** Acknowledge (dismiss) all new notifications */
+  const acknowledgeAll = useCallback(() => {
+    if (notifAlerts.length > 0) {
+      seenOrderIdsRef.current = new Set(notifAlerts.map(o => o.id));
+    }
+    setNotifCount(0);
+    setBellRinging(false);
+  }, [notifAlerts]);
+
+  /** Handle new polling data from /api/orders/pending-alerts */
+  const handleAlertData = useCallback((data) => {
+    const orders = data?.orders || [];
+    setNotifAlerts(orders);
+
+    // First poll: just record current IDs as "seen" — don't trigger alarm
+    if (seenOrderIdsRef.current === null) {
+      seenOrderIdsRef.current = new Set(orders.map(o => o.id));
+      setNotifCount(0);
+      return;
+    }
+
+    // Subsequent polls: find genuinely new orders
+    const newOrders = orders.filter(o => !seenOrderIdsRef.current.has(o.id));
+    if (newOrders.length > 0) {
+      // Update seen set
+      seenOrderIdsRef.current = new Set(orders.map(o => o.id));
+
+      // Fire audio chime
+      playChime();
+
+      // Animate bell
+      setBellRinging(true);
+      setTimeout(() => setBellRinging(false), 3500);
+
+      // Set unread badge count
+      setNotifCount(prev => prev + newOrders.length);
+
+      // Desktop notifications for each new order (works even when tab is hidden)
+      newOrders.forEach(order => sendDesktopNotif(order));
+    }
+  }, [playChime, sendDesktopNotif]);
+
+  // Polling: every 10 seconds, always active (pauseOnHidden: false so count stays fresh)
+  usePolling('/api/orders/pending-alerts', {
+    interval: 10000,
+    auth: 'admin',
+    pauseOnHidden: false,
+    onData: handleAlertData,
+  });
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(e.target)) {
+        setShowNotifDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
   // --- CATALOG & PRODUCTS STATE ---
@@ -235,8 +372,33 @@ export default function AdminPOS() {
   const [waSentMsg, setWaSentMsg] = useState('');
 
   // --- PICKUP MODE STATE ---
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [searchingCustomer, setSearchingCustomer] = useState(false);
+  const [customerSearchResult, setCustomerSearchResult] = useState(null);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [qrTokenInput, setQrTokenInput] = useState('');
   const [checkingOrder, setCheckingOrder] = useState(false);
+  const orderDetailsRef = useRef(null);
+
+  const handleSearchCustomer = async (e) => {
+    e.preventDefault();
+    if (!customerSearchQuery.trim()) return;
+    setSearchingCustomer(true);
+    setCustomerSearchResult(null);
+    try {
+      const res = await api.get(`/api/orders/search-customer?q=${encodeURIComponent(customerSearchQuery.trim())}`, { auth: 'admin' });
+      if (res.success && Array.isArray(res.data)) {
+        setCustomerSearchResult(res.data);
+      } else {
+        setCustomerSearchResult([]);
+      }
+    } catch {
+      setCustomerSearchResult([]);
+    } finally {
+      setSearchingCustomer(false);
+    }
+  };
+
   const [previewOrder, setPreviewOrder] = useState(null);
   const [previewError, setPreviewError] = useState('');
   const [verifyLoading, setVerifyLoading] = useState(false);
@@ -247,10 +409,42 @@ export default function AdminPOS() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraLoading, setCameraLoading] = useState(false);
   const [cameraError, setCameraError] = useState('');
+  const [availableCameras, setAvailableCameras] = useState([]);   // all video input devices
+  const [selectedCameraId, setSelectedCameraId] = useState('');   // chosen deviceId
+  const [showCameraSelect, setShowCameraSelect] = useState(false); // dropdown open
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const animationFrameRef = useRef(null);
+  const cameraSelectRef = useRef(null);
+
+  /** Enumerate all available video input devices */
+  const enumerateCameras = useCallback(async () => {
+    try {
+      // Request permission first so labels are populated
+      const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      tempStream.getTracks().forEach(t => t.stop());
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      setAvailableCameras(videoDevices);
+
+      // Default: prefer back-facing / environment camera on first run
+      if (!selectedCameraId && videoDevices.length > 0) {
+        const backCam = videoDevices.find(d =>
+          d.label.toLowerCase().includes('back') ||
+          d.label.toLowerCase().includes('belakang') ||
+          d.label.toLowerCase().includes('environment') ||
+          d.label.toLowerCase().includes('rear')
+        );
+        setSelectedCameraId(backCam ? backCam.deviceId : videoDevices[0].deviceId);
+      }
+      return videoDevices;
+    } catch (err) {
+      console.warn('[POS Camera] Enumerate failed:', err.message);
+      return [];
+    }
+  }, [selectedCameraId]);
 
   // --- CART OPERATIONS ---
   const addToCart = (product) => {
@@ -576,6 +770,7 @@ export default function AdminPOS() {
       });
       if (res.success && res.data) {
         setPreviewOrder(res.data);
+        setSelectedOrderId(res.data.id);
       } else {
         setPreviewError(res.error || 'Pesanan dengan kode QR tersebut tidak ditemukan.');
       }
@@ -675,10 +870,11 @@ export default function AdminPOS() {
     animationFrameRef.current = requestAnimationFrame(scanVideoFrame);
   };
 
-  const startCamera = async () => {
+  const startCamera = async (deviceId = selectedCameraId) => {
     stopCamera();
     setCameraError('');
     setCameraLoading(true);
+    setShowCameraSelect(false);
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError('Browser Anda tidak mendukung akses kamera.');
@@ -687,29 +883,72 @@ export default function AdminPOS() {
     }
 
     try {
-      const constraints = {
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      setIsCameraActive(true);
-      setCameraLoading(false);
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute('playsinline', 'true');
-        videoRef.current.setAttribute('muted', 'true');
-        await videoRef.current.play().catch((e) => console.warn(e));
+      // Enumerate cameras first if not done yet
+      let cameras = availableCameras;
+      if (cameras.length === 0) {
+        cameras = await enumerateCameras();
       }
-      animationFrameRef.current = requestAnimationFrame(scanVideoFrame);
+
+      // Build constraints — prefer specific deviceId if available, else environment fallback
+      const videoConstraint = deviceId
+        ? { deviceId: { exact: deviceId } }
+        : { facingMode: { ideal: 'environment' } };
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: false });
+      streamRef.current = stream;
+
+      // Reflect which camera is actually active
+      const activeTrack = stream.getVideoTracks()[0];
+      const settings = activeTrack?.getSettings();
+      if (settings?.deviceId) setSelectedCameraId(settings.deviceId);
+
+      // NOTE: Do NOT attach stream to videoRef here!
+      // setIsCameraActive(true) triggers a React re-render that mounts the <video>
+      // element. We must attach srcObject AFTER that mount via useEffect below,
+      // otherwise we'd be writing to the old (or null) DOM node — causing black output.
+      setCameraLoading(false);
+      setIsCameraActive(true); // <-- this causes React to mount <video ref={videoRef}>
     } catch (err) {
       console.error(err);
       setCameraLoading(false);
       setIsCameraActive(false);
-      setCameraError('Izin akses kamera ditolak atau kamera tidak ditemukan.');
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraError('Izin akses kamera ditolak. Mohon izinkan kamera di pengaturan browser.');
+      } else if (err.name === 'NotFoundError') {
+        setCameraError('Kamera tidak ditemukan atau sedang digunakan aplikasi lain.');
+      } else {
+        setCameraError(`Gagal membuka kamera: ${err.message}`);
+      }
     }
   };
+
+  // Attach stream to <video> element AFTER React mounts it (isCameraActive → true).
+  // This is the correct pattern: never set srcObject before the DOM node exists.
+  useEffect(() => {
+    if (!isCameraActive || !streamRef.current) return;
+
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.srcObject = streamRef.current;
+    video.setAttribute('playsinline', 'true');
+    video.muted = true;
+
+    const handleReady = () => {
+      // Start scanning only after video is actually outputting frames
+      animationFrameRef.current = requestAnimationFrame(scanVideoFrame);
+    };
+
+    video.addEventListener('loadedmetadata', handleReady, { once: true });
+    video.play().catch((e) => {
+      console.warn('[POS Camera] play() failed:', e.message);
+    });
+
+    return () => {
+      video.removeEventListener('loadedmetadata', handleReady);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCameraActive]);
 
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
@@ -742,9 +981,8 @@ export default function AdminPOS() {
   };
 
   useEffect(() => {
-    return () => {
-      stopCamera();
-    };
+    return () => stopCamera();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -825,6 +1063,182 @@ export default function AdminPOS() {
               <span className="hidden sm:inline">Dashboard</span>
             </button>
           )}
+
+          {/* ===================== NOTIFICATION BELL ===================== */}
+          <div
+            ref={notifDropdownRef}
+            className="relative"
+            onMouseEnter={() => {
+              if (dropdownHideTimer.current) clearTimeout(dropdownHideTimer.current);
+              setShowNotifDropdown(true);
+            }}
+            onMouseLeave={() => {
+              dropdownHideTimer.current = setTimeout(() => setShowNotifDropdown(false), 250);
+            }}
+          >
+            {/* Bell Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowNotifDropdown(v => !v);
+                if (notifCount > 0) acknowledgeAll();
+              }}
+              title={notifCount > 0 ? `${notifCount} pesanan baru` : 'Notifikasi Pesanan Web'}
+              className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${notifCount > 0
+                ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
+                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+            >
+              {/* Bell icon with ringing animation */}
+              <span className={bellRinging ? 'animate-[wiggle_0.35s_ease-in-out_4]' : ''}>
+                {isMuted
+                  ? <BellOff size={15} />
+                  : <Bell size={15} className={notifCount > 0 ? 'text-red-600' : ''} />
+                }
+              </span>
+
+              {/* Badge count */}
+              {notifCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 shadow-md border border-white animate-pulse">
+                  {notifCount > 9 ? '9+' : notifCount}
+                </span>
+              )}
+
+              <span className="hidden sm:inline">
+                {notifAlerts.length > 0 ? `${notifAlerts.length} Pesanan` : 'Notifikasi'}
+              </span>
+            </button>
+
+            {/* ---- Hover Dropdown Flyout ---- */}
+            {showNotifDropdown && (
+              <div className="absolute right-0 top-full mt-2 w-[360px] bg-white rounded-2xl shadow-xl border border-gray-200 z-50 overflow-hidden animate-[fadeIn_0.15s_ease-out]">
+                {/* Dropdown Header */}
+                <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-brand-blue/5 to-transparent border-b border-gray-100">
+                  <div>
+                    <p className="text-sm font-extrabold text-gray-900 flex items-center gap-1.5">
+                      <Bell size={14} className="text-brand-blue" />
+                      Pesanan Masuk
+                    </p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      {notifAlerts.length > 0
+                        ? `${notifAlerts.length} pesanan menunggu disiapkan`
+                        : 'Tidak ada pesanan baru'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {/* Mute toggle */}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setIsMuted(v => !v); }}
+                      title={isMuted ? 'Aktifkan Suara' : 'Bisukan Suara'}
+                      className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                    </button>
+                    {/* Mark all read */}
+                    {notifCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); acknowledgeAll(); }}
+                        className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+                      >
+                        Tandai Dibaca
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Order List */}
+                <div className="max-h-[420px] overflow-y-auto">
+                  {notifAlerts.length === 0 ? (
+                    <div className="py-10 px-4 text-center">
+                      <CheckCircle2 size={32} className="text-emerald-400 mx-auto mb-2" />
+                      <p className="text-sm font-bold text-gray-700">Semua Pesanan Beres!</p>
+                      <p className="text-xs text-gray-400 mt-1">Tidak ada pesanan web yang menunggu disiapkan.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-50">
+                      {notifAlerts.map((order) => (
+                        <button
+                          key={order.id}
+                          type="button"
+                          onClick={() => {
+                            // Navigate to pickup mode & load order detail instantly
+                            setActiveMode('pickup');
+                            setQrTokenInput(order.qr_token);
+                            handleCheckQR(order.qr_token);
+                            acknowledgeAll();
+                            setShowNotifDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-3 hover:bg-emerald-50/60 transition-colors group"
+                        >
+                          {/* Row 1: name + pickup badge */}
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <div>
+                              <span className="text-sm font-extrabold text-gray-900 group-hover:text-emerald-700 transition-colors">
+                                {order.customer_name}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Row 2: Items summary */}
+                          <p className="text-[11px] text-gray-600 mb-1.5 line-clamp-1">
+                            {order.items_summary || `${order.total_items} item`}
+                          </p>
+
+                          {/* Row 3: Phone, Email, Pickup time, Amount */}
+                          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
+                            {order.phone && order.phone !== '-' && (
+                              <span className="flex items-center gap-1">
+                                <Phone size={9} className="text-emerald-600" />
+                                {order.phone}
+                              </span>
+                            )}
+                            {order.email && order.email !== '-' && (
+                              <span className="flex items-center gap-1">
+                                <Mail size={9} className="text-blue-500" />
+                                {order.email}
+                              </span>
+                            )}
+                            <span className="flex items-center gap-1 font-semibold text-amber-700">
+                              <Clock size={9} />
+                              {order.pickup_time}
+                            </span>
+                            <span className="ml-auto font-extrabold text-brand-gold text-[11px]">
+                              Rp{Number(order.total_amount).toLocaleString('id-ID')}
+                            </span>
+                          </div>
+
+                          {/* Hover CTA hint */}
+                          <p className="text-[10px] text-emerald-600 font-semibold mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                            Klik untuk lihat & verifikasi pesanan <ChevronRight size={11} />
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                {notifAlerts.length > 0 && (
+                  <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/80">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveMode('pickup');
+                        acknowledgeAll();
+                        setShowNotifDropdown(false);
+                      }}
+                      className="w-full text-center text-xs text-brand-blue font-bold hover:text-blue-700 transition-colors"
+                    >
+                      Buka Mode Scan QR Pickup →
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {/* ============================================================== */}
 
           {/* Cashier User Pill with Integrated Logout Button */}
           <div className="flex items-center gap-2 pl-3 pr-1.5 py-1 bg-gray-50 border border-gray-200 rounded-2xl">
@@ -1251,22 +1665,128 @@ export default function AdminPOS() {
                 </h2>
                 <div className="flex items-center gap-2">
                   {isCameraActive ? (
-                    <button
-                      type="button"
-                      onClick={stopCamera}
-                      className="px-3 py-1.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs font-bold flex items-center gap-1.5 hover:bg-red-100"
-                    >
-                      <CameraOff size={13} /> Tutup Kamera
-                    </button>
+                    <>
+                      {/* Switch Camera — show only when multiple cameras available */}
+                      {availableCameras.length > 1 && (
+                        <div ref={cameraSelectRef} className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setShowCameraSelect(v => !v)}
+                            className="px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold flex items-center gap-1.5 hover:bg-blue-100 transition-colors"
+                            title="Ganti kamera"
+                          >
+                            <RefreshCw size={12} />
+                            <span className="hidden sm:inline">Ganti Kamera</span>
+                          </button>
+                          {showCameraSelect && (
+                            <div className="absolute right-0 top-full mt-1.5 bg-white rounded-xl shadow-lg border border-gray-200 z-50 min-w-[220px] overflow-hidden">
+                              <p className="text-[10px] font-bold text-gray-500 px-3 pt-2.5 pb-1 uppercase tracking-wide">Pilih Kamera</p>
+                              {availableCameras.map((cam, idx) => (
+                                <button
+                                  key={cam.deviceId}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCameraId(cam.deviceId);
+                                    startCamera(cam.deviceId);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
+                                    selectedCameraId === cam.deviceId
+                                      ? 'bg-blue-50 text-blue-700 font-bold'
+                                      : 'text-gray-700 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <Camera size={12} className={selectedCameraId === cam.deviceId ? 'text-blue-600' : 'text-gray-400'} />
+                                  <span className="truncate">
+                                    {cam.label || `Kamera ${idx + 1}`}
+                                  </span>
+                                  {selectedCameraId === cam.deviceId && (
+                                    <Check size={11} className="ml-auto shrink-0 text-blue-600" />
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={stopCamera}
+                        className="px-3 py-1.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs font-bold flex items-center gap-1.5 hover:bg-red-100 transition-colors"
+                      >
+                        <CameraOff size={13} /> Tutup Kamera
+                      </button>
+                    </>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={startCamera}
-                      disabled={cameraLoading}
-                      className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-100"
-                    >
-                      <Camera size={13} /> Buka Kamera HP
-                    </button>
+                    <>
+                      {/* Open Camera — with dropdown when multiple cameras exist */}
+                      {availableCameras.length > 1 ? (
+                        <div ref={cameraSelectRef} className="relative flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => startCamera()}
+                            disabled={cameraLoading}
+                            className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-100 transition-colors disabled:opacity-60"
+                          >
+                            <Camera size={13} className={cameraLoading ? 'animate-pulse' : ''} />
+                            {cameraLoading ? 'Memuat...' : 'Buka Kamera'}
+                          </button>
+                          {/* Chevron to pick specific camera */}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (availableCameras.length === 0) await enumerateCameras();
+                              setShowCameraSelect(v => !v);
+                            }}
+                            title="Pilih kamera"
+                            className="p-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-colors"
+                          >
+                            <ChevronRight size={13} className={`transition-transform ${showCameraSelect ? 'rotate-90' : ''}`} />
+                          </button>
+                          {showCameraSelect && (
+                            <div className="absolute right-0 top-full mt-1.5 bg-white rounded-xl shadow-lg border border-gray-200 z-50 min-w-[220px] overflow-hidden">
+                              <p className="text-[10px] font-bold text-gray-500 px-3 pt-2.5 pb-1 uppercase tracking-wide">Pilih Kamera & Buka</p>
+                              {availableCameras.map((cam, idx) => (
+                                <button
+                                  key={cam.deviceId}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCameraId(cam.deviceId);
+                                    startCamera(cam.deviceId);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
+                                    selectedCameraId === cam.deviceId
+                                      ? 'bg-emerald-50 text-emerald-700 font-bold'
+                                      : 'text-gray-700 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <Camera size={12} className={selectedCameraId === cam.deviceId ? 'text-emerald-600' : 'text-gray-400'} />
+                                  <span className="truncate">
+                                    {cam.label || `Kamera ${idx + 1}`}
+                                  </span>
+                                  {selectedCameraId === cam.deviceId && (
+                                    <Check size={11} className="ml-auto shrink-0 text-emerald-600" />
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            // enumerate first time when single/unknown
+                            if (availableCameras.length === 0) await enumerateCameras();
+                            startCamera();
+                          }}
+                          disabled={cameraLoading}
+                          className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-100 transition-colors disabled:opacity-60"
+                        >
+                          <Camera size={13} className={cameraLoading ? 'animate-pulse' : ''} />
+                          {cameraLoading ? 'Memuat...' : 'Buka Kamera'}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1309,35 +1829,150 @@ export default function AdminPOS() {
                 </label>
               </div>
 
-              {/* Manual Token Input */}
-              <div className="pt-3 border-t border-gray-100">
+              {/* Search Customer Input */}
+              <div className="pt-3 border-t border-gray-100 mt-4">
                 <label className="block text-xs font-semibold text-text-secondary mb-1">
-                  Ketik Token QR Code (Jika Scanner Gagal)
+                  Cari Pembeli (Nama/No Telp/Email)
                 </label>
-                <div className="flex gap-2">
+                <form onSubmit={handleSearchCustomer} className="flex gap-2">
                   <input
                     type="text"
-                    value={qrTokenInput}
-                    onChange={(e) => setQrTokenInput(e.target.value)}
-                    placeholder="Contoh: MGh0XQfVwDgQVAE..."
-                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-mono focus:outline-none focus:border-brand-blue"
+                    value={customerSearchQuery}
+                    onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                    placeholder="Contoh: Budi / 0812..."
+                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-brand-blue"
                   />
                   <button
-                    type="button"
-                    onClick={() => handleCheckQR(qrTokenInput)}
-                    disabled={checkingOrder}
-                    className="px-4 py-2.5 bg-brand-blue text-white rounded-xl text-xs font-bold hover:bg-brand-blue-dark transition-colors shadow-xs flex items-center gap-1.5"
+                    type="submit"
+                    disabled={searchingCustomer}
+                    className="px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-colors shadow-xs flex items-center gap-1.5"
                   >
-                    <RefreshCw size={13} className={checkingOrder ? 'animate-spin' : ''} />
-                    <span>Cek</span>
+                    <Search size={13} className={searchingCustomer ? 'animate-spin' : ''} />
+                    <span>Cari</span>
                   </button>
-                </div>
+                </form>
               </div>
+
+              {customerSearchResult && customerSearchResult.length === 0 && (
+                <div className="mt-3 p-3 bg-amber-50 border border-amber-200/80 rounded-xl flex items-center gap-2 text-xs text-amber-800">
+                  <AlertCircle size={15} className="shrink-0 text-amber-600" />
+                  <span>Tidak ditemukan pesanan untuk <strong>"{customerSearchQuery}"</strong></span>
+                </div>
+              )}
+
+              {customerSearchResult && customerSearchResult.length > 0 && (
+                <div className="mt-4 p-3 bg-emerald-50/80 border border-emerald-200 rounded-2xl">
+                  <div className="flex items-center justify-between mb-2.5">
+                    <p className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                      <CheckCircle2 size={14} className="text-emerald-600" />
+                      Ditemukan {customerSearchResult.length} Pesanan:
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomerSearchResult(null);
+                        setSelectedOrderId(null);
+                      }}
+                      className="text-[10px] text-gray-500 hover:text-gray-700 underline cursor-pointer"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {customerSearchResult.map((order) => {
+                      const isSelected = previewOrder?.id === order.id || selectedOrderId === order.id;
+                      const hasPhone = order.phone && order.phone !== '-';
+                      const hasEmail = order.email && order.email !== '-';
+
+                      return (
+                        <button
+                          key={order.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedOrderId(order.id);
+                            setQrTokenInput(order.qr_token);
+                            handleCheckQR(order.qr_token);
+                            if (orderDetailsRef.current && window.innerWidth < 1024) {
+                              orderDetailsRef.current.scrollIntoView({ behavior: 'smooth' });
+                            }
+                          }}
+                          className={`w-full text-left p-3 rounded-xl text-xs transition-all border cursor-pointer group relative ${isSelected
+                            ? 'bg-blue-50/90 border-brand-blue ring-2 ring-brand-blue/20 shadow-xs'
+                            : 'bg-white hover:bg-emerald-50/70 border-emerald-100 hover:border-emerald-300 shadow-2xs'
+                            }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-1.5">
+                            <div>
+                              <span className={`font-bold text-sm block ${isSelected ? 'text-brand-blue' : 'text-gray-900 group-hover:text-emerald-700'} transition-colors`}>
+                                {order.customer_name}
+                              </span>
+                              <span className="text-[10px] text-gray-500 font-mono">
+                                Inv: #{order.order_number}
+                              </span>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span
+                                className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-block ${order.status === 'paid'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : order.status === 'completed'
+                                    ? 'bg-gray-100 text-gray-600'
+                                    : 'bg-amber-100 text-amber-800'
+                                  }`}
+                              >
+                                {order.status === 'paid' ? 'Siap Diambil' : order.status === 'completed' ? 'Selesai' : order.status}
+                              </span>
+                              <p className="font-extrabold text-xs text-brand-gold mt-1">
+                                Rp{Number(order.total_amount || 0).toLocaleString('id-ID')}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Informasi Kontak: No HP & Email pembeda nama kembar */}
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-gray-100 text-[11px]">
+                            {hasPhone && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md font-mono">
+                                <Phone size={11} className="text-emerald-600" />
+                                {order.phone}
+                              </span>
+                            )}
+                            {hasEmail && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md font-sans">
+                                <Mail size={11} className="text-blue-600" />
+                                {order.email}
+                              </span>
+                            )}
+                            {!hasPhone && !hasEmail && (
+                              <span className="text-[10px] text-gray-400 italic">
+                                Kontak tidak dicantumkan
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between mt-2 pt-1 text-[10px] text-gray-500">
+                            <span className="flex items-center gap-1">
+                              <Clock size={11} className="text-gray-400" />
+                              {order.pickup_time || 'Pick Up'}
+                            </span>
+                            <span
+                              className={`font-semibold flex items-center gap-0.5 ${isSelected ? 'text-brand-blue' : 'text-emerald-600 group-hover:translate-x-0.5 transition-transform'
+                                }`}
+                            >
+                              {isSelected ? 'Sedang Ditampilkan' : 'Lihat Detail Pesanan'}
+                              <ChevronRight size={12} />
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
 
           {/* Order Details & Verification Column (Right: 6/12) */}
-          <div className="lg:col-span-6 space-y-4">
+          <div ref={orderDetailsRef} className="lg:col-span-6 space-y-4">
             <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-xs">
               <h2 className="text-base font-bold font-heading text-text-primary mb-4 flex items-center gap-2">
                 <FileText size={18} className="text-brand-blue" />
@@ -1370,38 +2005,65 @@ export default function AdminPOS() {
                     Belum ada QR pesanan yang diperiksa
                   </p>
                   <p className="text-[10px] text-gray-400 mt-0.5">
-                    Scan QR code pembeli di sebelah kiri untuk melihat data pesanan.
+                    Scan QR code pembeli atau klik pesanan hasil pencarian di sebelah kiri untuk melihat data pesanan.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {/* Order Metadata */}
-                  <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200 space-y-1.5 text-xs">
+                  <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200 space-y-2 text-xs">
                     <div className="flex justify-between items-center">
                       <span className="font-mono text-gray-500 text-[11px]">
                         ID: {previewOrder.id.substring(0, 13)}...
                       </span>
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${previewOrder.status === 'paid'
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${previewOrder.status === 'paid'
                           ? 'bg-emerald-100 text-emerald-800'
                           : previewOrder.status === 'completed'
                             ? 'bg-gray-200 text-gray-700'
                             : 'bg-amber-100 text-amber-800'
                           }`}
                       >
-                        Status: {previewOrder.status}
+                        Status: {previewOrder.status === 'paid' ? 'Siap Diambil' : previewOrder.status === 'completed' ? 'Selesai' : previewOrder.status}
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center pt-1 border-t border-gray-200/60 font-semibold text-text-primary">
+                    <div className="flex justify-between items-center pt-1.5 border-t border-gray-200/60 font-semibold text-text-primary">
                       <span>Nama Pembeli:</span>
-                      <span>{previewOrder.customer_name || 'Pembeli Web'}</span>
+                      <span className="text-sm font-bold">{previewOrder.customer_name || 'Pembeli Web'}</span>
                     </div>
 
-                    {previewOrder.customer_phone && (
-                      <div className="flex justify-between items-center text-gray-500">
-                        <span>WhatsApp:</span>
-                        <span className="font-mono">{previewOrder.customer_phone}</span>
+                    {previewOrder.customer_phone && previewOrder.customer_phone !== '-' && (
+                      <div className="flex justify-between items-center text-gray-600">
+                        <span className="flex items-center gap-1.5">
+                          <Phone size={12} className="text-emerald-600" /> WhatsApp / HP:
+                        </span>
+                        <span className="font-mono font-semibold">{previewOrder.customer_phone}</span>
+                      </div>
+                    )}
+
+                    {previewOrder.customer_email && previewOrder.customer_email !== '-' && (
+                      <div className="flex justify-between items-center text-gray-600">
+                        <span className="flex items-center gap-1.5">
+                          <Mail size={12} className="text-blue-600" /> Email Pembeli:
+                        </span>
+                        <span className="font-medium text-gray-800">{previewOrder.customer_email}</span>
+                      </div>
+                    )}
+
+                    {previewOrder.pickup_time && (
+                      <div className="flex justify-between items-center text-gray-600">
+                        <span className="flex items-center gap-1.5">
+                          <Clock size={12} className="text-amber-600" /> Waktu Ambil:
+                        </span>
+                        <span className="font-medium text-gray-800">{previewOrder.pickup_time}</span>
+                      </div>
+                    )}
+
+                    {previewOrder.notes && (
+                      <div className="pt-1.5 border-t border-gray-200/60 text-gray-600">
+                        <span className="font-semibold block mb-0.5 text-[11px] text-gray-500">Catatan:</span>
+                        <p className="italic bg-white p-2 rounded-xl border border-gray-200/60 text-[11px]">"{previewOrder.notes}"</p>
                       </div>
                     )}
                   </div>

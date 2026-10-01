@@ -84,12 +84,13 @@ function App() {
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                {/* Order history is localStorage-based — accessible to guests with past orders */}
+                <Route path="/order-history" element={<OrderHistory />} />
 
                 {/* Customer Account (Protected) */}
                 <Route element={<ProtectedRoute />}>
                   <Route path="/profile/edit" element={<ProfileEdit />} />
                   <Route path="/address/new" element={<AddressNew />} />
-                  <Route path="/order-history" element={<OrderHistory />} />
                 </Route>
 
                 {/* Admin Portal */}
