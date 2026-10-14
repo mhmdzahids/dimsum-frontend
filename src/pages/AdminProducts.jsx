@@ -14,7 +14,8 @@ import {
   Plus,
   Package,
   Leaf,
-  Beaker
+  Beaker,
+  Edit2
 } from 'lucide-react';
 import api from '../api/client';
 import { getAdminRole, canManageProducts } from '../utils/adminAuth';
@@ -48,6 +49,14 @@ export default function AdminProducts() {
   const [discountSavingLoading, setDiscountSavingLoading] = useState(false);
   const [discountError, setDiscountError] = useState('');
   const [discountSuccessMsg, setDiscountSuccessMsg] = useState('');
+
+  // Edit Product Name modal state
+  const [editNameModalOpen, setEditNameModalOpen] = useState(false);
+  const [selectedProductForEditName, setSelectedProductForEditName] = useState(null);
+  const [editNameInput, setEditNameInput] = useState('');
+  const [editNameSavingLoading, setEditNameSavingLoading] = useState(false);
+  const [editNameError, setEditNameError] = useState('');
+  const [editNameSuccessMsg, setEditNameSuccessMsg] = useState('');
 
   // Recipe modal state
   const [recipeModalOpen, setRecipeModalOpen] = useState(false);
@@ -301,6 +310,68 @@ export default function AdminProducts() {
     }
   };
 
+  // Open edit product name modal
+  const openEditNameModal = (product) => {
+    setSelectedProductForEditName(product);
+    setEditNameInput(product.name || '');
+    setEditNameError('');
+    setEditNameSuccessMsg('');
+    setEditNameModalOpen(true);
+  };
+
+  // Close edit product name modal
+  const closeEditNameModal = () => {
+    if (editNameSavingLoading) return;
+    setEditNameModalOpen(false);
+    setSelectedProductForEditName(null);
+    setEditNameInput('');
+    setEditNameError('');
+    setEditNameSuccessMsg('');
+  };
+
+  // Save updated product name
+  const handleSaveProductName = async (e) => {
+    e.preventDefault();
+    if (!selectedProductForEditName) return;
+    const trimmedName = editNameInput.trim();
+    if (!trimmedName) {
+      setEditNameError('Nama produk tidak boleh kosong');
+      return;
+    }
+    if (trimmedName === selectedProductForEditName.name) {
+      closeEditNameModal();
+      return;
+    }
+
+    setEditNameSavingLoading(true);
+    setEditNameError('');
+    setEditNameSuccessMsg('');
+
+    try {
+      const res = await api.put(
+        `/api/products/${selectedProductForEditName.id}`,
+        { name: trimmedName },
+        { auth: 'admin' }
+      );
+
+      if (res.success) {
+        setEditNameSuccessMsg('Nama produk berhasil diperbarui!');
+        setProducts(prev =>
+          prev.map(p => (p.id === selectedProductForEditName.id ? { ...p, name: trimmedName } : p))
+        );
+        setTimeout(() => {
+          closeEditNameModal();
+        }, 800);
+      } else {
+        setEditNameError(res.error || 'Gagal memperbarui nama produk');
+      }
+    } catch (err) {
+      setEditNameError('Terjadi kesalahan jaringan saat menyimpan nama produk');
+    } finally {
+      setEditNameSavingLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Tab Navigation */}
@@ -504,6 +575,16 @@ export default function AdminProducts() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-bold text-gray-900 text-base">{p.name}</p>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => openEditNameModal(p)}
+                        title="Edit Nama Display Menu"
+                        className="inline-flex items-center justify-center p-1 rounded-md text-brand-blue hover:text-brand-blue-dark hover:bg-brand-blue/10 transition-colors cursor-pointer"
+                      >
+                        <Edit2 size={14} strokeWidth={2.2} />
+                      </button>
+                    )}
                     {hasDiscount ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-brand-red/10 text-brand-red border border-brand-red/20">
                         <Flame size={11} className="fill-brand-red text-brand-red -skew-x-[14deg] -rotate-[6deg] transform" />
@@ -549,6 +630,15 @@ export default function AdminProducts() {
                 <div className="flex flex-wrap md:flex-col gap-2 items-end shrink-0 w-full md:w-auto">
                   <button
                     type="button"
+                    onClick={() => openEditNameModal(p)}
+                    className="bg-brand-blue/10 text-brand-blue border border-brand-blue/20 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer hover:bg-brand-blue hover:text-white text-center flex items-center justify-center gap-1.5 w-full md:w-32 transition-colors"
+                  >
+                    <Edit2 size={13} />
+                    Edit Nama
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => openDiscountModal(p)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all w-full md:w-32 cursor-pointer ${hasDiscount
                       ? 'bg-brand-red text-white hover:bg-red-700 shadow-xs'
@@ -579,6 +669,120 @@ export default function AdminProducts() {
           );
         })}
       </div>
+
+      {/* Edit Product Name Modal */}
+      {editNameModalOpen && selectedProductForEditName && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-100">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-brand-blue/10 text-brand-blue flex items-center justify-center border border-brand-blue/20">
+                  <Edit2 size={18} strokeWidth={2.2} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base leading-tight">Edit Nama Display Produk</h3>
+                  <p className="text-xs text-gray-500 truncate max-w-[240px]">SKU: {selectedProductForEditName.sku}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditNameModal}
+                disabled={editNameSavingLoading}
+                className="text-gray-400 hover:text-gray-700 p-1.5 rounded-full hover:bg-gray-200 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSaveProductName} className="p-5 space-y-4">
+              {/* Product Name Input */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                  Nama Produk
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editNameInput}
+                  onChange={(e) => setEditNameInput(e.target.value)}
+                  placeholder="Contoh: Dimsum Ayam Original"
+                  disabled={editNameSavingLoading}
+                  maxLength={120}
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue transition-all"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Nama ini akan langsung tampil pada katalog menu pelanggan, keranjang belanja, dan struk.
+                </p>
+              </div>
+
+              {/* Live Preview Card */}
+              <div className="p-3.5 rounded-xl border border-brand-gold/30 bg-bg-cream/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-brand-blue inline-flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-gold animate-pulse"></span>
+                    Preview Tampilan Pelanggan
+                  </span>
+                  <span className="text-[10px] font-medium text-gray-500">
+                    {selectedProductForEditName.unit_label || ((selectedProductForEditName.sku || '').includes('MIKA') ? 'mika (isi 50)' : 'pack (isi 25)')}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-brand-gold/15">
+                  <p className="font-bold text-gray-900 text-sm truncate">
+                    {editNameInput.trim() || <span className="text-gray-400 italic font-normal">Nama produk kosong...</span>}
+                  </p>
+                  <span className="text-xs font-black text-brand-gold shrink-0">
+                    Rp{Number(selectedProductForEditName.price).toLocaleString('id-ID')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Error Message */}
+              {editNameError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{editNameError}</span>
+                </div>
+              )}
+
+              {/* Success Message */}
+              {editNameSuccessMsg && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-700 flex items-center gap-2">
+                  <CheckCircle2 size={16} className="shrink-0" />
+                  <span>{editNameSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeEditNameModal}
+                  disabled={editNameSavingLoading}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={editNameSavingLoading || !editNameInput.trim()}
+                  className="flex-1 py-2.5 bg-brand-blue hover:bg-brand-blue-dark text-white rounded-xl text-xs font-bold shadow-md transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {editNameSavingLoading ? (
+                    <span>Menyimpan...</span>
+                  ) : (
+                    <>
+                      <Check size={14} strokeWidth={2.5} />
+                      Simpan Nama
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Discount Management Modal */}
       {discountModalOpen && selectedProductForDiscount && (
